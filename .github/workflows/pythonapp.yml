@@ -1,0 +1,55 @@
+name: Basix CI
+
+on:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  merge_group:
+    branches:
+      - main
+  workflow_dispatch:
+  # Weekly build on Mondays at 8 am
+  schedule:
+    - cron: "0 8 * * 1"
+jobs:
+  lint:
+    name: Lint code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/checkout@v4
+      - name: Ruff check
+        run: |
+          pip install ruff
+          ruff check .
+          ruff format --check .
+      - name: MyPy check
+        run: |
+          pip install mypy
+          mypy uflx
+
+  build:
+    name: Build and test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install UFL
+        run: pip -v install .[ci]
+      - name: Run units tests
+        run: pytest -n auto --durations 20 test/

@@ -1,0 +1,34 @@
+[project]
+name = "uflx"
+version = "0.0.1"
+description = "Experimental minimal UFL"
+readme = "README.md"
+requires-python = ">=3.10.0"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
+    { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
+]
+dependencies = []
+
+[project.urls]
+homepage = "https://github.com/garth-wells/uflx"
+repository = "https://github.com/garth-wells/uflx"
+
+[project.optional-dependencies]
+docs = ["sphinx", "sphinx-autoapi"]
+lint = ["ruff", "mypy"]
+ci = ["pytest", "pytest-xdist"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+ignore_missing_imports = true
