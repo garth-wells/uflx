@@ -7,7 +7,7 @@ requires-python = ">=3.10.0"
 license = { file = "LICENSE" }
 authors = [
     { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
-    { name = "Garth Wells", email = "TODO" }
+    { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
 ]
 dependencies = []
 
