@@ -34,7 +34,7 @@ jobs:
       - name: MyPy check
         run: |
           pip install mypy
-          mypy ufl
+          mypy uflx
 
   build:
     name: Build and test
