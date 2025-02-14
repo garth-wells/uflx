@@ -1,2 +1,2 @@
 def test_dummy():
-    import uflx
+    import uflx  # noqa: F401
