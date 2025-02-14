@@ -1,4 +1,4 @@
-name: Basix CI
+name: UFLx CI
 
 on:
   push:
