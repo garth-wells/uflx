@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10.0"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" }
+    { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
     { name = "Garth Wells", email = "TODO" }
 ]
 dependencies = []
