@@ -18,7 +18,7 @@ repository = "https://github.com/garth-wells/uflx"
 [project.optional-dependencies]
 style = ["ruff", "mypy"]
 docs = ["sphinx", "sphinx-autoapi"]
-ci = ["pytest", "uflx[docs]", "uflx[style]"]
+ci = ["pytest", "uflx[docs]", "uflx[style]", "pytest-xdist"]
 
 [tool.ruff]
 line-length = 100
