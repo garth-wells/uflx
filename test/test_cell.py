@@ -1,7 +1,7 @@
 """Test cell."""
 
 import pytest
-from uflx.test_utils import point, interval, triangle, tetrahedron
+from utils import point, interval, triangle, tetrahedron
 
 
 @pytest.mark.parametrize(
