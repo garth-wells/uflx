@@ -1,4 +1,4 @@
-"""Test cell."""
+"""Test finite element."""
 
 import pytest
 from utils import point, interval, triangle, tetrahedron, LagrangeElement
