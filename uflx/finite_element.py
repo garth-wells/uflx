@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typing
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from uflx.cell import AbstractCell
 
 
@@ -21,15 +21,18 @@ class AbstractFiniteElement(ABC):
     def __eq__(self, other) -> bool:
         """Check if this element is equal to another element."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def cell(self) -> AbstractCell:
         """Return the cell that this element is defined on."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def reference_value_shape(self) -> typing.Tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def embedded_lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element.
 

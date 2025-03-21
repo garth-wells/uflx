@@ -110,6 +110,31 @@ class Triangle(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
+class Quadrilateral(AbstractCell):
+    """A quadrilateral."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Quadrilateral)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 2
+
+    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(4)]
+            case 1:
+                return [Interval() for _ in range(4)]
+            case 2:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+
 class Tetrahedron(AbstractCell):
     """A tetrahedron."""
 
@@ -137,7 +162,36 @@ class Tetrahedron(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
+class Hexahedron(AbstractCell):
+    """A hexahedron."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Hexahedron)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 3
+
+    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(4)]
+            case 1:
+                return [Interval() for _ in range(12)]
+            case 2:
+                return [Quadrilateral() for _ in range(6)]
+            case 3:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+
 point = Point()
 interval = Interval()
 triangle = Triangle()
 tetrahedron = Tetrahedron()
+quadrilateral = Quadrilateral()
+hexahedron = Hexahedron()
