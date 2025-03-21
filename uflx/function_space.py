@@ -35,4 +35,3 @@ class FunctionSpace(AbstractFunctionSpace):
     def elements(self) -> list[AbstractFiniteElement]:
         """Elements included in this function space."""
         return [i[1] for i in self.domains_and_elements]
-
