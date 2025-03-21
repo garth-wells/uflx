@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 import typing
 
 
@@ -13,7 +13,8 @@ class AbstractCell(ABC):
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def topological_dimension(self) -> int:
         """The topological dimension of the cell."""
 
