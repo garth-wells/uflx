@@ -1,3 +1,8 @@
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
 """Utilities for testing UFL."""
 
 from uflx.cell import AbstractCell
@@ -84,7 +89,7 @@ class Interval(AbstractCell):
 
 
 class Triangle(AbstractCell):
-    """A triangle."""
+    """A triangle cell."""
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
@@ -92,7 +97,7 @@ class Triangle(AbstractCell):
 
     @property
     def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
+        """Topological dimension of the cell."""
         return 2
 
     def sub_entities(self, dim: int) -> list[AbstractCell]:
@@ -169,7 +174,7 @@ class Hexahedron(AbstractCell):
 
     @property
     def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
+        """Topological dimension of the cell."""
         return 3
 
     def sub_entities(self, dim: int) -> list[AbstractCell]:
