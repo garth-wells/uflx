@@ -34,6 +34,10 @@ class AbstractFiniteElement(ABC):
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
 
+    @abstractmethod
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Return the shape of the value space on the reference cell."""
+
     @property
     @abstractmethod
     def embedded_lagrange_superdegree(self) -> int | None:

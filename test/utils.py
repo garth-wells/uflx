@@ -38,6 +38,10 @@ class LagrangeElement(AbstractFiniteElement):
         """Return the shape of the value space on the reference cell."""
         return ()
 
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Return the shape of the value space on the reference cell."""
+        return ()
+
     @property
     def embedded_lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element."""
