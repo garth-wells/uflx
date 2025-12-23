@@ -1,4 +1,9 @@
-"""Domains."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Finite element domains."""
 
 from abc import ABC, abstractmethod
 
@@ -32,8 +37,10 @@ class EmbeddedCell(AbstractDomain):
 
     @property
     def geometric_dimension(self) -> int:
+        """Dimension of the space this domain is embedded in."""
         return self._gdim
 
     @property
     def topological_dimension(self) -> int:
+        """Dimension of the topology of this domain."""
         return self._cell.topological_dimension

@@ -13,9 +13,10 @@ on:
     branches:
       - main
   workflow_dispatch:
-  # Weekly build on Mondays at 8 am
-  schedule:
-    - cron: "0 8 * * 1"
+  # # Weekly build on Mondays at 8 am
+  # schedule:
+  #   - cron: "0 8 * * 1"
+
 jobs:
   lint:
     name: Lint code
@@ -24,7 +25,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - uses: actions/checkout@v4
       - name: Ruff check
         run: |
@@ -41,8 +42,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-22.04]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-24.04]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -50,6 +51,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install UFL
-        run: pip -v install .[ci]
+        run: pip -v install .[ci,docs]
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
+      - name: Build doc
+        working-directory: ./doc
+        run: make html

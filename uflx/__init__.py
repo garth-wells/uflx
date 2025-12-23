@@ -1,4 +1,6 @@
-"""UFL: Unified Form Language."""
+"""UFLx: Unified Form Language."""
 
-from uflx.function_space import FunctionSpace
 from uflx.domain import EmbeddedCell
+from uflx.function_space import FunctionSpace
+
+__all__ = ["EmbeddedCell", "FunctionSpace"]
