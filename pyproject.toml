@@ -16,7 +16,7 @@ homepage = "https://github.com/garth-wells/uflx"
 repository = "https://github.com/garth-wells/uflx"
 
 [project.optional-dependencies]
-docs = ["sphinx", "sphinx-autoapi"]
+docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
 lint = ["ruff", "mypy"]
 ci = ["pytest", "pytest-xdist"]
 
