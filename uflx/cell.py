@@ -21,8 +21,15 @@ class AbstractCell(ABC):
     @property
     @abstractmethod
     def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
+        """Topological dimension of the cell."""
 
     @abstractmethod
     def sub_entities(self, dim: int) -> list[AbstractCell]:
-        """Get a list of sub-entities of a given dimension."""
+        """Get a list of sub-entities of a given dimension.
+
+        Args:
+            dim: Dimension of the sub-entities to get.
+
+        Returns:
+            A list of sub-entities of the given dimension.
+        """
