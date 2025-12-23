@@ -24,6 +24,25 @@ ci = ["pytest", "pytest-xdist"]
 line-length = 100
 indent-width = 4
 
+[tool.ruff.lint]
+select = [
+    # "N", # pep8-naming
+    "E",   # pycodestyle
+    "W",   # pycodestyle
+    "D",   # pydocstyle
+    "F",   # pyflakes
+    "I",   # isort
+    "RUF", # Ruff-specific rules
+    "UP",  # pyupgrade
+    "ICN", # flake8-import-conventions
+    "NPY", # numpy-specific rules
+    "FLY", # use f-string not static joins
+    "LOG", # https://docs.astral.sh/ruff/rules/#flake8-logging-log
+    "ISC", # https://docs.astral.sh/ruff/rules/#flake8-implicit-str-concat-isc
+    # "B", # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    # "A", # https://docs.astral.sh/ruff/rules/#flake8-builtins-a
+]
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 

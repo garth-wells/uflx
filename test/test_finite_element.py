@@ -1,7 +1,7 @@
 """Test finite element."""
 
 import pytest
-from utils import point, interval, triangle, tetrahedron, quadrilateral, LagrangeElement, hexahedron
+from utils import LagrangeElement, hexahedron, interval, point, quadrilateral, tetrahedron, triangle
 
 
 @pytest.mark.parametrize(
@@ -16,6 +16,7 @@ from utils import point, interval, triangle, tetrahedron, quadrilateral, Lagrang
     ],
 )
 def test_lagrange_element(cell):
+    """Test Lagrange element properties."""
     element = LagrangeElement(cell, 2)
 
     assert element.cell == cell

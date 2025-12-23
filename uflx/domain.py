@@ -32,8 +32,10 @@ class EmbeddedCell(AbstractDomain):
 
     @property
     def geometric_dimension(self) -> int:
+        """Dimension of the space this domain is embedded in."""
         return self._gdim
 
     @property
     def topological_dimension(self) -> int:
+        """Dimension of the topology of this domain."""
         return self._cell.topological_dimension

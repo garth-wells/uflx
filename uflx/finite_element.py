@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import typing
 from abc import ABC, abstractmethod
+
 from uflx.cell import AbstractCell
 
 
@@ -11,7 +11,7 @@ class AbstractFiniteElement(ABC):
     """Abstract base class for a finite element.
 
     To make your element library compatible with UFL, you should make a
-    subclass of AbstractFiniteElement and provide implementions of all
+    subclass of AbstractFiniteElement and provide implementations of all
     the abstract methods and properties. All methods and properties that
     are not marked as abstract are implemented here and should not need
     to be overwritten in your subclass.
@@ -28,7 +28,7 @@ class AbstractFiniteElement(ABC):
 
     @property
     @abstractmethod
-    def reference_value_shape(self) -> typing.Tuple[int, ...]:
+    def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
 
     @property

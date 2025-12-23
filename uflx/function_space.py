@@ -2,8 +2,8 @@
 
 from abc import ABC, abstractmethod
 
-from uflx.finite_element import AbstractFiniteElement
 from uflx.domain import AbstractDomain
+from uflx.finite_element import AbstractFiniteElement
 
 
 class AbstractFunctionSpace(ABC):
@@ -24,6 +24,7 @@ class FunctionSpace(AbstractFunctionSpace):
 
     @property
     def domains_and_elements(self) -> list[tuple[AbstractDomain, AbstractFiniteElement]]:
+        """Domains and elements included in this function space."""
         return self._d_and_e
 
     @property

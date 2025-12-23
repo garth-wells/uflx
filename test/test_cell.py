@@ -1,7 +1,7 @@
 """Test cell."""
 
 import pytest
-from utils import point, interval, triangle, tetrahedron
+from utils import interval, point, tetrahedron, triangle
 
 
 @pytest.mark.parametrize(
@@ -14,6 +14,7 @@ from utils import point, interval, triangle, tetrahedron
     ],
 )
 def test_euler_characteristic(cell):
+    """Test Euler characteristic of cell."""
     match cell.topological_dimension:
         case 0:
             assert len(cell.vertices) == 1
