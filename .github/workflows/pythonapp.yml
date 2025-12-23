@@ -51,7 +51,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install UFL
-        run: pip -v install .[ci]
+        run: pip -v install .[ci,docs]
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
       - name: Build doc
