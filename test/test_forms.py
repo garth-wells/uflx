@@ -1,10 +1,12 @@
 """Test forms."""
 
-from uflx import TestFunction, TrialFunction, FunctionSpace, EmbeddedCell, dx, inner
-from utils import triangle, LagrangeElement
+from utils import LagrangeElement, triangle
+
+from uflx import EmbeddedCell, FunctionSpace, TestFunction, TrialFunction, dx, inner
 
 
 def test_simple_form():
+    """Test a simple form."""
     element = LagrangeElement(triangle, 2)
     space = FunctionSpace([(EmbeddedCell(triangle), element)])
     u = TrialFunction(space)

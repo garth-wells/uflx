@@ -1,9 +1,12 @@
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
 """Utilities for testing UFL."""
 
-import typing
-
-from uflx.finite_element import AbstractFiniteElement
 from uflx.cell import AbstractCell
+from uflx.finite_element import AbstractFiniteElement
 
 
 class LagrangeElement(AbstractFiniteElement):
@@ -31,11 +34,11 @@ class LagrangeElement(AbstractFiniteElement):
         return self._cell
 
     @property
-    def reference_value_shape(self) -> typing.Tuple[int, ...]:
+    def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
         return ()
 
-    def physical_value_shape(self, geometric_dimension: int) -> typing.Tuple[int, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
         return ()
 
@@ -57,7 +60,7 @@ class Point(AbstractCell):
         """The topological dimension of the cell."""
         return 0
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -78,7 +81,7 @@ class Interval(AbstractCell):
         """The topological dimension of the cell."""
         return 1
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -90,7 +93,7 @@ class Interval(AbstractCell):
 
 
 class Triangle(AbstractCell):
-    """A triangle."""
+    """A triangle cell."""
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
@@ -98,10 +101,10 @@ class Triangle(AbstractCell):
 
     @property
     def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
+        """Topological dimension of the cell."""
         return 2
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -126,7 +129,7 @@ class Quadrilateral(AbstractCell):
         """The topological dimension of the cell."""
         return 2
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -151,7 +154,7 @@ class Tetrahedron(AbstractCell):
         """The topological dimension of the cell."""
         return 3
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -175,10 +178,10 @@ class Hexahedron(AbstractCell):
 
     @property
     def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
+        """Topological dimension of the cell."""
         return 3
 
-    def sub_entities(self, dim: int) -> typing.List[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractCell]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:

@@ -1,8 +1,9 @@
 """Functions."""
 
 from abc import abstractmethod
-from uflx.function_space import AbstractFunctionSpace
+
 from uflx.expression import AbstractExpression
+from uflx.function_space import AbstractFunctionSpace
 
 
 class AbstractFunction(AbstractExpression):
@@ -20,10 +21,12 @@ class TestFunction(AbstractFunction):
     __test__ = False
 
     def __init__(self, space: AbstractFunctionSpace):
+        """Initialise."""
         self._space = space
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
+        """The function space that this function lives in."""
         return self._space
 
 
@@ -31,8 +34,10 @@ class TrialFunction(AbstractFunction):
     """A trial function."""
 
     def __init__(self, space: AbstractFunctionSpace):
+        """Initialise."""
         self._space = space
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
+        """The function space that this function lives in."""
         return self._space

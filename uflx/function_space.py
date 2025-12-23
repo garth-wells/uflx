@@ -1,9 +1,16 @@
-"""Function space."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Finite element function spaces."""
 
 from abc import ABC, abstractmethod
 
-from uflx.finite_element import AbstractFiniteElement
 from uflx.domain import AbstractDomain
+from uflx.finite_element import AbstractFiniteElement
+
+# __all__ = ["FunctionSpace"]
 
 
 class AbstractFunctionSpace(ABC):
@@ -41,6 +48,7 @@ class FunctionSpace(AbstractFunctionSpace):
 
     @property
     def domains_and_elements(self) -> list[tuple[AbstractDomain, AbstractFiniteElement]]:
+        """Domains and elements included in this function space."""
         return self._d_and_e
 
     @property
@@ -55,4 +63,5 @@ class FunctionSpace(AbstractFunctionSpace):
 
     @property
     def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the function space."""
         return self.elements[0].physical_value_shape(self.domains[0].geometric_dimension)
