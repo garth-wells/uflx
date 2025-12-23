@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from uflx.domain import AbstractDomain
 from uflx.finite_element import AbstractFiniteElement
 
+# __all__ = ["FunctionSpace"]
+
 
 class AbstractFunctionSpace(ABC):
     """Abstract base class for a function space."""

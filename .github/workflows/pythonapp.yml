@@ -13,9 +13,10 @@ on:
     branches:
       - main
   workflow_dispatch:
-  # Weekly build on Mondays at 8 am
-  schedule:
-    - cron: "0 8 * * 1"
+  # # Weekly build on Mondays at 8 am
+  # schedule:
+  #   - cron: "0 8 * * 1"
+
 jobs:
   lint:
     name: Lint code
@@ -53,3 +54,6 @@ jobs:
         run: pip -v install .[ci]
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
+      - name: Build doc
+        working-directory: ./doc
+        run: make html
