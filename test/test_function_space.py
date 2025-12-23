@@ -1,4 +1,9 @@
-"""Test function space."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Test function spaces."""
 
 import pytest
 from utils import LagrangeElement, quadrilateral, tetrahedron, triangle

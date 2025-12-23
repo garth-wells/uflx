@@ -1,4 +1,9 @@
-"""Test finite element."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Test finite elements."""
 
 import pytest
 from utils import LagrangeElement, hexahedron, interval, point, quadrilateral, tetrahedron, triangle

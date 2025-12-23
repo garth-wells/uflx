@@ -1,7 +1,7 @@
 [project]
 name = "uflx"
 version = "0.0.1"
-description = "Experimental minimal UFL"
+description = "ULFx: Experimental minimal UFL"
 readme = "README.md"
 requires-python = ">=3.10.0"
 license = { file = "LICENSE" }
@@ -16,7 +16,7 @@ homepage = "https://github.com/garth-wells/uflx"
 repository = "https://github.com/garth-wells/uflx"
 
 [project.optional-dependencies]
-docs = ["sphinx", "sphinx-autoapi"]
+docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
 lint = ["ruff", "mypy"]
 ci = ["pytest", "pytest-xdist"]
 
@@ -45,6 +45,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"conf.py" = ["D100"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

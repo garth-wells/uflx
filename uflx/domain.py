@@ -1,4 +1,9 @@
-"""Domains."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Finite element domains."""
 
 from abc import ABC, abstractmethod
 
