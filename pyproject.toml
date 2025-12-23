@@ -1,7 +1,7 @@
 [project]
 name = "uflx"
 version = "0.0.1"
-description = "Experimental minimal UFL"
+description = "ULFx: Experimental minimal UFL"
 readme = "README.md"
 requires-python = ">=3.10.0"
 license = { file = "LICENSE" }
