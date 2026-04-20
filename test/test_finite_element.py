@@ -26,4 +26,4 @@ def test_lagrange_element(cell):
 
     assert element.cell == cell
     assert element.reference_value_shape == ()
-    assert element.embedded_lagrange_superdegree == 2
+    assert element.lagrange_superdegree == 2

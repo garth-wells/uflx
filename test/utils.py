@@ -3,16 +3,16 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Utilities for testing UFL."""
+"""Utilities for testing UFLx."""
 
-from uflx.cell import AbstractCell
-from uflx.finite_element import AbstractFiniteElement
+from uflx.entity import AbstractEntity
+from uflx.finite_element import AbstractReferenceMappedFiniteElement
 
 
-class LagrangeElement(AbstractFiniteElement):
+class LagrangeElement(AbstractReferenceMappedFiniteElement):
     """A Lagrange element."""
 
-    def __init__(self, cell: AbstractCell, degree: int):
+    def __init__(self, cell: AbstractEntity, degree: int):
         """Create a Lagrange element."""
         self._cell = cell
         self._degree = degree
@@ -29,7 +29,7 @@ class LagrangeElement(AbstractFiniteElement):
         )
 
     @property
-    def cell(self) -> AbstractCell:
+    def cell(self) -> AbstractEntity:
         """Return the cell that this element is defined on."""
         return self._cell
 
@@ -43,12 +43,12 @@ class LagrangeElement(AbstractFiniteElement):
         return ()
 
     @property
-    def embedded_lagrange_superdegree(self) -> int | None:
+    def lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element."""
         return self._degree
 
 
-class Point(AbstractCell):
+class Point(AbstractEntity):
     """A point."""
 
     def __eq__(self, other) -> bool:
@@ -60,7 +60,7 @@ class Point(AbstractCell):
         """The topological dimension of the cell."""
         return 0
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -69,7 +69,7 @@ class Point(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
-class Interval(AbstractCell):
+class Interval(AbstractEntity):
     """An interval."""
 
     def __eq__(self, other) -> bool:
@@ -81,7 +81,7 @@ class Interval(AbstractCell):
         """The topological dimension of the cell."""
         return 1
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -92,7 +92,7 @@ class Interval(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
-class Triangle(AbstractCell):
+class Triangle(AbstractEntity):
     """A triangle cell."""
 
     def __eq__(self, other) -> bool:
@@ -104,7 +104,7 @@ class Triangle(AbstractCell):
         """Topological dimension of the cell."""
         return 2
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -117,7 +117,7 @@ class Triangle(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
-class Quadrilateral(AbstractCell):
+class Quadrilateral(AbstractEntity):
     """A quadrilateral."""
 
     def __eq__(self, other) -> bool:
@@ -129,7 +129,7 @@ class Quadrilateral(AbstractCell):
         """The topological dimension of the cell."""
         return 2
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -142,7 +142,7 @@ class Quadrilateral(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
-class Tetrahedron(AbstractCell):
+class Tetrahedron(AbstractEntity):
     """A tetrahedron."""
 
     def __eq__(self, other) -> bool:
@@ -154,7 +154,7 @@ class Tetrahedron(AbstractCell):
         """The topological dimension of the cell."""
         return 3
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:
@@ -169,7 +169,7 @@ class Tetrahedron(AbstractCell):
                 raise ValueError(f"Invalid dimension: {dim}")
 
 
-class Hexahedron(AbstractCell):
+class Hexahedron(AbstractEntity):
     """A hexahedron."""
 
     def __eq__(self, other) -> bool:
@@ -181,7 +181,7 @@ class Hexahedron(AbstractCell):
         """Topological dimension of the cell."""
         return 3
 
-    def sub_entities(self, dim: int) -> list[AbstractCell]:
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension."""
         match dim:
             case 0:

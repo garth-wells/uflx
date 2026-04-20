@@ -3,7 +3,7 @@
 from abc import abstractmethod
 
 from uflx.expression import AbstractExpression
-from uflx.function_space import AbstractFunctionSpace
+from uflx.function_spaces import AbstractFunctionSpace
 
 
 class AbstractFunction(AbstractExpression):
