@@ -22,6 +22,11 @@ class AbstractFunction(AbstractExpression):
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
 
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.function_space.value_shape
+
 
 class TestFunction(AbstractFunction):
     """A test function."""

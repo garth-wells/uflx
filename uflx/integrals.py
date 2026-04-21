@@ -3,7 +3,7 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Integrals."""
+"""Measures and integrals."""
 
 from abc import ABC, abstractmethod
 

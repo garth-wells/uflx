@@ -5,11 +5,16 @@
 # SPDX-License-Identifier:    MIT
 """Expression.
 
-An expression is...
+An expression is any algebraic expression that could be used as an integrand.
 """
 
-from abc import ABC
+from abc import ABC, abstractmethod
 
 
 class AbstractExpression(ABC):
     """Abstract base class for expressions."""
+
+    @property
+    @abstractmethod
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""

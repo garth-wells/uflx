@@ -3,9 +3,12 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Finite element domains.
+"""Domains.
 
 A domain is a subset of R^d over which something can be integrated.
+There is no assumption that a domain only contains cells of a single type:
+one could contain (eg) a mixture of triangles and quadrilaterals, or even
+a mixture of (eq) tetrahedra and intervals.
 """
 
 from abc import ABC, abstractmethod
