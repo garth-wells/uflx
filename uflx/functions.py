@@ -1,8 +1,16 @@
-"""Functions."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Functions.
+
+A function is an item contained in a function space.
+"""
 
 from abc import abstractmethod
 
-from uflx.expression import AbstractExpression
+from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractFunctionSpace
 
 

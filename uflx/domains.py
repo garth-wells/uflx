@@ -3,12 +3,15 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Finite element domains."""
+"""Finite element domains.
+
+A domain is a subset of R^d over which something can be integrated.
+"""
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
-from uflx.entity import AbstractEntity
+from uflx.entities import AbstractEntity
 
 
 class AbstractDomain(ABC):
@@ -26,7 +29,7 @@ class AbstractDomain(ABC):
 
 
 class Domain(AbstractDomain):
-    """A set of cell embedded in R^d."""
+    """A set of cells embedded in R^d."""
 
     def __init__(self, cells: tuple[AbstractEntity, ...], gdim: int):
         """Initialise."""

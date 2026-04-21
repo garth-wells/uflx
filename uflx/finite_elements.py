@@ -11,7 +11,7 @@ The entity on which the element is defined is called the cell.
 
 from abc import ABC, abstractmethod
 
-from uflx.entity import AbstractEntity
+from uflx.entities import AbstractEntity
 
 
 class AbstractFiniteElement(ABC):

@@ -3,13 +3,17 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Finite element function spaces."""
+"""Function spaces.
+
+A function space is a space containing functions defined on a domain.
+In most if not all cases, these will be finite dimensional.
+"""
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from uflx.domains import AbstractDomain
-from uflx.finite_element import AbstractReferenceMappedFiniteElement
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
 class AbstractFunctionSpace(ABC):

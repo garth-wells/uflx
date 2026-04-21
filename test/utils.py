@@ -5,8 +5,8 @@
 # SPDX-License-Identifier:    MIT
 """Utilities for testing UFLx."""
 
-from uflx.entity import AbstractEntity
-from uflx.finite_element import AbstractReferenceMappedFiniteElement
+from uflx.entities import AbstractEntity
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
