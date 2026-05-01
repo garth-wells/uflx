@@ -3,11 +3,15 @@
 # This file is part of UFLx (https://www.fenicsproject.org)
 #
 # SPDX-License-Identifier:    MIT
-"""Finite element."""
+"""Finite element.
+
+A finite element is an object that is used to define basis functions on a single mesh entity.
+The entity on which the element is defined is called the cell.
+"""
 
 from abc import ABC, abstractmethod
 
-from uflx.cell import AbstractCell
+from uflx.entities import AbstractEntity
 
 
 class AbstractFiniteElement(ABC):
@@ -26,13 +30,8 @@ class AbstractFiniteElement(ABC):
 
     @property
     @abstractmethod
-    def cell(self) -> AbstractCell:
+    def cell(self) -> AbstractEntity:
         """Return the cell that this element is defined on."""
-
-    @property
-    @abstractmethod
-    def reference_value_shape(self) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
 
     @abstractmethod
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
@@ -40,7 +39,7 @@ class AbstractFiniteElement(ABC):
 
     @property
     @abstractmethod
-    def embedded_lagrange_superdegree(self) -> int | None:
+    def lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element.
 
         This returns the degree of the lowest degree Lagrange space such
@@ -54,3 +53,19 @@ class AbstractFiniteElement(ABC):
         not true. For example, on quadrilateral cells, the degree 1
         Lagrange space includes the degree 2 polynomial xy.
         """
+
+
+class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
+    """Abstract base class for a reference-mapped finite element.
+
+    To make your element library compatible with UFL, you should make a
+    subclass of AbstractFiniteElement and provide implementations of all
+    the abstract methods and properties. All methods and properties that
+    are not marked as abstract are implemented here and should not need
+    to be overwritten in your subclass.
+    """
+
+    @property
+    @abstractmethod
+    def reference_value_shape(self) -> tuple[int, ...]:
+        """Return the shape of the value space on the reference cell."""

@@ -1,9 +1,17 @@
-"""Functions."""
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
+"""Functions.
+
+A function is an item contained in a function space.
+"""
 
 from abc import abstractmethod
 
-from uflx.expression import AbstractExpression
-from uflx.function_space import AbstractFunctionSpace
+from uflx.expressions import AbstractExpression
+from uflx.function_spaces import AbstractFunctionSpace
 
 
 class AbstractFunction(AbstractExpression):
@@ -13,6 +21,11 @@ class AbstractFunction(AbstractExpression):
     @abstractmethod
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.function_space.value_shape
 
 
 class TestFunction(AbstractFunction):

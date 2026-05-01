@@ -1,9 +1,13 @@
+# Copyright (C) 2025 Matthew Scroggs and Garth N. Wells
+#
+# This file is part of UFLx (https://www.fenicsproject.org)
+#
+# SPDX-License-Identifier:    MIT
 """Operators."""
 
 from abc import abstractmethod
 
-from uflx.expression import AbstractExpression
-from uflx.function import AbstractFunction
+from uflx.expressions import AbstractExpression
 
 
 class AbstractOperator(AbstractExpression):
@@ -28,10 +32,15 @@ class Inner(AbstractOperator):
         """Expressions passed to the operator."""
         return (self._first, self._second)
 
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
-def inner(a: AbstractFunction, b: AbstractFunction):
+
+def inner(a: AbstractExpression, b: AbstractExpression):
     """Inner product."""
-    if a.function_space.value_shape != b.function_space.value_shape:
+    if a.value_shape != b.value_shape:
         raise ValueError("Incompatible value shapes.")
 
     return Inner(a, b)
