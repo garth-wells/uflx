@@ -29,6 +29,8 @@ for t in mesh_triangles:
     functions = e.map_to_cell(triangle.vertices)
     print(f"local matrix for {t}")
 
+    print(functions)
+
     for u_dof, u in zip(t, functions):
         for v_dof, v in zip(t, functions):
             entry = (u * v).integral(triangle)
