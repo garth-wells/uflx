@@ -1,4 +1,5 @@
 """Mass matrix using symfem."""
+
 import symfem
 
 mesh_points = [[x, y] for y in [0, 1] for x in [0, 0.3, 1]]
