@@ -45,7 +45,7 @@ class Integral(AbstractIntegral):
     @property
     def integrand(self) -> AbstractExpression:
         """The integrand."""
-        return self.integrand
+        return self._integrand
 
     @property
     def measure(self) -> AbstractMeasure:
