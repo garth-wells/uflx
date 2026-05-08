@@ -31,7 +31,10 @@ class AbstractOperator(AbstractExpression):
 
 
 class Inner(AbstractOperator):
-    """Inner product operator."""
+    """Inner product operator.
+
+    NOTE: document what happens here with conjugates.
+    """
 
     def __init__(self, first: AbstractExpression, second: AbstractExpression):
         """Initialise inner product operator."""

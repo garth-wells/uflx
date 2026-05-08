@@ -39,7 +39,7 @@ class AbstractFunction(AbstractExpression):
         return self
 
 
-class FiniteElementFunction(AbstractFunction):
+class Argument(AbstractFunction):
     """A function that is a dimension of the tensor to be assembled."""
 
     def __init__(self, space: AbstractFunctionSpace, component: int):
@@ -53,6 +53,7 @@ class FiniteElementFunction(AbstractFunction):
         self._space = space
         self._component = component
 
+    @property
     def component(self) -> int:
         """The component of the finite element tensor that this function represents."""
         return self._component
@@ -63,19 +64,19 @@ class FiniteElementFunction(AbstractFunction):
         return self._space
 
 
-class TestFunction(FiniteElementFunction):
+class TestFunction(Argument):
     """A test function."""
 
     __test__ = False
 
     def __init__(self, space: AbstractFunctionSpace):
         """Initialise."""
-        super().__init__(space, 1)
+        super().__init__(space, 0)
 
 
-class TrialFunction(FiniteElementFunction):
+class TrialFunction(Argument):
     """A trial function."""
 
     def __init__(self, space: AbstractFunctionSpace):
         """Initialise."""
-        super().__init__(space, 0)
+        super().__init__(space, 1)

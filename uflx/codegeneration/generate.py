@@ -3,7 +3,7 @@
 import numpy as np
 from uflx.integrals import AbstractIntegral, dx
 from uflx.graphs import RepresentedByGraph, is_dag, Graph
-from uflx.functions import FiniteElementFunction
+from uflx.functions import Argument
 
 
 class QuadratureRule:
@@ -12,17 +12,22 @@ class QuadratureRule:
         self.weights = weights
 
 
+qn = 0
+
 class QuadratureLoop:
     def __init__(self, integrand, quadrature_rule):
+        global qn
         self.integrand = integrand
         self.quadrature_rule = quadrature_rule
+        self.variable = f"qi{qn}"
+        qn += 1
 
 
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[RepresentedByGraph, QuadratureRule],
 ) -> Graph:
-
+    import networkx
     new_graph = Graph(graph)
 
     updated_nodes = {}
@@ -39,11 +44,22 @@ def integrals_to_quadrature(
                 if post != node.measure:
                     new_graph.add_edge(loop, updated_nodes.get(post, post))
 
-            tensor_shape = {}
+            tensor_shape_components = {}
 
-            # for i in networkx.descendents(graph, node):
-            #    if isinstance(i, FiniteElementFunction):
-            #        pass
+            functions = []
+            for i in networkx.descendants(graph, node):
+                if isinstance(i, Argument):
+                    functions.append(i)
+            for i in functions:
+                tensor_shape_components[i.component] = i.function_space.dim
+            tensor_shape = tuple(
+                tensor_shape_components.get(i, 1)
+                for i in range(min(tensor_shape_components.keys()), max(tensor_shape_components.keys()) + 1)
+            )
+            print(tensor_shape)
+            assert len(tensor_shape) <= 6
+            variables = ["i", "j", "k", "l", "m", "n"][:len(tensor_shape)]
+            print(variables)
 
             updated_nodes[node] = loop
 

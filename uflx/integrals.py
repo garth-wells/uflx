@@ -81,7 +81,7 @@ class Integral(AbstractIntegral):
         """Reconstruct this node with some arguments replaced."""
         if self._integrand not in replacements and self._measure not in replacements:
             return self
-        return Inner(
+        return Integral(
             replacements.get(self._integrand, self._integrand),
             replacements.get(self._measure, self._measure),
         )
