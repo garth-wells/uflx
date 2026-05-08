@@ -19,7 +19,7 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]):
 
     new_graph = Graph()
 
-    node_map = {}
+    node_map: dict[GraphNode, GraphNode] = {}
     for node in reversed(list(nx.topological_sort(graph))):
         if node in replacements:
             new_node = replacements[node]

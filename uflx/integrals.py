@@ -91,10 +91,11 @@ class Integral(AbstractIntegral):
         """Reconstruct this node with some arguments replaced."""
         if self._integrand not in replacements and self._measure not in replacements:
             return self
-        return Integral(
-            replacements.get(self._integrand, self._integrand),
-            replacements.get(self._measure, self._measure),
-        )
+        integrand = replacements.get(self._integrand, self._integrand)
+        measure = replacements.get(self._measure, self._measure)
+        assert isinstance(integrand, AbstractExpression)
+        assert isinstance(measure, AbstractMeasure)
+        return self.__class__(integrand, measure)
 
 
 class Measure(AbstractMeasure):

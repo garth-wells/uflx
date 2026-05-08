@@ -17,11 +17,6 @@ class AbstractOperator(AbstractExpression):
 
     @property
     @abstractmethod
-    def arguments(self) -> tuple[AbstractExpression, ...]:
-        """Arguments passed to the operator."""
-
-    @property
-    @abstractmethod
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
 
@@ -42,11 +37,6 @@ class Inner(AbstractOperator):
         self._second = second
 
     @property
-    def arguments(self) -> tuple[AbstractExpression, ...]:
-        """Expressions passed to the operator."""
-        return (self._first, self._second)
-
-    @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
@@ -60,13 +50,14 @@ class Inner(AbstractOperator):
         """Reconstruct this node with some arguments replaced."""
         if self._first not in replacements and self._second not in replacements:
             return self
-        return Inner(
-            replacements.get(self._first, self._first),
-            replacements.get(self._second, self._second),
-        )
+        first = replacements.get(self._first, self._first)
+        second = replacements.get(self._second, self._second)
+        assert isinstance(first, AbstractExpression)
+        assert isinstance(second, AbstractExpression)
+        return self.__class__(first, second)
 
 
-def inner(a: AbstractExpression, b: AbstractExpression):
+def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
     """Inner product."""
     if a.value_shape != b.value_shape:
         raise ValueError("Incompatible value shapes.")
