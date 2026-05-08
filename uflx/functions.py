@@ -15,6 +15,7 @@ from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.graphs import GraphNode
 
+
 class AbstractFunction(AbstractExpression):
     """Abstract base class for a function."""
 
@@ -70,7 +71,6 @@ class TestFunction(FiniteElementFunction):
     def __init__(self, space: AbstractFunctionSpace):
         """Initialise."""
         super().__init__(space, 1)
-
 
 
 class TrialFunction(FiniteElementFunction):

@@ -41,7 +41,7 @@ def integrals_to_quadrature(
 
             tensor_shape = {}
 
-            #for i in networkx.descendents(graph, node):
+            # for i in networkx.descendents(graph, node):
             #    if isinstance(i, FiniteElementFunction):
             #        pass
 
@@ -52,14 +52,14 @@ def integrals_to_quadrature(
             print(list(graph.nodes))
             print(list(node.graph.nodes))
 
-
-
     # from IPython import embed; embed()
 
     return new_graph
 
 
-def generate(form: RepresentedByGraph, language: str = "C") -> tuple[str, dict[RepresentedByGraph, str]]:
+def generate(
+    form: RepresentedByGraph, language: str = "C"
+) -> tuple[str, dict[RepresentedByGraph, str]]:
     """Generate code.
 
     Args:
@@ -77,15 +77,14 @@ def generate(form: RepresentedByGraph, language: str = "C") -> tuple[str, dict[R
     assert is_dag(graph)
 
     # TODO: get this from somewhere
-    rules = {dx: QuadratureRule([[1/6, 1/6], [2/3, 1/6], [1/6, 2/3]], [1/6, 1/6, 1/6])}
+    rules = {
+        dx: QuadratureRule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
+    }
 
     graph = integrals_to_quadrature(graph, rules)
 
-
     # TODO: get these from Basix
-    table = np.array([
-        [1-x-y, x, y] for x, y in rules[dx].points
-    ])
+    table = np.array([[1 - x - y, x, y] for x, y in rules[dx].points])
     table_deriv_0 = np.array([-1.0, 1.0, 0.0])
     table_deriv_1 = np.array([-1.0, 0.0, 1.0])
 
@@ -99,12 +98,11 @@ def generate(form: RepresentedByGraph, language: str = "C") -> tuple[str, dict[R
     )
     code += "  static const double weights[3] = {"
     code += ", ".join(f"{w}" for w in rules[dx].weights)
-    code += "};\n";
-    code += f"  static const double basis_values[1][1][{table.shape[0]}][{table.shape[1]}] = {{{{{{\n"
-    code += ",\n".join(
-        "    {" + ", ".join(f"{i}" for i in row) + "}"
-        for row in table
+    code += "};\n"
+    code += (
+        f"  static const double basis_values[1][1][{table.shape[0]}][{table.shape[1]}] = {{{{{{\n"
     )
+    code += ",\n".join("    {" + ", ".join(f"{i}" for i in row) + "}" for row in table)
     code += "}}};"
     code += (
         "  static const double FE1_C0_D10_Q48e[1][1][1][3] = {{{{-1.0, 1.0, 0.0}}}};\n"

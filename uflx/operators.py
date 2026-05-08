@@ -62,6 +62,7 @@ class Inner(AbstractOperator):
             replacements.get(self._second, self._second),
         )
 
+
 def inner(a: AbstractExpression, b: AbstractExpression):
     """Inner product."""
     if a.value_shape != b.value_shape:
