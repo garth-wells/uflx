@@ -5,7 +5,7 @@ import networkx as nx
 from uflx.graphs.graphs import Graph, GraphNode
 
 
-def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]):
+def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
     """Replace nodes in a graph.
 
     Args:
