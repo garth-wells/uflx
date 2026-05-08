@@ -6,8 +6,10 @@
 """Operators."""
 
 from abc import abstractmethod
+from typing import Self
 
 from uflx.expressions import AbstractExpression
+from uflx.graphs import union, GraphNode
 
 
 class AbstractOperator(AbstractExpression):
@@ -17,6 +19,15 @@ class AbstractOperator(AbstractExpression):
     @abstractmethod
     def arguments(self) -> tuple[AbstractExpression, ...]:
         """Arguments passed to the operator."""
+
+    @property
+    @abstractmethod
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+
+    @abstractmethod
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
 
 
 class Inner(AbstractOperator):
@@ -37,6 +48,19 @@ class Inner(AbstractOperator):
         """The value shape of the expression."""
         return ()
 
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {self._first, self._second}
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        if self._first not in replacements and self._second not in replacements:
+            return self
+        return Inner(
+            replacements.get(self._first, self._first),
+            replacements.get(self._second, self._second),
+        )
 
 def inner(a: AbstractExpression, b: AbstractExpression):
     """Inner product."""

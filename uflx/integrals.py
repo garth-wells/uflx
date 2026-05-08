@@ -6,8 +6,10 @@
 """Measures and integrals."""
 
 from abc import ABC, abstractmethod
+from typing import Self
 
 from uflx.expressions import AbstractExpression
+from uflx.graphs import Graph, GraphNode, generate_graph
 
 
 class AbstractMeasure(ABC):
@@ -18,6 +20,15 @@ class AbstractMeasure(ABC):
         if isinstance(other, AbstractExpression):
             return Integral(other, self)
         return NotImplemented
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self
 
 
 class AbstractIntegral(ABC):
@@ -32,6 +43,20 @@ class AbstractIntegral(ABC):
     @abstractmethod
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
+
+    @property
+    def graph(self) -> Graph:
+        """The graph that represents this object."""
+        return generate_graph(self)
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {self.integrand, self.measure}
+
+    @abstractmethod
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
 
 
 class Integral(AbstractIntegral):
@@ -51,6 +76,15 @@ class Integral(AbstractIntegral):
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
         return self._measure
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        if self._integrand not in replacements and self._measure not in replacements:
+            return self
+        return Inner(
+            replacements.get(self._integrand, self._integrand),
+            replacements.get(self._measure, self._measure),
+        )
 
 
 class Measure(AbstractMeasure):
