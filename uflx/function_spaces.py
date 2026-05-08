@@ -20,6 +20,7 @@ from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 class Dimension:
     """The dimension of a function space."""
+
     def __init__(self, space: AbstractFunctionSpace):
         """Initialise."""
         self._space = space

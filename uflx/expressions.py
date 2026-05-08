@@ -8,9 +8,9 @@
 An expression is any algebraic expression that could be used as an integrand.
 """
 
+from abc import ABC, abstractmethod
 from typing import Self
 
-from abc import ABC, abstractmethod
 from uflx.graphs import GraphNode
 
 

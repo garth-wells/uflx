@@ -9,7 +9,7 @@ from abc import abstractmethod
 from typing import Self
 
 from uflx.expressions import AbstractExpression
-from uflx.graphs import union, GraphNode
+from uflx.graphs import GraphNode
 
 
 class AbstractOperator(AbstractExpression):
