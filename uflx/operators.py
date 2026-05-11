@@ -6,8 +6,10 @@
 """Operators."""
 
 from abc import abstractmethod
+from typing import Self
 
 from uflx.expressions import AbstractExpression
+from uflx.graphs import GraphNode
 
 
 class AbstractOperator(AbstractExpression):
@@ -15,12 +17,19 @@ class AbstractOperator(AbstractExpression):
 
     @property
     @abstractmethod
-    def arguments(self) -> tuple[AbstractExpression, ...]:
-        """Arguments passed to the operator."""
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+
+    @abstractmethod
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
 
 
 class Inner(AbstractOperator):
-    """Inner product operator."""
+    """Inner product operator.
+
+    NOTE: document what happens here with conjugates.
+    """
 
     def __init__(self, first: AbstractExpression, second: AbstractExpression):
         """Initialise inner product operator."""
@@ -28,17 +37,27 @@ class Inner(AbstractOperator):
         self._second = second
 
     @property
-    def arguments(self) -> tuple[AbstractExpression, ...]:
-        """Expressions passed to the operator."""
-        return (self._first, self._second)
-
-    @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
 
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {self._first, self._second}
 
-def inner(a: AbstractExpression, b: AbstractExpression):
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        if self._first not in replacements and self._second not in replacements:
+            return self
+        first = replacements.get(self._first, self._first)
+        second = replacements.get(self._second, self._second)
+        assert isinstance(first, AbstractExpression)
+        assert isinstance(second, AbstractExpression)
+        return self.__class__(first, second)
+
+
+def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
     """Inner product."""
     if a.value_shape != b.value_shape:
         raise ValueError("Incompatible value shapes.")

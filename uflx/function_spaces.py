@@ -9,6 +9,8 @@ A function space is a space containing functions defined on a domain.
 In most if not all cases, these will be finite dimensional.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
@@ -30,7 +32,7 @@ class AbstractFunctionSpace(ABC):
         """The value shape of the function space."""
 
 
-class AbstractReferenceMappedFunctionSpace(ABC):
+class AbstractReferenceMappedFunctionSpace(AbstractFunctionSpace):
     """Abstract base class for a function space whose functions are mapped from a reference cell."""
 
     @property

@@ -9,6 +9,9 @@ An expression is any algebraic expression that could be used as an integrand.
 """
 
 from abc import ABC, abstractmethod
+from typing import Self
+
+from uflx.graphs import GraphNode
 
 
 class AbstractExpression(ABC):
@@ -18,3 +21,12 @@ class AbstractExpression(ABC):
     @abstractmethod
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
+
+    @property
+    @abstractmethod
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+
+    @abstractmethod
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""

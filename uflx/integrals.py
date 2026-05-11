@@ -6,8 +6,10 @@
 """Measures and integrals."""
 
 from abc import ABC, abstractmethod
+from typing import Self
 
 from uflx.expressions import AbstractExpression
+from uflx.graphs import Graph, GraphNode, generate_graph
 
 
 class AbstractMeasure(ABC):
@@ -18,6 +20,15 @@ class AbstractMeasure(ABC):
         if isinstance(other, AbstractExpression):
             return Integral(other, self)
         return NotImplemented
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self
 
 
 class AbstractIntegral(ABC):
@@ -33,6 +44,30 @@ class AbstractIntegral(ABC):
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
 
+    @property
+    def graph(self) -> Graph:
+        """The graph that represents this object."""
+        return generate_graph(self)
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {self.integrand, self.measure}
+
+    @abstractmethod
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+
+    def __eq__(self, other):
+        """Check for equality."""
+        if isinstance(other, AbstractIntegral):
+            return self.integrand == other.integrand and self.measure == other.measure
+        return NotImplemented
+
+    def __hash__(self):
+        """Hash."""
+        return hash((hash(self.integrand), hash(self.measure)))
+
 
 class Integral(AbstractIntegral):
     """An integral."""
@@ -45,12 +80,22 @@ class Integral(AbstractIntegral):
     @property
     def integrand(self) -> AbstractExpression:
         """The integrand."""
-        return self.integrand
+        return self._integrand
 
     @property
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
         return self._measure
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        if self._integrand not in replacements and self._measure not in replacements:
+            return self
+        integrand = replacements.get(self._integrand, self._integrand)
+        measure = replacements.get(self._measure, self._measure)
+        assert isinstance(integrand, AbstractExpression)
+        assert isinstance(measure, AbstractMeasure)
+        return self.__class__(integrand, measure)
 
 
 class Measure(AbstractMeasure):
