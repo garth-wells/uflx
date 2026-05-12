@@ -18,17 +18,6 @@ from uflx.domains import AbstractDomain
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
-class Dimension:
-    """The dimension of a function space."""
-    def __init__(self, space: AbstractFunctionSpace):
-        """Initialise."""
-        self._space = space
-
-    def space(self) -> AbstractFunctionSpace:
-        """The function space."""
-        return self._space
-
-
 class AbstractFunctionSpace(ABC):
     """Abstract base class for a function space."""
 
@@ -41,11 +30,6 @@ class AbstractFunctionSpace(ABC):
     @abstractmethod
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the function space."""
-
-    @property
-    def dim(self) -> int | Dimension:
-        """The dimension of the function space, ie the number of basis functions."""
-        return Dimension(self)
 
 
 class AbstractReferenceMappedFunctionSpace(AbstractFunctionSpace):

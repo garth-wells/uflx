@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Protocol, Self
+
 from networkx import DiGraph
 
 
@@ -19,8 +20,13 @@ class Graph(DiGraph):
     @property
     def root(self) -> GraphNode:
         """Get the root node of the graph."""
-        assert self._root is not None
+        assert self.has_root
         return self._root
+
+    @property
+    def has_root(self) -> GraphNode:
+        """Check if this graph has a root node."""
+        return self._root is not None
 
     def set_root(self, node: GraphNode):
         """Set the root node of the graph."""

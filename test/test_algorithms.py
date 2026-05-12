@@ -1,8 +1,9 @@
 """Test graph algorithms."""
 
-from uflx import TestFunction, TrialFunction, dx, function_space, domain
-from uflx.graphs.algorithms import replace
 from utils import LagrangeElement, triangle
+
+from uflx import TestFunction, TrialFunction, domain, dx, function_space
+from uflx.graphs.algorithms import replace
 
 
 def test_replace():

@@ -1,11 +1,11 @@
 """Algorithm to replace node with different nodes."""
 
-import networkx
+import networkx as nx
 
 from uflx.graphs.graphs import Graph, GraphNode
 
 
-def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]):
+def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
     """Replace nodes in a graph.
 
     Args:
@@ -15,12 +15,12 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]):
     Returns:
         A new graph with replacements made
     """
-    assert networkx.is_directed_acyclic_graph(graph)
+    assert nx.is_directed_acyclic_graph(graph)
 
     new_graph = Graph()
 
-    node_map = {}
-    for node in reversed(list(networkx.topological_sort(graph))):
+    node_map: dict[GraphNode, GraphNode] = {}
+    for node in reversed(list(nx.topological_sort(graph))):
         if node in replacements:
             new_node = replacements[node]
         else:

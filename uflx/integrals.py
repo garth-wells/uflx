@@ -58,6 +58,16 @@ class AbstractIntegral(ABC):
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
 
+    def __eq__(self, other):
+        """Check for equality."""
+        if isinstance(other, AbstractIntegral):
+            return self.integrand == other.integrand and self.measure == other.measure
+        return NotImplemented
+
+    def __hash__(self):
+        """Hash."""
+        return hash((hash(self.integrand), hash(self.measure)))
+
 
 class Integral(AbstractIntegral):
     """An integral."""
@@ -81,10 +91,11 @@ class Integral(AbstractIntegral):
         """Reconstruct this node with some arguments replaced."""
         if self._integrand not in replacements and self._measure not in replacements:
             return self
-        return Integral(
-            replacements.get(self._integrand, self._integrand),
-            replacements.get(self._measure, self._measure),
-        )
+        integrand = replacements.get(self._integrand, self._integrand)
+        measure = replacements.get(self._measure, self._measure)
+        assert isinstance(integrand, AbstractExpression)
+        assert isinstance(measure, AbstractMeasure)
+        return self.__class__(integrand, measure)
 
 
 class Measure(AbstractMeasure):

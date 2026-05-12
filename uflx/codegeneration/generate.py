@@ -2,8 +2,21 @@
 
 import numpy as np
 from uflx.integrals import AbstractIntegral, dx
-from uflx.graphs import RepresentedByGraph, is_dag, Graph
+from uflx.graphs import RepresentedByGraph, is_dag, Graph, GraphNode
+from uflx.graphs.algorithms import replace
 from uflx.functions import Argument
+from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
+import networkx as nx
+
+
+def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
+    print(" " * (2 * indentation) + f"{node!r}")
+    for next in graph.successors(node):
+        print_node(graph, next, indentation + 1)
+
+
+def print_graph(graph: Graph):
+    print_node(graph, graph.root)
 
 
 class QuadratureRule:
@@ -12,61 +25,129 @@ class QuadratureRule:
         self.weights = weights
 
 
-qn = 0
+class QuadraturePoint:
+    def __init__(self, rule, index):
+        self.rule = rule
+        self.index = index
+
+    def __repr__(self):
+        return f"QuadraturePoint({self.index})"
 
 class QuadratureLoop:
-    def __init__(self, integrand, quadrature_rule):
-        global qn
+    def __init__(self, integrand, rule, variable):
         self.integrand = integrand
-        self.quadrature_rule = quadrature_rule
-        self.variable = f"qi{qn}"
-        qn += 1
+        self.rule = rule
+        self.variable = variable
+
+    def __repr__(self):
+        return f"QuadratureLoop({self.variable})"
+
+
+class Loop:
+    def __init__(self, variable: str, start: int, end: int, body):
+        self.variable = variable
+        self.start = start
+        self.end = end
+
+    def __repr__(self):
+        return f"Loop({self.variable}, {self.start}, {self.end})"
+
+
+class EvaluatedBasisFunction:
+    def __init__(self, element, basis_index, point):
+        self.element = element
+        self.basis_index = basis_index
+        self.point = point
+
+    def __repr__(self):
+        return f"EvaluatedBasisFunction({self.element!r}, {self.basis_index}, {self.point!r})"
+
+
+class PushedForward:
+    def __init__(self, function):
+        self.function = function
+
+
+    def __repr__(self):
+        return f"PushedForward({self.function!r})"
 
 
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[RepresentedByGraph, QuadratureRule],
 ) -> Graph:
-    import networkx
-    new_graph = Graph(graph)
+
+    print("Graph of integral:")
+    print_graph(graph)
+    print()
+
+    new_graph = Graph()
 
     updated_nodes = {}
-    for node in graph:
+    to_update = {}
+    for node in reversed(list(nx.topological_sort(graph))):
         if isinstance(node, AbstractIntegral):
-            new_graph.remove_node(node)
-            if len(list(new_graph.predecessors(node.measure))) == 0:
-                new_graph.remove_node(node.measure)
-            loop = QuadratureLoop(node.integrand, rules[node.measure])
-            new_graph.add_node(loop)
-            for pre in graph.predecessors(node):
-                new_graph.add_edge(updated_nodes.get(pre, pre), loop)
-            for post in graph.successors(node):
-                if post != node.measure:
-                    new_graph.add_edge(loop, updated_nodes.get(post, post))
-
             tensor_shape_components = {}
 
-            functions = []
-            for i in networkx.descendants(graph, node):
+            arguments = []
+            for i in nx.descendants(graph, node):
                 if isinstance(i, Argument):
-                    functions.append(i)
-            for i in functions:
-                tensor_shape_components[i.component] = i.function_space.dim
+                    arguments.append(i)
+            for i in arguments:
+                i_space = i.function_space
+                if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
+                    raise NotImplementedError("Code generation only implemented for reference mapped spaces")
+                if len(i_space.elements) != 1:
+                    raise NotImplementedError("Code generation currently only implemented for spaces with exactly one element")
+                tensor_shape_components[i.component] = i_space.elements[0].dim
             tensor_shape = tuple(
                 tensor_shape_components.get(i, 1)
                 for i in range(min(tensor_shape_components.keys()), max(tensor_shape_components.keys()) + 1)
             )
-            print(tensor_shape)
             assert len(tensor_shape) <= 6
             variables = ["i", "j", "k", "l", "m", "n"][:len(tensor_shape)]
-            print(variables)
 
-            updated_nodes[node] = loop
+            qvariable = "qi"
 
-            print(node)
-            print(rules[node.measure])
-            print(list(graph.nodes))
-            print(list(node.graph.nodes))
+            for a in arguments:
+                to_update[a] = PushedForward(EvaluatedBasisFunction(a.function_space.elements[0], qvariable, QuadraturePoint(rules[node.measure], variables[a.component])))
+
+            from IPython import embed; embed()
+
+
+            qloop = QuadratureLoop(node.integrand, rules[node.measure], qvariable)
+            if graph.root == node:
+                new_graph.set_root(qloop)
+            new_graph.add_node(qloop)
+            for pre in graph.predecessors(node):
+                new_graph.add_edge(updated_nodes.get(pre, pre), qloop)
+            for post in graph.successors(node):
+                if post != node.measure:
+                    new_graph.add_edge(qloop, updated_nodes.get(post, post))
+
+            next = qloop
+            for variable, count in zip(variables[::-1], tensor_shape[::-1]):
+                loop = Loop(variable, 0, count, next)
+                new_graph.add_node(loop)
+                new_graph.add_edge(loop, next)
+                if new_graph.has_root and new_graph.root == next:
+                    new_graph.set_root(loop)
+                next = loop
+
+            updated_nodes[node] = next
+        else:
+            new_graph.add_node(node)
+            for post in graph.successors(node):
+                new_graph.add_edge(node, updated_nodes.get(post, post))
+            if graph.root == node:
+                new_graph.set_root(node)
+
+    # TODO: add child nodes too inside replace
+    new_graph = replace(new_graph, to_update)
+
+    print("Graph of computation:")
+    print_graph(new_graph)
+    print()
 
     # from IPython import embed; embed()
 

@@ -6,7 +6,7 @@
 """Utilities for testing UFLx."""
 
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
@@ -46,6 +46,23 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
     def lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element."""
         return self._degree
+
+    @property
+    def dim(self) -> int | Dimension:
+        """The dimension of the finite element, ie the number of basis functions."""
+        if isinstance(self._cell, Point):
+            return 1
+        if isinstance(self._cell, Interval):
+            return self._degree + 1
+        if isinstance(self._cell, Triangle):
+            return (self._degree + 1) * (self._degree + 2) // 2
+        if isinstance(self._cell, Quadrilateral):
+            return (self._degree + 1) ** 2
+        if isinstance(self._cell, Tetrahedron):
+            return (self._degree + 1) * (self._degree + 2) * (self._degree + 3) // 6
+        if isinstance(self._cell, Hexahedron):
+            return (self._degree + 1) ** 3
+        raise RuntimeError("Unsupported cell type")
 
 
 class Point(AbstractEntity):
