@@ -1,12 +1,13 @@
 """Code generation."""
 from typing import Self, Protocol
 import numpy as np
+from uflx.domains import AbstractCoordinateElement
 from uflx.integrals import AbstractIntegral, dx
 from uflx.graphs import RepresentedByGraph, is_dag, Graph, GraphNode, generate_graph
 from uflx.graphs.algorithms import replace
 from uflx.functions import Argument
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.operators import Conj, Mult
+from uflx.operators import Conj, Mult, Abs
 import networkx as nx
 
 
@@ -68,7 +69,7 @@ class QuadratureWeight:
         return self
 
 
-class AbsJacobianDeterminant:
+class JacobianDeterminant:
     def __init__(self, domain):
         self.domain = domain
 
@@ -80,13 +81,6 @@ class AbsJacobianDeterminant:
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
         return self
-
-    def as_code(self, language: str, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        match language:
-            case "C":
-                return "TODO"
-        raise NotImplementedError()
 
 
 class QuadratureLoop:
@@ -118,6 +112,27 @@ class QuadratureLoop:
         raise NotImplementedError()
 
 
+class Scalar:
+    def __init__(self, value):
+        self.value = value
+
+    def __repr__(self):
+        return f"{self.value}"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self
+
+    def as_code(self, language: str, bracketed: bool = False) -> str:
+        """Generate code for this object."""
+        return f"{self.value}"
+
+
 def indented(code, spaces):
     return "\n".join(" " * spaces + line for line in code.split("\n"))
 
@@ -146,7 +161,7 @@ class Loop:
         match language:
             case "C":
                 return (
-                    f"for (int {self.variable}={self.start}; {self.variable}!={self.end};{self.variable}++)\n"
+                    f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; {self.variable}++)\n"
                     "{\n" + indented(self.body.as_code(language), 2) + "\n}"
                 )
         raise NotImplementedError()
@@ -336,7 +351,7 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert a.function_space.domain == domain
 
-            integrand = Mult(Mult(QuadratureWeight(rules[node.measure], variables[a.component]), AbsJacobianDeterminant(domain)), node.integrand)
+            integrand = Mult(Mult(QuadratureWeight(rules[node.measure], variables[a.component]), Abs(JacobianDeterminant(domain))), node.integrand)
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
 
@@ -370,7 +385,7 @@ def tabulate_finite_elements(
             if id not in table_map:
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
-                tables[name] = node.element.tabulate(node.point.rule.points)
+                tables[name] = node.element.tabulate(node.point.rule.points, tuple(0 for _ in range(node.element.cell.topological_dimension)))
             to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
 
     return tables, replace(graph, to_replace)
@@ -394,10 +409,39 @@ def tabulate_quadrature(
     return tables, replace(graph, to_replace)
 
 
+def expand_jacobians(
+    graph,
+    variable_namer=global_variable_namer,
+) -> Graph:
+    to_replace = {}
+
+    for node in graph:
+        if isinstance(node, JacobianDeterminant):
+            if not isinstance(node.domain, AbstractCoordinateElement):
+                raise NotImplementedError()
+            if len(node.domain.elements) > 1:
+                raise NotImplementedError()
+            element, = node.domain.elements
+            tdim = element.cell.topological_dimension
+            gdim = node.domain.geometric_dimension
+
+            if tdim == 0 and gdim == 0:
+                to_replace[node] = Scalar(1.0)
+            elif tdim == 2 and gdim == 2:
+                to_replace[node] = Scalar(1.0)
+            else:
+                raise NotImplementedError()
+            from IPython import embed; embed()
+
+    return replace(graph, to_replace)
+
+
+
 def c_table(table):
     if len(table.shape) == 1:
         return "{" + ", ".join(f"{i}" for i in table) + "}"
     return "{" + ", ".join(c_table(i) for i in table) + "}"
+
 
 def tables_to_code(tables, language: str):
     match language:
@@ -434,6 +478,8 @@ def generate(
         dx: QuadratureRule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
+    tables = {}
+
     print("Graph:")
     print_graph(graph)
     print()
@@ -455,17 +501,27 @@ def generate(
     print()
 
     print("Applying tabulate_finite_elements")
-    qtables, graph = tabulate_quadrature(graph)
+    q_tables, graph = tabulate_quadrature(graph)
+    tables = {**tables, **q_tables}
     print()
 
     print("Tables:")
-    print(qtables)
+    print(tables)
+    print("Graph:")
+    print_graph(graph)
+    print()
+
+    print("Applying expand_jacobians")
+    graph = expand_jacobians(graph)
+    print()
+
     print("Graph:")
     print_graph(graph)
     print()
 
     print("Applying tabulate_finite_elements")
-    tables, graph = tabulate_finite_elements(graph)
+    fe_tables, graph = tabulate_finite_elements(graph)
+    tables = {**tables, **fe_tables}
     print()
 
     print("Tables:")
@@ -482,7 +538,7 @@ def generate(
     print_graph(graph)
     print()
 
-    print(tables_to_code({**tables, **qtables}, language))
+    print(tables_to_code(tables, language))
 
     print(graph.root.as_code(language))
 

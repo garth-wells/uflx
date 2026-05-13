@@ -158,6 +158,31 @@ class Conj(UnaryOperator):
         return self._arg
 
 
+class Abs(UnaryOperator):
+    """Absolute value operator."""
+
+    def __init__(self, argument: AbstractExpression):
+        """Initialise the absolute value operator."""
+        self._arg = argument
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self._arg.value_shape
+
+    @property
+    def init_arg(self) -> GraphNode:
+        """The argument used when initialising this operator."""
+        return self._arg
+
+    def as_code(self, language: str, bracketed: bool = False) -> str:
+        """Generate code for this object."""
+        match language:
+            case "C":
+                return f"fabs({self._arg.as_code(language)})"
+        raise NotImplementedError()
+
+
 def grad(a: AbstractExpression) -> Grad:
     """The gradient of an expression."""
     return Grad(a)
