@@ -14,6 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from uflx.entities import AbstractEntity
+from uflx.maps import AbstractReferenceMap
 
 
 class Dimension:
@@ -72,6 +73,13 @@ class AbstractFiniteElement(ABC):
         """The dimension of the finite element, ie the number of basis functions."""
         return Dimension(self)
 
+    @abstractmethod
+    def __hash__(self):
+        """Hash."""
+
+    @abstractmethod
+    def __eq__(self, other):
+        """Check for equality."""
 
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
@@ -88,3 +96,8 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     @abstractmethod
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
+
+    @property
+    @abstractmethod
+    def map_type(self) -> AbstractReferenceMap:
+        """Get the push forward and pull back map."""

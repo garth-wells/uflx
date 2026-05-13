@@ -80,7 +80,7 @@ class Inner(BinaryOperator):
     NOTE: document what happens here with conjugates.
     """
 
-    def __init__(self, first: GraphNode, second: GraphNode):
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
         """Initialise inner product operator."""
         self._first = first
         self._second = second
@@ -96,18 +96,36 @@ class Inner(BinaryOperator):
         return [self._first, self._second]
 
 
-def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
-    """Inner product."""
-    if a.value_shape != b.value_shape:
-        raise ValueError("Incompatible value shapes.")
+class Mult(BinaryOperator):
+    """Scalar multiplication operator."""
 
-    return Inner(a, b)
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise multiplication operator."""
+        self._first = first
+        self._second = second
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def init_args(self) -> list[GraphNode]:
+        """The arguments used when initialising this operator."""
+        return [self._first, self._second]
+
+    def as_code(self, language: str, bracketed: bool = False) -> str:
+        """Generate code for this object."""
+        match language:
+            case "C":
+                return f"{self._first.as_code(language, True)} * {self._second.as_code(language, True)}"
+        raise NotImplementedError()
 
 
 class Grad(UnaryOperator):
     """Gradient operator."""
 
-    def __init__(self, argument: GraphNode):
+    def __init__(self, argument: AbstractExpression):
         """Initialise the gradient operator."""
         self._arg = argument
 
@@ -122,8 +140,37 @@ class Grad(UnaryOperator):
         return self._arg
 
 
+class Conj(UnaryOperator):
+    """Complex conjugate operator."""
+
+    def __init__(self, argument: AbstractExpression):
+        """Initialise the complex conjugate operator."""
+        self._arg = argument
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self._arg.value_shape
+
+    @property
+    def init_arg(self) -> GraphNode:
+        """The argument used when initialising this operator."""
+        return self._arg
 
 
 def grad(a: AbstractExpression) -> Grad:
     """The gradient of an expression."""
     return Grad(a)
+
+
+def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
+    """Inner product."""
+    if a.value_shape != b.value_shape:
+        raise ValueError("Incompatible value shapes.")
+
+    if a.value_shape == ():
+        return Mult(a, Conj(b))
+
+    return Inner(a, b)
+
+

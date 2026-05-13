@@ -2,7 +2,7 @@
 
 import networkx as nx
 
-from uflx.graphs.graphs import Graph, GraphNode
+from uflx.graphs.graphs import Graph, GraphNode, generate_graph
 
 
 def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
@@ -17,8 +17,6 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
     """
     assert nx.is_directed_acyclic_graph(graph)
 
-    new_graph = Graph()
-
     node_map: dict[GraphNode, GraphNode] = {}
     for node in reversed(list(nx.topological_sort(graph))):
         if node in replacements:
@@ -27,10 +25,5 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
             new_node = node.reconstruct(node_map)
         if new_node != node:
             node_map[node] = new_node
-        new_graph.add_node(new_node)
-        for s in graph.successors(node):
-            new_graph.add_edge(new_node, node_map.get(s, s))
 
-    new_graph.set_root(node_map.get(graph.root, graph.root))
-
-    return new_graph
+    return generate_graph(node_map.get(graph.root, graph.root))

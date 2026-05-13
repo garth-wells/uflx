@@ -7,6 +7,8 @@
 
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
+from uflx.maps import IdentityReferenceMap
+import numpy as np
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
@@ -64,6 +66,46 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
             return (self._degree + 1) ** 3
         raise RuntimeError("Unsupported cell type")
 
+    @property
+    def map_type(self) -> AbstractReferenceMap:
+        """Get the push forward and pull back map."""
+        return IdentityReferenceMap()
+
+    def __hash__(self):
+        return hash(("uflx_test.LagrangeElement", self._cell, self._degree))
+
+    def __eq__(self, other):
+        if not isinstance(other, LagrangeElement):
+            return False
+        return self._cell == other._cell and self._degree == other._degree
+
+    def tabulate(self, points):
+        if isinstance(self._cell, Point):
+            return np.array([[1.0] for () in points])
+
+        if isinstance(self._cell, Interval):
+            if self._degree == 0:
+                return np.array([[1] for (x,) in points])
+            if self._degree == 1:
+                return np.array([[1 - x, x] for (x,) in points])
+            if self._degree == 2:
+                return np.array([[(2*x - 1) * (x - 1), x * (2*x-1), 4*x*(1-x)] for (x,) in points])
+
+        if isinstance(self._cell, Triangle):
+            if self._degree == 0:
+                return np.array([[1] for (x,y) in points])
+            if self._degree == 1:
+                return np.array([[1 - x - y, x, y] for (x,y) in points])
+            if self._degree == 2:
+                return np.array([[(1-x-y) * (1-2*x-2*y), x*(2*x-1), y*(2*y-1), 4*x*y, 4*y*(1-x-y), 4*x*(1-x-y)] for (x,y) in points])
+
+        if isinstance(self._cell, Quadrilateral):
+            if self._degree == 0:
+                return np.array([[1] for (x,y) in points])
+            if self._degree == 1:
+                return np.array([[(1 - x) * (1 - y), x * (1 - y), (1-x)*y, x*y] for (x,y) in points])
+
+        raise NotImplementedError
 
 class Point(AbstractEntity):
     """A point."""
@@ -84,6 +126,9 @@ class Point(AbstractEntity):
                 return [self]
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        return hash("uflx_test.Point")
 
 
 class Interval(AbstractEntity):
@@ -107,6 +152,9 @@ class Interval(AbstractEntity):
                 return [self]
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        return hash("uflx_test.Interval")
 
 
 class Triangle(AbstractEntity):
@@ -133,6 +181,9 @@ class Triangle(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
+    def __hash__(self):
+        return hash("uflx_test.Triangle")
+
 
 class Quadrilateral(AbstractEntity):
     """A quadrilateral."""
@@ -157,6 +208,9 @@ class Quadrilateral(AbstractEntity):
                 return [self]
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        return hash("uflx_test.Quadrilateral")
 
 
 class Tetrahedron(AbstractEntity):
