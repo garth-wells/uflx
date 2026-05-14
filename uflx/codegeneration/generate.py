@@ -15,79 +15,8 @@ from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-
-
-def reconstruct(object, args, replacements):
-    """Reconstruct an object from its arguements with replacements made."""
-    if all(a not in replacements for a in args):
-        return object
-    return object.__class__(*(replacements.get(a, a) for a in args))
-
-
-def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
-    """Print a graph using the node as the root node."""
-    print(" " * (2 * indentation) + f"{node!r}")
-    for next in graph.successors(node):
-        print_node(graph, next, indentation + 1)
-
-
-def print_graph(graph: Graph):
-    """Print a graph."""
-    print_node(graph, graph.root)
-
-
-class QuadratureRule:
-    """A quadrature rule."""
-
-    def __init__(self, points, weights):
-        """Initialise."""
-        self.points = points
-        self.weights = weights
-
-    @property
-    def npoints(self):
-        """The number of points in the quadrature rule."""
-        return len(self.weights)
-
-
-class QuadraturePoint:
-    """A point in a quadrature rule."""
-
-    def __init__(self, rule, index):
-        """Initalise."""
-        self.rule = rule
-        self.index = index
-
-    def __repr__(self):
-        """Representation."""
-        return f"QuadraturePoint({self.index})"
-
-
-class QuadratureWeight(AbstractExpression):
-    """A weight in a quadrature rule."""
-
-    def __init__(self, rule, index):
-        """Initalise."""
-        self.rule = rule
-        self.index = index
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        return f"QuadratureWeight({self.index})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self
+from uflx.quadrature import QuadratureLoop, QuadraturePoint, QuadratureRule, QuadratureWeight
+from uflx.utils import indented
 
 
 class JacobianDeterminant(AbstractExpression):
@@ -110,38 +39,7 @@ class JacobianDeterminant(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
-
-
-class QuadratureLoop:
-    """A loop over the points in a quadrature rule."""
-
-    def __init__(self, body, rule, variable):
-        """Initalise."""
-        self.body = body
-        self.rule = rule
-        self.variable = variable
-
-    def __repr__(self):
-        """Representation."""
-        return f"QuadratureLoop({self.variable})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return {self.body}
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return reconstruct(self, (self.body, self.rule, self.variable), replacements)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return (
-            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
-            f"++{self.variable})\n"
-            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
-        )
+        return self.__class__(self.domain, self.point)
 
 
 class Scalar(AbstractExpression):
@@ -167,16 +65,11 @@ class Scalar(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
+        return self.__class__(self.value)
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return f"{self.value}"
-
-
-def indented(code, spaces):
-    """Add indentation to a block of code."""
-    return "\n".join(" " * spaces + line for line in code.split("\n"))
 
 
 class Loop:
@@ -200,9 +93,11 @@ class Loop:
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return reconstruct(self, (self.variable, self.start, self.end, self.body), replacements)
+        return self.__class__(
+            self.variable, self.start, self.end, replacements.get(self.body, self.body)
+        )
 
-    def generate_c(self, bracketed: bool = False) -> list[str]:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return (
             f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; "
@@ -236,7 +131,7 @@ class EvaluatedBasisFunction(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
+        return self.__class__(self.element, self.basis_index, self.point)
 
 
 class EvaluatedBasisFunctionDerivative(AbstractExpression):
@@ -268,7 +163,7 @@ class EvaluatedBasisFunctionDerivative(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
+        return self.__class__(self.element, self.basis_index, self.point, self.derivative)
 
 
 class PushedForward(AbstractExpression):
@@ -295,7 +190,7 @@ class PushedForward(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return reconstruct(self, (self.map, self.function), replacements)
+        return self.__class__(self.map, replacements.get(self.function, self.function))
 
 
 def flatten_component(indices, shape, bracketed=False):
@@ -329,7 +224,7 @@ class AddToLocalTensor:
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return reconstruct(self, (self.component, self.shape, self.body), replacements)
+        return self.__class__(self.component, self.shape, replacements.get(self.body, self.body))
 
     def __repr__(self):
         """Representation."""
@@ -366,7 +261,7 @@ class ArrayEntry(AbstractExpression):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
+        return self.__class__(self.array, self.index)
 
     def __repr__(self):
         """Representation."""

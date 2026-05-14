@@ -43,8 +43,6 @@ class UnaryOperator(AbstractOperator):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        if self.argument not in replacements:
-            return self
         arg = replacements.get(self.argument, self.argument)
         assert isinstance(arg, AbstractExpression)
         return self.__class__(arg)
@@ -68,8 +66,6 @@ class BinaryOperator(AbstractOperator):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        if self.first not in replacements and self.second not in replacements:
-            return self
         first = replacements.get(self.first, self.first)
         second = replacements.get(self.second, self.second)
         assert isinstance(first, AbstractExpression)

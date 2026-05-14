@@ -26,9 +26,9 @@ class AbstractMeasure(ABC):
         """The successors of this node."""
         return set()
 
+    @abstractmethod
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
 
 
 class AbstractIntegral(ABC):
@@ -89,8 +89,6 @@ class Integral(AbstractIntegral):
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        if self._integrand not in replacements and self._measure not in replacements:
-            return self
         integrand = replacements.get(self._integrand, self._integrand)
         measure = replacements.get(self._measure, self._measure)
         assert isinstance(integrand, AbstractExpression)
@@ -106,6 +104,10 @@ class Measure(AbstractMeasure):
         self._dim = dim
         self._codim = codim
         self._boundary_only = boundary_only
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self.__class__(dim=self._dim, codim=self._codim, boundary_only=self._boundary_only)
 
 
 dx = Measure(codim=0)

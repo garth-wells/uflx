@@ -20,10 +20,8 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
     node_map: dict[GraphNode, GraphNode] = {}
     for node in reversed(list(nx.topological_sort(graph))):
         if node in replacements:
-            new_node = replacements[node]
-        else:
-            new_node = node.reconstruct(node_map)
-        if new_node != node:
-            node_map[node] = new_node
+            node_map[node] = replacements[node]
+        elif any(a in node_map for a in node.successors):
+            node_map[node] = node.reconstruct(node_map)
 
     return generate_graph(node_map.get(graph.root, graph.root))

@@ -34,9 +34,9 @@ class AbstractFunction(AbstractExpression):
         """The successors of this node."""
         return set()
 
+    @abstractmethod
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return self
 
 
 class Argument(AbstractFunction):
@@ -63,6 +63,10 @@ class Argument(AbstractFunction):
         """The function space that this function lives in."""
         return self._space
 
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self.__class__(self._space, self._component)
+
 
 class TestFunction(Argument):
     """A test function."""
@@ -73,6 +77,10 @@ class TestFunction(Argument):
         """Initialise."""
         super().__init__(space, 0)
 
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self.__class__(self._space)
+
 
 class TrialFunction(Argument):
     """A trial function."""
@@ -80,3 +88,7 @@ class TrialFunction(Argument):
     def __init__(self, space: AbstractFunctionSpace):
         """Initialise."""
         super().__init__(space, 1)
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self.__class__(self._space)

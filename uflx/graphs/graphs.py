@@ -7,6 +7,13 @@ from typing import Protocol, Self, runtime_checkable
 from networkx import DiGraph
 
 
+def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
+    """Print a graph using the node as the root node."""
+    print(" " * (2 * indentation) + f"{node!r}")
+    for next in graph.successors(node):
+        print_node(graph, next, indentation + 1)
+
+
 class Graph(DiGraph):
     """An acyclic directed graph."""
 
@@ -36,6 +43,10 @@ class Graph(DiGraph):
         """Add a new node to the graph and set it to be the root."""
         self.add_node(node, *args, **kwargs)
         self._root = node
+
+    def print(self):
+        """Print a graph."""
+        print_node(self, self.root)
 
 
 @runtime_checkable
