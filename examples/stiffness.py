@@ -1,4 +1,4 @@
-"""Mass matrix using symfem."""
+"""Stiffness matrix using symfem."""
 
 import symfem
 
