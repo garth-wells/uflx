@@ -3,7 +3,6 @@
 import os
 
 import numpy as np
-import pytest
 from cffi import FFI
 from utils import LagrangeElement, triangle
 
@@ -97,7 +96,6 @@ def test_mass_matrix():
         assert np.allclose(mat, expected_mat)
 
 
-@pytest.mark.xfail
 def test_stiffness_matrix():
     """Test code generation for a stiffness matrix."""
     element = LagrangeElement(triangle, 1)

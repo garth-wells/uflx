@@ -10,7 +10,7 @@ from uflx.codegeneration.c import ConvertToCCode
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import Argument
+from uflx.functions import AbstractArgument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
@@ -421,7 +421,7 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in nx.descendants(graph, node):
-                if isinstance(i, Argument):
+                if isinstance(i, AbstractArgument):
                     arguments.append(i)
             for i in arguments:
                 i_space = i.function_space
@@ -684,6 +684,8 @@ def generate(
         f"    void* {symbols.custom_data}\n"
         ") {\n"
     )
+
+    print_graph(graph)
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"

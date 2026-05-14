@@ -142,15 +142,6 @@ class Subtract(BinaryOperator):
             return code
 
 
-class Grad(UnaryOperator):
-    """Gradient operator."""
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
-
-
 class Conj(UnaryOperator):
     """Complex conjugate operator."""
 
@@ -172,11 +163,6 @@ class Abs(UnaryOperator):
         """Generate code for this object."""
         assert isinstance(self.argument, ConvertToCCode)
         return f"fabs({self.argument.generate_c()})"
-
-
-def grad(a: AbstractExpression) -> Grad:
-    """The gradient of an expression."""
-    return Grad(a)
 
 
 def inner(a: AbstractExpression, b: AbstractExpression) -> AbstractExpression:

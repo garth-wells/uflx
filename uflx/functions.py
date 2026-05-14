@@ -39,7 +39,17 @@ class AbstractFunction(AbstractExpression):
         return self
 
 
-class Argument(AbstractFunction):
+class AbstractArgument(AbstractFunction):
+    """A function that is a dimension of the tensor to be assembled."""
+
+    @property
+    @abstractmethod
+    def component(self) -> int:
+        """The component of the finite element tensor that this function represents."""
+        return self._component
+
+
+class Argument(AbstractArgument):
     """A function that is a dimension of the tensor to be assembled."""
 
     def __init__(self, space: AbstractFunctionSpace, component: int):
