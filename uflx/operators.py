@@ -8,9 +8,9 @@
 from abc import abstractmethod
 from typing import Self
 
+from uflx.codegeneration.c import ConvertToCCode
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.codegeneration.c import ConvertToCCode
 
 
 class AbstractOperator(AbstractExpression):

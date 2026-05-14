@@ -1,8 +1,5 @@
 """Symbols to use in generated code."""
 
-local_tensor = "A"
-coordinate_dofs = "coordinate_dofs"
-
 
 class VariableNamer:
     """Class for naming variables to ensure that temporary variables do not have clashing names."""
@@ -38,3 +35,11 @@ class VariableNamer:
 
 
 global_variable_namer = VariableNamer()
+
+local_tensor = "A"
+coordinate_dofs = "coordinate_dofs"
+constants = "c"
+coefficients = "w"
+entity_local_index = "entity_local_index"
+quadrature_permutation = "quadrature_permutation"
+custom_data = "custom_data"

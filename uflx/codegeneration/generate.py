@@ -1,20 +1,20 @@
 """Code generation."""
 
-from typing import Protocol, Self, runtime_checkable
+from typing import Self
 
 import networkx as nx
 import numpy as np
 
+from uflx.codegeneration import symbols
+from uflx.codegeneration.c import ConvertToCCode
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
-from uflx.integrals import AbstractIntegral, dx, Measure, AbstractMeasure
+from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.operators import Abs, Add, Conj, Mult, Subtract
-from uflx.codegeneration.c import ConvertToCCode
-from uflx.codegeneration.symbols import local_tensor, coordinate_dofs, global_variable_namer
 
 
 def reconstruct(object, args, replacements):
@@ -338,7 +338,7 @@ class AddToLocalTensor:
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return (
-            f"{local_tensor}["
+            f"{symbols.local_tensor}["
             + flatten_component(self.component, self.shape)
             + "] += "
             + self.body.generate_c()
@@ -401,7 +401,7 @@ def convert_complex_to_real(
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[AbstractMeasure, QuadratureRule],
-    variable_namer=global_variable_namer,
+    variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
     updated_nodes: dict[GraphNode, GraphNode] = {}
@@ -487,7 +487,7 @@ def integrals_to_quadrature(
 
 def tabulate_finite_elements(
     graph,
-    variable_namer=global_variable_namer,
+    variable_namer=symbols.global_variable_namer,
 ):
     """Generate tables of values for finite elements that need to be evaluated."""
     table_map = {}
@@ -524,7 +524,7 @@ def tabulate_finite_elements(
 
 def tabulate_quadrature(
     graph,
-    variable_namer=global_variable_namer,
+    variable_namer=symbols.global_variable_namer,
 ):
     """Generate tables of values for quadrature rules."""
     table_map = {}
@@ -543,7 +543,7 @@ def tabulate_quadrature(
 
 def expand_jacobians(
     graph,
-    variable_namer=global_variable_namer,
+    variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
     to_replace: dict[GraphNode, GraphNode] = {}
@@ -562,19 +562,19 @@ def expand_jacobians(
                 to_replace[node] = Scalar(1.0)
             elif tdim == 2 and gdim == 2:
                 j00: AbstractExpression = Mult(
-                    ArrayEntry(coordinate_dofs, (0,)),
+                    ArrayEntry(symbols.coordinate_dofs, (0,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
                 )
                 j01: AbstractExpression = Mult(
-                    ArrayEntry(coordinate_dofs, (0,)),
+                    ArrayEntry(symbols.coordinate_dofs, (0,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
                 )
                 j10: AbstractExpression = Mult(
-                    ArrayEntry(coordinate_dofs, (1,)),
+                    ArrayEntry(symbols.coordinate_dofs, (1,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
                 )
                 j11: AbstractExpression = Mult(
-                    ArrayEntry(coordinate_dofs, (1,)),
+                    ArrayEntry(symbols.coordinate_dofs, (1,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
                 )
 
@@ -583,28 +583,28 @@ def expand_jacobians(
                     j00 = Add(
                         j00,
                         Mult(
-                            ArrayEntry(coordinate_dofs, (tdim * i,)),
+                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
                             EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
                         ),
                     )
                     j01 = Add(
                         j01,
                         Mult(
-                            ArrayEntry(coordinate_dofs, (tdim * i,)),
+                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
                             EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
                         ),
                     )
                     j10 = Add(
                         j10,
                         Mult(
-                            ArrayEntry(coordinate_dofs, (tdim * i + 1,)),
+                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
                             EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
                         ),
                     )
                     j11 = Add(
                         j11,
                         Mult(
-                            ArrayEntry(coordinate_dofs, (tdim * i + 1,)),
+                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
                             EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
                         ),
                     )
@@ -721,10 +721,13 @@ def generate(
 
     code = (
         "void tabulate_tensor_f64(\n"
-        f"    double* restrict {local_tensor}, const double* restrict w, const double* restrict c,\n"
-        f"    const double* restrict {coordinate_dofs},\n"
-        "    const int* restrict entity_local_index,\n"
-        "    const uint8_t* restrict quadrature_permutation, void* custom_data\n"
+        f"    double* restrict {symbols.local_tensor},\n"
+        f"    const double* restrict {symbols.coefficients},\n"
+        f"    const double* restrict {symbols.constants},\n"
+        f"    const double* restrict {symbols.coordinate_dofs},\n"
+        f"    const int* restrict {symbols.entity_local_index},\n"
+        f"    const uint8_t* restrict {symbols.quadrature_permutation},\n"
+        f"    void* {symbols.custom_data}\n"
         ") {\n"
     )
 
@@ -734,44 +737,6 @@ def generate(
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
-    """
-    code += "  static const double weights[3] = {"
-    code += ", ".join(f"{w}" for w in rules[dx].weights)
-    code += "};\n"
-    code += (
-        f"  static const double basis_values[1][1][{table.shape[0]}][{table.shape[1]}] = {{{{{{\n"
-    )
-    code += ",\n".join("    {" + ", ".join(f"{i}" for i in row) + "}" for row in table)
-    code += "}}};"
-    code += (
-        "  static const double FE1_C0_D10_Q48e[1][1][1][3] = {{{{-1.0, 1.0, 0.0}}}};\n"
-        "  static const double FE1_C1_D01_Q48e[1][1][1][3] = {{{{-1.0, 0.0, 1.0}}}};\n"
-        "  double J0_c0 = 0.0;\n"
-        "  double J0_c3 = 0.0;\n"
-        "  double J0_c1 = 0.0;\n"
-        "  double J0_c2 = 0.0;\n"
-        "  for (int ic = 0; ic < 3; ++ic)\n"
-        "  {\n"
-        "    J0_c0 += coordinate_dofs[ic * 3] * FE1_C0_D10_Q48e[0][0][0][ic];\n"
-        "    J0_c3 += coordinate_dofs[ic * 3 + 1] * FE1_C1_D01_Q48e[0][0][0][ic];\n"
-        "    J0_c1 += coordinate_dofs[ic * 3] * FE1_C1_D01_Q48e[0][0][0][ic];\n"
-        "    J0_c2 += coordinate_dofs[ic * 3 + 1] * FE1_C0_D10_Q48e[0][0][0][ic];\n"
-        "  }\n"
-        "  double jdet = J0_c0 * J0_c3 - J0_c1 * J0_c2;\n"
-        "  double abs_jdet = fabs(jdet);\n"
-        "  for (int iq = 0; iq < 3; ++iq)\n"
-        "  {\n"
-        "    double fw0 = abs_jdet * weights[iq];\n"
-        "    double temp_0[3] = {0};\n"
-        "    for (int j = 0; j < 3; ++j)\n"
-        "      temp_0[j] = fw0 * basis_values[0][0][iq][j];\n"
-        "    for (int j = 0; j < 3; ++j)\n"
-        "      for (int i = 0; i < 3; ++i)\n"
-        "        A[3 * i + j] += basis_values[0][0][iq][i] * temp_0[j];\n"
-        "  }\n"
-        "}\n"
-    )
-    """
     signatures = {
         form: (
             "void tabulate_tensor_f64(double* restrict, const double* restrict, "
