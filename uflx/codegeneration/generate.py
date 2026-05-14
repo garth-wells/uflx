@@ -7,8 +7,12 @@ from uflx.graphs import RepresentedByGraph, is_dag, Graph, GraphNode, generate_g
 from uflx.graphs.algorithms import replace
 from uflx.functions import Argument
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.operators import Conj, Mult, Abs
+from uflx.operators import Conj, Mult, Abs, Add, Subtract
 import networkx as nx
+
+# TODO: import these from codegeneration.symbols
+local_tensor = "A"
+coordinate_dofs = "coordinate_dofs"
 
 
 class ConvertToCode(Protocol):
@@ -70,8 +74,9 @@ class QuadratureWeight:
 
 
 class JacobianDeterminant:
-    def __init__(self, domain):
+    def __init__(self, domain, point):
         self.domain = domain
+        self.point = point
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -106,7 +111,7 @@ class QuadratureLoop:
         match language:
             case "C":
                 return (
-                    f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; {self.variable}++)\n"
+                    f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; ++{self.variable})\n"
                     "{\n" + indented(self.body.as_code(language), 2) + "\n}"
                 )
         raise NotImplementedError()
@@ -161,7 +166,7 @@ class Loop:
         match language:
             case "C":
                 return (
-                    f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; {self.variable}++)\n"
+                    f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; ++{self.variable})\n"
                     "{\n" + indented(self.body.as_code(language), 2) + "\n}"
                 )
         raise NotImplementedError()
@@ -183,7 +188,27 @@ class EvaluatedBasisFunction:
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        return reconstruct(self, (self.element, self.basis_index, self.point), replacements)
+        return self
+
+
+class EvaluatedBasisFunctionDerivative:
+    def __init__(self, element, basis_index, point, derivative):
+        self.element = element
+        self.basis_index = basis_index
+        self.point = point
+        self.derivative = derivative
+
+    def __repr__(self):
+        return f"EvaluatedBasisFunctionDerivative({self.element!r}, {self.basis_index}, {self.point!r}, {self.derivative})"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        return self
 
 
 class PushedForward:
@@ -232,7 +257,6 @@ class VariableNamer:
 
 
 global_variable_namer = VariableNamer()
-local_tensor = "A"
 
 
 def flatten_component(indices, shape, bracketed=False):
@@ -294,7 +318,7 @@ class ArrayEntry:
         """Generate code for this object."""
         match language:
             case "C":
-                return f"{self.array}[" + "][".join(self.index) + "]"
+                return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
         raise NotImplementedError()
 
 
@@ -344,14 +368,16 @@ def integrals_to_quadrature(
 
             qvariable = variable_namer.variable()
 
+
             for a in arguments:
-                to_replace[a] = PushedForward(a.function_space.elements[0].map_type, EvaluatedBasisFunction(a.function_space.elements[0], qvariable, QuadraturePoint(rules[node.measure], variables[a.component])))
+                point = QuadraturePoint(rules[node.measure], variables[a.component])
+                to_replace[a] = PushedForward(a.function_space.elements[0].map_type, EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point))
 
             domain = arguments[0].function_space.domain
             for a in arguments:
                 assert a.function_space.domain == domain
 
-            integrand = Mult(Mult(QuadratureWeight(rules[node.measure], variables[a.component]), Abs(JacobianDeterminant(domain))), node.integrand)
+            integrand = Mult(Mult(QuadratureWeight(rules[node.measure], variables[a.component]), Abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))), node.integrand)
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
 
@@ -381,11 +407,22 @@ def tabulate_finite_elements(
             if not isinstance(node.point, QuadraturePoint):
                 raise NotImplementedError()
 
-            id = (node.element, node.point.rule)
+            id = (node.element, node.point.rule, 0)
             if id not in table_map:
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
                 tables[name] = node.element.tabulate(node.point.rule.points, tuple(0 for _ in range(node.element.cell.topological_dimension)))
+            to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
+
+        if isinstance(node, EvaluatedBasisFunctionDerivative):
+            if not isinstance(node.point, QuadraturePoint):
+                raise NotImplementedError()
+
+            id = (node.element, node.point.rule, node.derivative)
+            if id not in table_map:
+                name = variable_namer.finite_element_table()
+                table_map[id] = name
+                tables[name] = node.element.tabulate(node.point.rule.points, node.derivative)
             to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
 
     return tables, replace(graph, to_replace)
@@ -428,11 +465,21 @@ def expand_jacobians(
             if tdim == 0 and gdim == 0:
                 to_replace[node] = Scalar(1.0)
             elif tdim == 2 and gdim == 2:
-                to_replace[node] = Scalar(1.0)
+
+                j00 = Mult(ArrayEntry(coordinate_dofs, (0, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)))
+                j01 = Mult(ArrayEntry(coordinate_dofs, (0, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)))
+                j10 = Mult(ArrayEntry(coordinate_dofs, (1, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)))
+                j11 = Mult(ArrayEntry(coordinate_dofs, (1, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)))
+
+                for i in range(1, element.dim):
+                    j00 = Add(j00, Mult(ArrayEntry(coordinate_dofs, (tdim * i, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))))
+                    j01 = Add(j01, Mult(ArrayEntry(coordinate_dofs, (tdim * i, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))))
+                    j10 = Add(j10, Mult(ArrayEntry(coordinate_dofs, (tdim * i + 1, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))))
+                    j11 = Add(j11, Mult(ArrayEntry(coordinate_dofs, (tdim * i + 1, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))))
+
+                to_replace[node] = Subtract(Mult(j00, j11), Mult(j01, j10))
             else:
                 raise NotImplementedError()
-            from IPython import embed; embed()
-
     return replace(graph, to_replace)
 
 
@@ -538,10 +585,6 @@ def generate(
     print_graph(graph)
     print()
 
-    print(tables_to_code(tables, language))
-
-    print(graph.root.as_code(language))
-
 
     # TODO: get these from Basix
     table = np.array([[1 - x - y, x, y] for x, y in rules[dx].points])
@@ -556,6 +599,13 @@ def generate(
         "    const uint8_t* restrict quadrature_permutation, void* custom_data\n"
         ") {\n"
     )
+
+    code += indented(tables_to_code(tables, language), 2)
+    code += "\n\n"
+    code += indented(graph.root.as_code(language), 2)
+    code += "\n}\n"
+
+    """
     code += "  static const double weights[3] = {"
     code += ", ".join(f"{w}" for w in rules[dx].weights)
     code += "};\n"
@@ -592,7 +642,7 @@ def generate(
         "  }\n"
         "}\n"
     )
-
+    """
     signatures = {
         form: (
             "void tabulate_tensor_f64(double* restrict, const double* restrict, "
@@ -600,5 +650,7 @@ def generate(
             "const uint8_t* restrict, void*);"
         ),
     }
+
+    print(code)
 
     return code, signatures

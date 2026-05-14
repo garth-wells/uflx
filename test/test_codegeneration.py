@@ -68,7 +68,7 @@ def test_mass_matrix():
     lib = ffi.dlopen(so)
 
     mat = np.zeros((3, 3))
-    coords = np.zeros((3, 3))
+    coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
     for cell, expected_mat in zip(cells, expected_local_matrices):

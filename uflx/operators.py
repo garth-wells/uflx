@@ -122,6 +122,64 @@ class Mult(BinaryOperator):
         raise NotImplementedError()
 
 
+class Add(BinaryOperator):
+    """Addition operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise addition operator."""
+        self._first = first
+        self._second = second
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def init_args(self) -> list[GraphNode]:
+        """The arguments used when initialising this operator."""
+        return [self._first, self._second]
+
+    def as_code(self, language: str, bracketed: bool = False) -> str:
+        """Generate code for this object."""
+        match language:
+            case "C":
+                if bracketed:
+                    return f"({self._first.as_code(language, True)} + {self._second.as_code(language, True)})"
+                else:
+                    return f"{self._first.as_code(language, True)} + {self._second.as_code(language, True)}"
+        raise NotImplementedError()
+
+
+class Subtract(BinaryOperator):
+    """Subtraction operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise addition operator."""
+        self._first = first
+        self._second = second
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def init_args(self) -> list[GraphNode]:
+        """The arguments used when initialising this operator."""
+        return [self._first, self._second]
+
+    def as_code(self, language: str, bracketed: bool = False) -> str:
+        """Generate code for this object."""
+        match language:
+            case "C":
+                if bracketed:
+                    return f"({self._first.as_code(language, True)} - {self._second.as_code(language, True)})"
+                else:
+                    return f"{self._first.as_code(language, True)} - {self._second.as_code(language, True)}"
+        raise NotImplementedError()
+
+
 class Grad(UnaryOperator):
     """Gradient operator."""
 
