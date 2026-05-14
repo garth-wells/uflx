@@ -7,6 +7,7 @@ import numpy as np
 
 from uflx.codegeneration import symbols
 from uflx.codegeneration.c import ConvertToCCode
+from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
@@ -390,15 +391,6 @@ def apply_push_forwards(
     )
 
 
-def convert_complex_to_real(
-    graph: Graph,
-) -> Graph:
-    """Take the real part of all complex values."""
-    from uflx.operators import Conj
-
-    return replace(graph, {node: node.argument for node in graph if isinstance(node, Conj)})
-
-
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[AbstractMeasure, QuadratureRule],
@@ -667,7 +659,7 @@ def generate(
     graph = integrals_to_quadrature(graph, rules)
     graph = apply_push_forwards(graph)
     graph = expand_jacobians(graph)
-    graph = convert_complex_to_real(graph)
+    graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)

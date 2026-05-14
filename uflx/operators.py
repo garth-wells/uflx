@@ -159,6 +159,14 @@ class Conj(UnaryOperator):
         """The value shape of the expression."""
         return self.argument.value_shape
 
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self.argument
+
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        raise NotImplementedError()
+
 
 class Abs(UnaryOperator):
     """Absolute value operator."""

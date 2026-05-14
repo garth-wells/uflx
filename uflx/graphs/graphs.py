@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Self
+from typing import Protocol, Self, runtime_checkable
 
 from networkx import DiGraph
 
@@ -38,6 +38,7 @@ class Graph(DiGraph):
         self._root = node
 
 
+@runtime_checkable
 class GraphNode(Protocol):
     """A node in a graph."""
 
