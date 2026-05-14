@@ -2,14 +2,15 @@
 
 from utils import LagrangeElement, triangle
 
-from uflx import TestFunction, TrialFunction, domain, dx, function_space
+from uflx import TestFunction, TrialFunction, dx, function_space, coordinate_element
 from uflx.graphs.algorithms import replace
 
 
 def test_replace():
     """Test replace algorithm."""
     element = LagrangeElement(triangle, 2)
-    space = function_space(domain(triangle), element)
+    domain = coordinate_element(LagrangeElement(triangle, 1, (2,)))
+    space = function_space(domain, element)
     u = TrialFunction(space)
     v = TestFunction(space)
 

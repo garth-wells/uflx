@@ -114,15 +114,9 @@ class Mult(BinaryOperator):
         """The arguments used when initialising this operator."""
         return [self._first, self._second]
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                code = self._first.as_code(language, True)
-                code += " * "
-                code += self._second.as_code(language, True)
-                return code
-        raise NotImplementedError()
+        return self._first.generate_c(True) + " * " + self._second.generate_c(True)
 
 
 class Add(BinaryOperator):
@@ -143,16 +137,13 @@ class Add(BinaryOperator):
         """The arguments used when initialising this operator."""
         return [self._first, self._second]
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                code = self._first.as_code(language) + " + " + self._second.as_code(language)
-                if bracketed:
-                    return f"({code})"
-                else:
-                    return code
-        raise NotImplementedError()
+        code = self._first.generate_c() + " + " + self._second.generate_c()
+        if bracketed:
+            return f"({code})"
+        else:
+            return code
 
 
 class Subtract(BinaryOperator):
@@ -173,16 +164,13 @@ class Subtract(BinaryOperator):
         """The arguments used when initialising this operator."""
         return [self._first, self._second]
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                code = self._first.as_code(language) + " - " + self._second.as_code(language, True)
-                if bracketed:
-                    return f"({code})"
-                else:
-                    return code
-        raise NotImplementedError()
+        code = self._first.generate_c() + " - " + self._second.generate_c(True)
+        if bracketed:
+            return f"({code})"
+        else:
+            return code
 
 
 class Grad(UnaryOperator):
@@ -238,12 +226,9 @@ class Abs(UnaryOperator):
         """The argument used when initialising this operator."""
         return self._arg
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                return f"fabs({self._arg.as_code(language)})"
-        raise NotImplementedError()
+        return f"fabs({self._arg.generate_c()})"
 
 
 def grad(a: AbstractExpression) -> Grad:

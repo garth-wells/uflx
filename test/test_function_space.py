@@ -8,7 +8,7 @@
 import pytest
 from utils import LagrangeElement, quadrilateral, tetrahedron, triangle
 
-from uflx import domain, function_space
+from uflx import coordinate_element, function_space
 
 
 @pytest.mark.parametrize(
@@ -23,15 +23,20 @@ from uflx import domain, function_space
 )
 def test_function_space(cell, gdim):
     """Test function space with single cell."""
-    space = function_space(domain(cell, gdim), LagrangeElement(cell, 1))
+    domain = coordinate_element(LagrangeElement(cell, 1, (3,)))
+    space = function_space(domain, LagrangeElement(cell, 1))
     assert len(space.elements) == len(space.domain.cells) == 1
 
 
 @pytest.mark.parametrize("gdim", [2, 3])
 def test_function_space_multiple_cells(gdim):
     """Test function space with multiple cells."""
+    domain = coordinate_element([
+        LagrangeElement(triangle, 1, (3,)),
+        LagrangeElement(quadrilateral, 1, (3,)),
+    ])
     space = function_space(
-        domain([triangle, quadrilateral], gdim),
+        domain,
         [LagrangeElement(triangle, 2), LagrangeElement(quadrilateral, 2)],
     )
     assert len(space.elements) == len(space.domain.cells) == 2

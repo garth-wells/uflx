@@ -18,8 +18,10 @@ local_tensor = "A"
 coordinate_dofs = "coordinate_dofs"
 
 
-class ConvertToCode(Protocol):
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+class ConvertToCCode(Protocol):
+    """Protocol for Objects that can be converted to C code."""
+
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
 
 
@@ -109,15 +111,12 @@ class QuadratureLoop:
         """Reconstruct this node with some arguments replaced."""
         return reconstruct(self, (self.body, self.rule, self.variable), replacements)
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                return (
-                    f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; ++{self.variable})\n"
-                    "{\n" + indented(self.body.as_code(language), 2) + "\n}"
-                )
-        raise NotImplementedError()
+        return (
+            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; ++{self.variable})\n"
+            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
+        )
 
 
 class Scalar:
@@ -136,7 +135,7 @@ class Scalar:
         """Reconstruct this node with some arguments replaced."""
         return self
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return f"{self.value}"
 
@@ -164,15 +163,12 @@ class Loop:
         """Reconstruct this node with some arguments replaced."""
         return reconstruct(self, (self.variable, self.start, self.end, self.body), replacements)
 
-    def as_code(self, language: str, bracketed: bool = False) -> list[str]:
+    def generate_c(self, bracketed: bool = False) -> list[str]:
         """Generate code for this object."""
-        match language:
-            case "C":
-                return (
-                    f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; ++{self.variable})\n"
-                    "{\n" + indented(self.body.as_code(language), 2) + "\n}"
-                )
-        raise NotImplementedError()
+        return (
+            f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; ++{self.variable})\n"
+            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
+        )
 
 
 class EvaluatedBasisFunction:
@@ -294,18 +290,15 @@ class AddToLocalTensor:
     def __repr__(self):
         return f"AddToLocalTensor({self.component})"
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                return (
-                    f"{local_tensor}["
-                    + flatten_component(self.component, self.shape)
-                    + "] += "
-                    + self.body.as_code(language)
-                    + ";"
-                )
-        raise NotImplementedError()
+        return (
+            f"{local_tensor}["
+            + flatten_component(self.component, self.shape)
+            + "] += "
+            + self.body.generate_c()
+            + ";"
+        )
 
 
 class ArrayEntry:
@@ -325,12 +318,9 @@ class ArrayEntry:
     def __repr__(self):
         return f"ArrayEntry({self.array}, {self.index})"
 
-    def as_code(self, language: str, bracketed: bool = False) -> str:
+    def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        match language:
-            case "C":
-                return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
-        raise NotImplementedError()
+        return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
 
 
 def apply_push_forwards(
@@ -564,19 +554,16 @@ def c_table(table: np.ndarray) -> str:
     return "{" + ", ".join(c_table(i) for i in table) + "}"
 
 
-def tables_to_code(tables: dict[str, np.ndarray], language: str) -> str:
+def tables_to_c(tables: dict[str, np.ndarray]) -> str:
     """Convert tables of values to a string of code."""
-    match language:
-        case "C":
-            return "\n".join(
-                f"static const double {variable}["
-                + "][".join(f"{i}" for i in table.shape)
-                + "] = "
-                + c_table(table)
-                + ";"
-                for variable, table in tables.items()
-            )
-    raise NotImplementedError()
+    return "\n".join(
+        f"static const double {variable}["
+        + "][".join(f"{i}" for i in table.shape)
+        + "] = "
+        + c_table(table)
+        + ";"
+        for variable, table in tables.items()
+    )
 
 
 def generate(
@@ -673,9 +660,9 @@ def generate(
         ") {\n"
     )
 
-    code += indented(tables_to_code(tables, language), 2)
+    code += indented(tables_to_c(tables), 2)
     code += "\n\n"
-    code += indented(graph.root.as_code(language), 2)
+    code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
     """
