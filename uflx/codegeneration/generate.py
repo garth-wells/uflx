@@ -14,7 +14,6 @@ from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.operators import Abs, Add, Conj, Mult, Subtract
 
 
 def reconstruct(object, args, replacements):
@@ -395,6 +394,8 @@ def convert_complex_to_real(
     graph: Graph,
 ) -> Graph:
     """Take the real part of all complex values."""
+    from uflx.operators import Conj
+
     return replace(graph, {node: node.argument for node in graph if isinstance(node, Conj)})
 
 
@@ -404,6 +405,8 @@ def integrals_to_quadrature(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
+    from uflx.operators import Abs, Mult
+
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
 
@@ -546,6 +549,8 @@ def expand_jacobians(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
+    from uflx.operators import Add, Mult, Subtract
+
     to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in graph:
