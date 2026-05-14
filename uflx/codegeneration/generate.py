@@ -664,65 +664,14 @@ def generate(
         dx: QuadratureRule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
-    tables: dict[str, np.ndarray] = {}
-
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying integrals_to_quadrature")
     graph = integrals_to_quadrature(graph, rules)
-    print()
-
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying apply_push_forwards")
     graph = apply_push_forwards(graph)
-    print()
-
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying tabulate_finite_elements")
-    q_tables, graph = tabulate_quadrature(graph)
-    tables = {**tables, **q_tables}
-    print()
-
-    print("Tables:")
-    print(tables)
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying expand_jacobians")
     graph = expand_jacobians(graph)
-    print()
-
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying tabulate_finite_elements")
-    fe_tables, graph = tabulate_finite_elements(graph)
-    tables = {**tables, **fe_tables}
-    print()
-
-    print("Tables:")
-    print(tables)
-    print("Graph:")
-    print_graph(graph)
-    print()
-
-    print("Applying convert_complex_to_real")
     graph = convert_complex_to_real(graph)
-    print()
 
-    print("Graph:")
-    print_graph(graph)
-    print()
+    q_tables, graph = tabulate_quadrature(graph)
+    fe_tables, graph = tabulate_finite_elements(graph)
+    tables = {**q_tables, **fe_tables}
 
     code = (
         "void tabulate_tensor_f64(\n"
