@@ -1,28 +1,20 @@
 """Code generation."""
 
-from typing import Protocol, Self
+from typing import Protocol, Self, runtime_checkable
 
 import networkx as nx
 import numpy as np
 
 from uflx.domains import AbstractCoordinateElement
+from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
-from uflx.integrals import AbstractIntegral, dx
+from uflx.integrals import AbstractIntegral, dx, Measure, AbstractMeasure
 from uflx.operators import Abs, Add, Conj, Mult, Subtract
-
-# TODO: import these from codegeneration.symbols
-local_tensor = "A"
-coordinate_dofs = "coordinate_dofs"
-
-
-class ConvertToCCode(Protocol):
-    """Protocol for Objects that can be converted to C code."""
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
+from uflx.codegeneration.c import ConvertToCCode
+from uflx.codegeneration.symbols import local_tensor, coordinate_dofs, global_variable_namer
 
 
 def reconstruct(object, args, replacements):
@@ -71,13 +63,18 @@ class QuadraturePoint:
         return f"QuadraturePoint({self.index})"
 
 
-class QuadratureWeight:
+class QuadratureWeight(AbstractExpression):
     """A weight in a quadrature rule."""
 
     def __init__(self, rule, index):
         """Initalise."""
         self.rule = rule
         self.index = index
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
     def __repr__(self):
         """Representation."""
@@ -93,13 +90,18 @@ class QuadratureWeight:
         return self
 
 
-class JacobianDeterminant:
+class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
 
     def __init__(self, domain, point):
         """Initalise."""
         self.domain = domain
         self.point = point
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -142,12 +144,17 @@ class QuadratureLoop:
         )
 
 
-class Scalar:
+class Scalar(AbstractExpression):
     """A scalar."""
 
     def __init__(self, value):
         """Initalise."""
         self.value = value
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
     def __repr__(self):
         """Representation."""
@@ -204,7 +211,7 @@ class Loop:
         )
 
 
-class EvaluatedBasisFunction:
+class EvaluatedBasisFunction(AbstractExpression):
     """A basis function evaluated at a point."""
 
     def __init__(self, element, basis_index, point):
@@ -212,6 +219,11 @@ class EvaluatedBasisFunction:
         self.element = element
         self.basis_index = basis_index
         self.point = point
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
     def __repr__(self):
         """Representation."""
@@ -227,7 +239,7 @@ class EvaluatedBasisFunction:
         return self
 
 
-class EvaluatedBasisFunctionDerivative:
+class EvaluatedBasisFunctionDerivative(AbstractExpression):
     """A derivative of a basis function evaluated at a point."""
 
     def __init__(self, element, basis_index, point, derivative):
@@ -236,6 +248,11 @@ class EvaluatedBasisFunctionDerivative:
         self.basis_index = basis_index
         self.point = point
         self.derivative = derivative
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
 
     def __repr__(self):
         """Representation."""
@@ -254,13 +271,18 @@ class EvaluatedBasisFunctionDerivative:
         return self
 
 
-class PushedForward:
+class PushedForward(AbstractExpression):
     """A function on a reference cell that has been mapped to a physical cell."""
 
     def __init__(self, map, function):
         """Initalise."""
         self.map = map
         self.function = function
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.function.value_shape
 
     def __repr__(self):
         """Representation."""
@@ -274,42 +296,6 @@ class PushedForward:
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
         return reconstruct(self, (self.map, self.function), replacements)
-
-
-class VariableNamer:
-    """Class for naming variables to ensure that temporary variables do not have clashing names."""
-
-    def __init__(self):
-        """Initalise."""
-        self.i = -1
-        self.n = -1
-        self.fe_i = -1
-        self.qr_i = -1
-
-    def variable(self):
-        """Get a new variable name."""
-        chars = ["i", "j", "k"]
-        self.i += 1
-        if self.i == len(chars):
-            self.i = 0
-            self.n += 1
-        if self.n == -1:
-            return chars[self.i]
-        else:
-            return f"{chars[self.i]}{self.n}"
-
-    def finite_element_table(self):
-        """Get a new finite element table name."""
-        self.fe_i += 1
-        return f"FE{self.fe_i}"
-
-    def quadrature_table(self):
-        """Get a new quadrature weight table name."""
-        self.qr_i += 1
-        return f"QW{self.qr_i}"
-
-
-global_variable_namer = VariableNamer()
 
 
 def flatten_component(indices, shape, bracketed=False):
@@ -360,7 +346,7 @@ class AddToLocalTensor:
         )
 
 
-class ArrayEntry:
+class ArrayEntry(AbstractExpression):
     """A single item in an array."""
 
     def __init__(self, array, index):
@@ -369,9 +355,14 @@ class ArrayEntry:
         self.index = index
 
     @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
-        return {}
+        return set()
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
@@ -404,22 +395,24 @@ def convert_complex_to_real(
     graph: Graph,
 ) -> Graph:
     """Take the real part of all complex values."""
-    return replace(graph, {node: node.init_arg for node in graph if isinstance(node, Conj)})
+    return replace(graph, {node: node.argument for node in graph if isinstance(node, Conj)})
 
 
 def integrals_to_quadrature(
     graph: Graph,
-    rules: dict[RepresentedByGraph, QuadratureRule],
+    rules: dict[AbstractMeasure, QuadratureRule],
     variable_namer=global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
-    updated_nodes = {}
-    to_replace = {}
+    updated_nodes: dict[GraphNode, GraphNode] = {}
+    to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in reversed(list(nx.topological_sort(graph))):
         if isinstance(node, AbstractIntegral):
             tensor_shape_components = {}
 
+            if not isinstance(node.measure, Measure):
+                raise NotImplementedError()
             if node.measure._codim != 0 or node.measure._boundary_only:
                 raise NotImplementedError("Only codim 0 integrals supported for now")
 
@@ -446,12 +439,13 @@ def integrals_to_quadrature(
                 )
             )
             variables = tuple(
-                0 if component == 1 else variable_namer.variable() for component in tensor_shape
+                "0" if component == 1 else variable_namer.variable() for component in tensor_shape
             )
 
             qvariable = variable_namer.variable()
 
             for a in arguments:
+                assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 point = QuadraturePoint(rules[node.measure], variables[a.component])
                 to_replace[a] = PushedForward(
                     a.function_space.elements[0].map_type,
@@ -476,8 +470,11 @@ def integrals_to_quadrature(
 
             qloop = QuadratureLoop(body, rules[node.measure], qvariable)
 
-            next = qloop
+            next: GraphNode = qloop
             for variable, count in zip(variables[::-1], tensor_shape[::-1]):
+                if variable == "0":
+                    continue
+                assert isinstance(count, int)
                 loop = Loop(variable, 0, count, next)
                 next = loop
 
@@ -549,7 +546,7 @@ def expand_jacobians(
     variable_namer=global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
-    to_replace = {}
+    to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in graph:
         if isinstance(node, JacobianDeterminant):
@@ -564,23 +561,24 @@ def expand_jacobians(
             if tdim == 0 and gdim == 0:
                 to_replace[node] = Scalar(1.0)
             elif tdim == 2 and gdim == 2:
-                j00 = Mult(
+                j00: AbstractExpression = Mult(
                     ArrayEntry(coordinate_dofs, (0,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
                 )
-                j01 = Mult(
+                j01: AbstractExpression = Mult(
                     ArrayEntry(coordinate_dofs, (0,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
                 )
-                j10 = Mult(
+                j10: AbstractExpression = Mult(
                     ArrayEntry(coordinate_dofs, (1,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
                 )
-                j11 = Mult(
+                j11: AbstractExpression = Mult(
                     ArrayEntry(coordinate_dofs, (1,)),
                     EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
                 )
 
+                assert isinstance(element.dim, int)
                 for i in range(1, element.dim):
                     j00 = Add(
                         j00,
@@ -657,11 +655,11 @@ def generate(
     assert is_dag(graph)
 
     # TODO: get this from somewhere
-    rules = {
+    rules: dict[AbstractMeasure, QuadratureRule] = {
         dx: QuadratureRule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
-    tables = {}
+    tables: dict[str, np.ndarray] = {}
 
     print("Graph:")
     print_graph(graph)
@@ -723,8 +721,8 @@ def generate(
 
     code = (
         "void tabulate_tensor_f64(\n"
-        "    double* restrict A, const double* restrict w, const double* restrict c,\n"
-        "    const double* restrict coordinate_dofs,\n"
+        f"    double* restrict {local_tensor}, const double* restrict w, const double* restrict c,\n"
+        f"    const double* restrict {coordinate_dofs},\n"
         "    const int* restrict entity_local_index,\n"
         "    const uint8_t* restrict quadrature_permutation, void* custom_data\n"
         ") {\n"
@@ -732,6 +730,7 @@ def generate(
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
+    assert isinstance(graph.root, ConvertToCCode)
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 

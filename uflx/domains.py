@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractFiniteElement
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
 class AbstractDomain(ABC):
@@ -59,14 +59,14 @@ class AbstractCoordinateElement(AbstractDomain):
 
     @property
     @abstractmethod
-    def elements(self) -> tuple[AbstractFiniteElement, ...]:
+    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
         """Get the cells in the mesh."""
 
 
 class CoordinateElement(AbstractCoordinateElement):
     """A coordinate element."""
 
-    def __init__(self, elements: tuple[AbstractFiniteElement, ...]):
+    def __init__(self, elements: tuple[AbstractReferenceMappedFiniteElement, ...]):
         """Initialise."""
         self._elements = elements
 
@@ -81,22 +81,24 @@ class CoordinateElement(AbstractCoordinateElement):
         return tuple(e.cell for e in self._elements)
 
     @property
-    def elements(self) -> tuple[AbstractFiniteElement, ...]:
+    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
         """Get the elements in the domain."""
         return self._elements
 
 
-def coordinate_element(elements: Sequence[AbstractFiniteElement] | AbstractFiniteElement):
+def coordinate_element(
+    elements: Sequence[AbstractReferenceMappedFiniteElement] | AbstractReferenceMappedFiniteElement,
+):
     """Create a domain.
 
     Args:
         elements: The finite element(s) used to define the geometry of the cells in this domain
     """
-    if isinstance(elements, AbstractFiniteElement):
+    if isinstance(elements, AbstractReferenceMappedFiniteElement):
         elements = (elements,)
     assert len(elements[0].reference_value_shape) == 1
     (gdim,) = elements[0].reference_value_shape
     for e in elements:
         assert e.reference_value_shape == (gdim,)
 
-    return CoordinateElement(elements)
+    return CoordinateElement(tuple(elements))

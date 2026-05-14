@@ -304,6 +304,10 @@ class Tetrahedron(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx_test.Tetrahedron")
+
 
 class Hexahedron(AbstractEntity):
     """A hexahedron."""
@@ -330,6 +334,10 @@ class Hexahedron(AbstractEntity):
                 return [self]
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx_test.Hexahedron")
 
 
 point = Point()

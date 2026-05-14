@@ -20,11 +20,11 @@ class Graph(DiGraph):
     @property
     def root(self) -> GraphNode:
         """Get the root node of the graph."""
-        assert self.has_root
+        assert self._root is not None
         return self._root
 
     @property
-    def has_root(self) -> GraphNode:
+    def has_root(self) -> bool:
         """Check if this graph has a root node."""
         return self._root is not None
 

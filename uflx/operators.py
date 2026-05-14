@@ -10,6 +10,7 @@ from typing import Self
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
+from uflx.codegeneration.c import ConvertToCCode
 
 
 class AbstractOperator(AbstractExpression):
@@ -31,22 +32,22 @@ class UnaryOperator(AbstractOperator):
     Binary operators act on two inputs.
     """
 
-    @property
-    @abstractmethod
-    def init_arg(self) -> GraphNode:
-        """The argument used when initialising this operator."""
+    def __init__(self, argument: AbstractExpression):
+        """Initialise."""
+        self.argument = argument
 
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
-        return {self.init_arg}
+        return {self.argument}
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        arg = self.init_arg
-        if arg not in replacements:
+        if self.argument not in replacements:
             return self
-        return self.__class__(replacements.get(arg, arg))
+        arg = replacements.get(self.argument, self.argument)
+        assert isinstance(arg, AbstractExpression)
+        return self.__class__(arg)
 
 
 class BinaryOperator(AbstractOperator):
@@ -55,23 +56,25 @@ class BinaryOperator(AbstractOperator):
     Binary operators act on two inputs.
     """
 
-    @property
-    @abstractmethod
-    def init_args(self) -> list[GraphNode]:
-        """The arguments used when initialising this operator."""
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        self.first = first
+        self.second = second
 
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
-        return set(self.init_args)
+        return {self.first, self.second}
 
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
-        first = self.init_args[0]
-        second = self.init_args[1]
-        if first not in replacements and second not in replacements:
+        if self.first not in replacements and self.second not in replacements:
             return self
-        return self.__class__(replacements.get(first, first), replacements.get(second, second))
+        first = replacements.get(self.first, self.first)
+        second = replacements.get(self.second, self.second)
+        assert isinstance(first, AbstractExpression)
+        assert isinstance(second, AbstractExpression)
+        return self.__class__(first, second)
 
 
 class Inner(BinaryOperator):
@@ -80,66 +83,40 @@ class Inner(BinaryOperator):
     NOTE: document what happens here with conjugates.
     """
 
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise inner product operator."""
-        self._first = first
-        self._second = second
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
-
-    @property
-    def init_args(self) -> list[GraphNode]:
-        """The arguments used when initialising this operator."""
-        return [self._first, self._second]
 
 
 class Mult(BinaryOperator):
     """Scalar multiplication operator."""
 
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise multiplication operator."""
-        self._first = first
-        self._second = second
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
 
-    @property
-    def init_args(self) -> list[GraphNode]:
-        """The arguments used when initialising this operator."""
-        return [self._first, self._second]
-
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        return self._first.generate_c(True) + " * " + self._second.generate_c(True)
+        assert isinstance(self.first, ConvertToCCode)
+        assert isinstance(self.second, ConvertToCCode)
+        return self.first.generate_c(True) + " * " + self.second.generate_c(True)
 
 
 class Add(BinaryOperator):
     """Addition operator."""
 
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise addition operator."""
-        self._first = first
-        self._second = second
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
 
-    @property
-    def init_args(self) -> list[GraphNode]:
-        """The arguments used when initialising this operator."""
-        return [self._first, self._second]
-
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        code = self._first.generate_c() + " + " + self._second.generate_c()
+        assert isinstance(self.first, ConvertToCCode)
+        assert isinstance(self.second, ConvertToCCode)
+        code = self.first.generate_c() + " + " + self.second.generate_c()
         if bracketed:
             return f"({code})"
         else:
@@ -149,24 +126,16 @@ class Add(BinaryOperator):
 class Subtract(BinaryOperator):
     """Subtraction operator."""
 
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise addition operator."""
-        self._first = first
-        self._second = second
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
 
-    @property
-    def init_args(self) -> list[GraphNode]:
-        """The arguments used when initialising this operator."""
-        return [self._first, self._second]
-
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        code = self._first.generate_c() + " - " + self._second.generate_c(True)
+        assert isinstance(self.first, ConvertToCCode)
+        assert isinstance(self.second, ConvertToCCode)
+        code = self.first.generate_c() + " - " + self.second.generate_c(True)
         if bracketed:
             return f"({code})"
         else:
@@ -176,59 +145,33 @@ class Subtract(BinaryOperator):
 class Grad(UnaryOperator):
     """Gradient operator."""
 
-    def __init__(self, argument: AbstractExpression):
-        """Initialise the gradient operator."""
-        self._arg = argument
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self._arg.function_space.domain.geometric_dimension,)
-
-    @property
-    def init_arg(self) -> GraphNode:
-        """The argument used when initialising this operator."""
-        return self._arg
+        return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
 
 
 class Conj(UnaryOperator):
     """Complex conjugate operator."""
 
-    def __init__(self, argument: AbstractExpression):
-        """Initialise the complex conjugate operator."""
-        self._arg = argument
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self._arg.value_shape
-
-    @property
-    def init_arg(self) -> GraphNode:
-        """The argument used when initialising this operator."""
-        return self._arg
+        return self.argument.value_shape
 
 
 class Abs(UnaryOperator):
     """Absolute value operator."""
 
-    def __init__(self, argument: AbstractExpression):
-        """Initialise the absolute value operator."""
-        self._arg = argument
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self._arg.value_shape
-
-    @property
-    def init_arg(self) -> GraphNode:
-        """The argument used when initialising this operator."""
-        return self._arg
+        return self.argument.value_shape
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        return f"fabs({self._arg.generate_c()})"
+        assert isinstance(self.argument, ConvertToCCode)
+        return f"fabs({self.argument.generate_c()})"
 
 
 def grad(a: AbstractExpression) -> Grad:
@@ -236,7 +179,7 @@ def grad(a: AbstractExpression) -> Grad:
     return Grad(a)
 
 
-def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
+def inner(a: AbstractExpression, b: AbstractExpression) -> AbstractExpression:
     """Inner product."""
     if a.value_shape != b.value_shape:
         raise ValueError("Incompatible value shapes.")
