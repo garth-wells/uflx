@@ -14,6 +14,7 @@ from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
+from uflx.complex import take_real_part
 
 
 def reconstruct(object, args, replacements):
@@ -390,15 +391,6 @@ def apply_push_forwards(
     )
 
 
-def convert_complex_to_real(
-    graph: Graph,
-) -> Graph:
-    """Take the real part of all complex values."""
-    from uflx.operators import Conj
-
-    return replace(graph, {node: node.argument for node in graph if isinstance(node, Conj)})
-
-
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[AbstractMeasure, QuadratureRule],
@@ -716,8 +708,8 @@ def generate(
     print_graph(graph)
     print()
 
-    print("Applying convert_complex_to_real")
-    graph = convert_complex_to_real(graph)
+    print("Applying take_real_part")
+    graph = take_real_part(graph)
     print()
 
     print("Graph:")
