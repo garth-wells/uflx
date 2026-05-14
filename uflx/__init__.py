@@ -5,8 +5,8 @@
 # SPDX-License-Identifier:    MIT
 """UFLx: Unified Form Language."""
 
-from uflx.domains import domain, coordinate_element
+from uflx.domains import coordinate_element, domain
 from uflx.function_spaces import function_space
 from uflx.functions import TestFunction, TrialFunction
 from uflx.integrals import dS, ds, dx
-from uflx.operators import inner, grad
+from uflx.operators import grad, inner

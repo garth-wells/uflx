@@ -51,22 +51,11 @@ class Domain(AbstractDomain):
         return self._cells
 
 
-def domain(cells: Sequence[AbstractEntity] | AbstractEntity, gdim: int | None = None):
-    """Create a domain.
-
-    Args:
-        cells: The cell or cells included in this domain
-        gdim: The geometric dimension of the space in which this domain is embedded
-    """
-    if isinstance(cells, AbstractEntity):
-        cells = (cells,)
-    if gdim is None:
-        gdim = max(cell.topological_dimension for cell in cells)
-
-    return Domain(tuple(cells), gdim)
-
-
 class AbstractCoordinateElement(AbstractDomain):
+    """Abstract coordinate element.
+
+    In a coordinate element, the geometry of the cell is represented by a finite element.
+    """
     @property
     @abstractmethod
     def elements(self) -> tuple[AbstractFiniteElement, ...]:
@@ -74,7 +63,9 @@ class AbstractCoordinateElement(AbstractDomain):
 
 
 class CoordinateElement(AbstractCoordinateElement):
+    """A coordinate element."""
     def __init__(self, elements: tuple[AbstractFiniteElement, ...]):
+        """Initialise."""
         self._elements = elements
 
     @property
@@ -97,13 +88,13 @@ def coordinate_element(elements: Sequence[AbstractFiniteElement] | AbstractFinit
     """Create a domain.
 
     Args:
-        cells: The finite element(s) used to define the geometry of the cells in this domain
+        elements: The finite element(s) used to define the geometry of the cells in this domain
     """
     if isinstance(elements, AbstractFiniteElement):
         elements = (elements,)
     assert len(elements[0].reference_value_shape) == 1
-    gdim, = elements[0].reference_value_shape
+    (gdim,) = elements[0].reference_value_shape
     for e in elements:
-        assert e.reference_value_shape == (gdim, )
+        assert e.reference_value_shape == (gdim,)
 
     return CoordinateElement(elements)

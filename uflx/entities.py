@@ -46,7 +46,3 @@ class AbstractEntity(ABC):
     @abstractmethod
     def __hash__(self):
         """Hash."""
-
-    @abstractmethod
-    def __eq__(self, other):
-        """Check for equality."""

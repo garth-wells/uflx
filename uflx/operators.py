@@ -118,7 +118,10 @@ class Mult(BinaryOperator):
         """Generate code for this object."""
         match language:
             case "C":
-                return f"{self._first.as_code(language, True)} * {self._second.as_code(language, True)}"
+                code = self._first.as_code(language, True)
+                code += " * "
+                code += self._second.as_code(language, True)
+                return code
         raise NotImplementedError()
 
 
@@ -144,10 +147,11 @@ class Add(BinaryOperator):
         """Generate code for this object."""
         match language:
             case "C":
+                code = self._first.as_code(language) + " + " + self._second.as_code(language)
                 if bracketed:
-                    return f"({self._first.as_code(language, True)} + {self._second.as_code(language, True)})"
+                    return f"({code})"
                 else:
-                    return f"{self._first.as_code(language, True)} + {self._second.as_code(language, True)}"
+                    return code
         raise NotImplementedError()
 
 
@@ -173,10 +177,11 @@ class Subtract(BinaryOperator):
         """Generate code for this object."""
         match language:
             case "C":
+                code = self._first.as_code(language) + " - " + self._second.as_code(language, True)
                 if bracketed:
-                    return f"({self._first.as_code(language, True)} - {self._second.as_code(language, True)})"
+                    return f"({code})"
                 else:
-                    return f"{self._first.as_code(language, True)} - {self._second.as_code(language, True)}"
+                    return code
         raise NotImplementedError()
 
 
@@ -190,7 +195,7 @@ class Grad(UnaryOperator):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self._arg.function_space.domain.geometric_dimension, )
+        return (self._arg.function_space.domain.geometric_dimension,)
 
     @property
     def init_arg(self) -> GraphNode:
@@ -255,5 +260,3 @@ def inner(a: AbstractExpression, b: AbstractExpression) -> Inner:
         return Mult(a, Conj(b))
 
     return Inner(a, b)
-
-

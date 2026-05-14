@@ -1,14 +1,17 @@
 """Code generation."""
-from typing import Self, Protocol
-import numpy as np
-from uflx.domains import AbstractCoordinateElement
-from uflx.integrals import AbstractIntegral, dx
-from uflx.graphs import RepresentedByGraph, is_dag, Graph, GraphNode, generate_graph
-from uflx.graphs.algorithms import replace
-from uflx.functions import Argument
-from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.operators import Conj, Mult, Abs, Add, Subtract
+
+from typing import Protocol, Self
+
 import networkx as nx
+import numpy as np
+
+from uflx.domains import AbstractCoordinateElement
+from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
+from uflx.functions import Argument
+from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
+from uflx.graphs.algorithms import replace
+from uflx.integrals import AbstractIntegral, dx
+from uflx.operators import Abs, Add, Conj, Mult, Subtract
 
 # TODO: import these from codegeneration.symbols
 local_tensor = "A"
@@ -264,7 +267,9 @@ def flatten_component(indices, shape, bracketed=False):
     if len(indices) == 1:
         return indices[0]
 
-    component = flatten_component(indices[:-1], shape[:-1], True) + f" * {shape[-1]} + {indices[-1]}"
+    component = (
+        flatten_component(indices[:-1], shape[:-1], True) + f" * {shape[-1]} + {indices[-1]}"
+    )
     if bracketed:
         return f"({component})"
     else:
@@ -293,7 +298,13 @@ class AddToLocalTensor:
         """Generate code for this object."""
         match language:
             case "C":
-                return f"{local_tensor}[" + flatten_component(self.component, self.shape) + "] += " + self.body.as_code(language) + ";"
+                return (
+                    f"{local_tensor}["
+                    + flatten_component(self.component, self.shape)
+                    + "] += "
+                    + self.body.as_code(language)
+                    + ";"
+                )
         raise NotImplementedError()
 
 
@@ -325,7 +336,14 @@ class ArrayEntry:
 def apply_push_forwards(
     graph: Graph,
 ) -> Graph:
-    return replace(graph, {node: node.map.push_forward_symbolic(node.function) for node in graph if isinstance(node, PushedForward)})
+    return replace(
+        graph,
+        {
+            node: node.map.push_forward_symbolic(node.function)
+            for node in graph
+            if isinstance(node, PushedForward)
+        },
+    )
 
 
 def convert_complex_to_real(
@@ -356,28 +374,46 @@ def integrals_to_quadrature(
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
-                    raise NotImplementedError("Code generation only implemented for reference mapped spaces")
+                    raise NotImplementedError(
+                        "Code generation only implemented for reference mapped spaces"
+                    )
                 if len(i_space.elements) != 1:
-                    raise NotImplementedError("Code generation currently only implemented for spaces with exactly one element")
+                    raise NotImplementedError(
+                        "Code generation currently only implemented for spaces with exactly one element"
+                    )
                 tensor_shape_components[i.component] = i_space.elements[0].dim
             tensor_shape = tuple(
                 tensor_shape_components.get(i, 1)
-                for i in range(min(tensor_shape_components.keys()), max(tensor_shape_components.keys()) + 1)
+                for i in range(
+                    min(tensor_shape_components.keys()), max(tensor_shape_components.keys()) + 1
+                )
             )
-            variables = tuple(0 if component == 1 else variable_namer.variable() for component in tensor_shape)
+            variables = tuple(
+                0 if component == 1 else variable_namer.variable() for component in tensor_shape
+            )
 
             qvariable = variable_namer.variable()
 
-
             for a in arguments:
                 point = QuadraturePoint(rules[node.measure], variables[a.component])
-                to_replace[a] = PushedForward(a.function_space.elements[0].map_type, EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point))
+                to_replace[a] = PushedForward(
+                    a.function_space.elements[0].map_type,
+                    EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
+                )
 
             domain = arguments[0].function_space.domain
             for a in arguments:
                 assert a.function_space.domain == domain
 
-            integrand = Mult(Mult(QuadratureWeight(rules[node.measure], variables[a.component]), Abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))), node.integrand)
+            integrand = Mult(
+                Mult(
+                    QuadratureWeight(rules[node.measure], variables[a.component]),
+                    Abs(
+                        JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable))
+                    ),
+                ),
+                node.integrand,
+            )
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
 
@@ -411,7 +447,10 @@ def tabulate_finite_elements(
             if id not in table_map:
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
-                tables[name] = node.element.tabulate(node.point.rule.points, tuple(0 for _ in range(node.element.cell.topological_dimension)))
+                tables[name] = node.element.tabulate(
+                    node.point.rule.points,
+                    tuple(0 for _ in range(node.element.cell.topological_dimension)),
+                )
             to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
 
         if isinstance(node, EvaluatedBasisFunctionDerivative):
@@ -441,7 +480,7 @@ def tabulate_quadrature(
                 name = variable_namer.quadrature_table()
                 table_map[node.rule] = name
                 tables[name] = np.array(node.rule.weights)
-            to_replace[node] = ArrayEntry(table_map[node.rule], (node.index, ))
+            to_replace[node] = ArrayEntry(table_map[node.rule], (node.index,))
 
     return tables, replace(graph, to_replace)
 
@@ -458,24 +497,59 @@ def expand_jacobians(
                 raise NotImplementedError()
             if len(node.domain.elements) > 1:
                 raise NotImplementedError()
-            element, = node.domain.elements
+            (element,) = node.domain.elements
             tdim = element.cell.topological_dimension
             gdim = node.domain.geometric_dimension
 
             if tdim == 0 and gdim == 0:
                 to_replace[node] = Scalar(1.0)
             elif tdim == 2 and gdim == 2:
-
-                j00 = Mult(ArrayEntry(coordinate_dofs, (0, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)))
-                j01 = Mult(ArrayEntry(coordinate_dofs, (0, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)))
-                j10 = Mult(ArrayEntry(coordinate_dofs, (1, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)))
-                j11 = Mult(ArrayEntry(coordinate_dofs, (1, )), EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)))
+                j00 = Mult(
+                    ArrayEntry(coordinate_dofs, (0,)),
+                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
+                )
+                j01 = Mult(
+                    ArrayEntry(coordinate_dofs, (0,)),
+                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
+                )
+                j10 = Mult(
+                    ArrayEntry(coordinate_dofs, (1,)),
+                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
+                )
+                j11 = Mult(
+                    ArrayEntry(coordinate_dofs, (1,)),
+                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
+                )
 
                 for i in range(1, element.dim):
-                    j00 = Add(j00, Mult(ArrayEntry(coordinate_dofs, (tdim * i, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))))
-                    j01 = Add(j01, Mult(ArrayEntry(coordinate_dofs, (tdim * i, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))))
-                    j10 = Add(j10, Mult(ArrayEntry(coordinate_dofs, (tdim * i + 1, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))))
-                    j11 = Add(j11, Mult(ArrayEntry(coordinate_dofs, (tdim * i + 1, )), EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))))
+                    j00 = Add(
+                        j00,
+                        Mult(
+                            ArrayEntry(coordinate_dofs, (tdim * i,)),
+                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
+                        ),
+                    )
+                    j01 = Add(
+                        j01,
+                        Mult(
+                            ArrayEntry(coordinate_dofs, (tdim * i,)),
+                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
+                        ),
+                    )
+                    j10 = Add(
+                        j10,
+                        Mult(
+                            ArrayEntry(coordinate_dofs, (tdim * i + 1,)),
+                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
+                        ),
+                    )
+                    j11 = Add(
+                        j11,
+                        Mult(
+                            ArrayEntry(coordinate_dofs, (tdim * i + 1,)),
+                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
+                        ),
+                    )
 
                 to_replace[node] = Subtract(Mult(j00, j11), Mult(j01, j10))
             else:
@@ -483,18 +557,23 @@ def expand_jacobians(
     return replace(graph, to_replace)
 
 
-
-def c_table(table):
+def c_table(table: np.ndarray) -> str:
+    """Convert a numpy array to C."""
     if len(table.shape) == 1:
         return "{" + ", ".join(f"{i}" for i in table) + "}"
     return "{" + ", ".join(c_table(i) for i in table) + "}"
 
 
-def tables_to_code(tables, language: str):
+def tables_to_code(tables: dict[str, np.ndarray], language: str) -> str:
+    """Convert tables of values to a string of code."""
     match language:
         case "C":
             return "\n".join(
-                f"static const double {variable}[" + "][".join(f"{i}" for i in table.shape) + "] = " + c_table(table) + ";"
+                f"static const double {variable}["
+                + "][".join(f"{i}" for i in table.shape)
+                + "] = "
+                + c_table(table)
+                + ";"
                 for variable, table in tables.items()
             )
     raise NotImplementedError()
@@ -584,12 +663,6 @@ def generate(
     print("Graph:")
     print_graph(graph)
     print()
-
-
-    # TODO: get these from Basix
-    table = np.array([[1 - x - y, x, y] for x, y in rules[dx].points])
-    table_deriv_0 = np.array([-1.0, 1.0, 0.0])
-    table_deriv_1 = np.array([-1.0, 0.0, 1.0])
 
     code = (
         "void tabulate_tensor_f64(\n"

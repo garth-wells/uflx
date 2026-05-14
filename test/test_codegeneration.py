@@ -1,13 +1,22 @@
 """Test code generation."""
 
-import pytest
 import os
 
 import numpy as np
+import pytest
 from cffi import FFI
 from utils import LagrangeElement, triangle
 
-from uflx import TestFunction, TrialFunction, codegeneration, coordinate_element, dx, function_space, inner, grad
+from uflx import (
+    TestFunction,
+    TrialFunction,
+    codegeneration,
+    coordinate_element,
+    dx,
+    function_space,
+    grad,
+    inner,
+)
 
 code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
 if not os.path.isdir(code_dir):
@@ -17,7 +26,7 @@ if not os.path.isdir(code_dir):
 def test_mass_matrix():
     """Test code generation for a mass matrix."""
     element = LagrangeElement(triangle, 1)
-    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2, ))), element)
+    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(u, v) * dx
@@ -92,7 +101,7 @@ def test_mass_matrix():
 def test_stiffness_matrix():
     """Test code generation for a stiffness matrix."""
     element = LagrangeElement(triangle, 1)
-    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2, ))), element)
+    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx

@@ -19,6 +19,7 @@ from uflx.maps import AbstractReferenceMap
 
 class Dimension:
     """The dimension of a finite element."""
+
     def __init__(self, element: AbstractFiniteElement):
         """Initialise."""
         self._e = element
@@ -76,10 +77,6 @@ class AbstractFiniteElement(ABC):
     @abstractmethod
     def __hash__(self):
         """Hash."""
-
-    @abstractmethod
-    def __eq__(self, other):
-        """Check for equality."""
 
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):

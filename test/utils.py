@@ -5,16 +5,19 @@
 # SPDX-License-Identifier:    MIT
 """Utilities for testing UFLx."""
 
+import numpy as np
+
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
-from uflx.maps import IdentityReferenceMap
-import numpy as np
+from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
     """A Lagrange element."""
 
-    def __init__(self, cell: AbstractEntity, degree: int, block_shape: tuple[int, ...] | None = None):
+    def __init__(
+        self, cell: AbstractEntity, degree: int, block_shape: tuple[int, ...] | None = None
+    ):
         """Create a Lagrange element."""
         self._cell = cell
         self._degree = degree
@@ -75,18 +78,11 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         return IdentityReferenceMap()
 
     def __hash__(self):
+        """Hash."""
         return hash(("uflx_test.LagrangeElement", self._cell, self._degree))
 
-    def __eq__(self, other):
-        if not isinstance(other, LagrangeElement):
-            return False
-        return self._cell == other._cell and self._degree == other._degree
-
-    @property
-    def block_shape(self) -> tuple[int, ...]:
-        return self._block_shape
-
     def tabulate(self, points, derivative):
+        """Tabulate."""
         if isinstance(self._cell, Point):
             return np.array([[1.0] for () in points])
 
@@ -103,42 +99,71 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
                 return np.array([[0, 0] for (x,) in points])
             if self._degree == 2:
                 if derivative == (0,):
-                    return np.array([[(2*x - 1) * (x - 1), x * (2*x-1), 4*x*(1-x)] for (x,) in points])
+                    return np.array(
+                        [
+                            [(2 * x - 1) * (x - 1), x * (2 * x - 1), 4 * x * (1 - x)]
+                            for (x,) in points
+                        ]
+                    )
                 if derivative == (1,):
-                    return np.array([[4*x - 3, 4*x - 1, 4 - 8*x] for (x,) in points])
+                    return np.array([[4 * x - 3, 4 * x - 1, 4 - 8 * x] for (x,) in points])
 
         if isinstance(self._cell, Triangle):
             if self._degree == 0:
-                if derivative == (0,0):
-                    return np.array([[1] for (x,y) in points])
-                return np.array([[0] for (x,y) in points])
+                if derivative == (0, 0):
+                    return np.array([[1] for (x, y) in points])
+                return np.array([[0] for (x, y) in points])
             if self._degree == 1:
-                if derivative == (0,0):
-                    return np.array([[1 - x - y, x, y] for (x,y) in points])
-                if derivative == (1,0):
-                    return np.array([[-1, 1, 0] for (x,y) in points])
+                if derivative == (0, 0):
+                    return np.array([[1 - x - y, x, y] for (x, y) in points])
+                if derivative == (1, 0):
+                    return np.array([[-1, 1, 0] for (x, y) in points])
                 if derivative == (0, 1):
-                    return np.array([[-1, 0, 1] for (x,y) in points])
+                    return np.array([[-1, 0, 1] for (x, y) in points])
             if self._degree == 2:
-                if derivative == (0,0):
-                    return np.array([[(1-x-y) * (1-2*x-2*y), x*(2*x-1), y*(2*y-1), 4*x*y, 4*y*(1-x-y), 4*x*(1-x-y)] for (x,y) in points])
-                if derivative == (1,0):
-                    return np.array([[-3+4*x+4*y, 4*x-1, 0, 4*y, -4*y, 4-8*x-4*y] for (x,y) in points])
-                if derivative == (0,1):
-                    return np.array([[-3+4*x+4*y, 0, 4*y - 1, 4*x, 4 - 4 * x - 8*y, -4*x] for (x,y) in points])
+                if derivative == (0, 0):
+                    return np.array(
+                        [
+                            [
+                                (1 - x - y) * (1 - 2 * x - 2 * y),
+                                x * (2 * x - 1),
+                                y * (2 * y - 1),
+                                4 * x * y,
+                                4 * y * (1 - x - y),
+                                4 * x * (1 - x - y),
+                            ]
+                            for (x, y) in points
+                        ]
+                    )
+                if derivative == (1, 0):
+                    return np.array(
+                        [
+                            [-3 + 4 * x + 4 * y, 4 * x - 1, 0, 4 * y, -4 * y, 4 - 8 * x - 4 * y]
+                            for (x, y) in points
+                        ]
+                    )
+                if derivative == (0, 1):
+                    return np.array(
+                        [
+                            [-3 + 4 * x + 4 * y, 0, 4 * y - 1, 4 * x, 4 - 4 * x - 8 * y, -4 * x]
+                            for (x, y) in points
+                        ]
+                    )
 
         if isinstance(self._cell, Quadrilateral):
             if self._degree == 0:
-                if derivative == (0,0):
-                    return np.array([[1] for (x,y) in points])
-                return np.array([[0] for (x,y) in points])
+                if derivative == (0, 0):
+                    return np.array([[1] for (x, y) in points])
+                return np.array([[0] for (x, y) in points])
             if self._degree == 1:
-                if derivative == (0,0):
-                    return np.array([[(1 - x) * (1 - y), x * (1 - y), (1-x)*y, x*y] for (x,y) in points])
-                if derivative == (1,0):
-                    return np.array([[y - 1, 1 - y, -y, y] for (x,y) in points])
-                if derivative == (0,1):
-                    return np.array([[x-1, -x, 1-x, x] for (x,y) in points])
+                if derivative == (0, 0):
+                    return np.array(
+                        [[(1 - x) * (1 - y), x * (1 - y), (1 - x) * y, x * y] for (x, y) in points]
+                    )
+                if derivative == (1, 0):
+                    return np.array([[y - 1, 1 - y, -y, y] for (x, y) in points])
+                if derivative == (0, 1):
+                    return np.array([[x - 1, -x, 1 - x, x] for (x, y) in points])
 
         raise NotImplementedError
 
@@ -164,6 +189,7 @@ class Point(AbstractEntity):
                 raise ValueError(f"Invalid dimension: {dim}")
 
     def __hash__(self):
+        """Hash."""
         return hash("uflx_test.Point")
 
 
@@ -190,6 +216,7 @@ class Interval(AbstractEntity):
                 raise ValueError(f"Invalid dimension: {dim}")
 
     def __hash__(self):
+        """Hash."""
         return hash("uflx_test.Interval")
 
 
@@ -218,6 +245,7 @@ class Triangle(AbstractEntity):
                 raise ValueError(f"Invalid dimension: {dim}")
 
     def __hash__(self):
+        """Hash."""
         return hash("uflx_test.Triangle")
 
 
@@ -246,6 +274,7 @@ class Quadrilateral(AbstractEntity):
                 raise ValueError(f"Invalid dimension: {dim}")
 
     def __hash__(self):
+        """Hash."""
         return hash("uflx_test.Quadrilateral")
 
 
