@@ -56,6 +56,7 @@ class AbstractCoordinateElement(AbstractDomain):
 
     In a coordinate element, the geometry of the cell is represented by a finite element.
     """
+
     @property
     @abstractmethod
     def elements(self) -> tuple[AbstractFiniteElement, ...]:
@@ -64,6 +65,7 @@ class AbstractCoordinateElement(AbstractDomain):
 
 class CoordinateElement(AbstractCoordinateElement):
     """A coordinate element."""
+
     def __init__(self, elements: tuple[AbstractFiniteElement, ...]):
         """Initialise."""
         self._elements = elements

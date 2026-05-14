@@ -2,7 +2,7 @@
 
 from utils import LagrangeElement, triangle
 
-from uflx import TestFunction, TrialFunction, dx, function_space, coordinate_element
+from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space
 from uflx.graphs.algorithms import replace
 
 

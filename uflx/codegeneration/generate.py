@@ -26,46 +26,61 @@ class ConvertToCCode(Protocol):
 
 
 def reconstruct(object, args, replacements):
+    """Reconstruct an object from its arguements with replacements made."""
     if all(a not in replacements for a in args):
         return object
     return object.__class__(*(replacements.get(a, a) for a in args))
 
 
 def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
+    """Print a graph using the node as the root node."""
     print(" " * (2 * indentation) + f"{node!r}")
     for next in graph.successors(node):
         print_node(graph, next, indentation + 1)
 
 
 def print_graph(graph: Graph):
+    """Print a graph."""
     print_node(graph, graph.root)
 
 
 class QuadratureRule:
+    """A quadrature rule."""
+
     def __init__(self, points, weights):
+        """Initialise."""
         self.points = points
         self.weights = weights
 
     @property
     def npoints(self):
+        """The number of points in the quadrature rule."""
         return len(self.weights)
 
 
 class QuadraturePoint:
+    """A point in a quadrature rule."""
+
     def __init__(self, rule, index):
+        """Initalise."""
         self.rule = rule
         self.index = index
 
     def __repr__(self):
+        """Representation."""
         return f"QuadraturePoint({self.index})"
 
 
 class QuadratureWeight:
+    """A weight in a quadrature rule."""
+
     def __init__(self, rule, index):
+        """Initalise."""
         self.rule = rule
         self.index = index
 
     def __repr__(self):
+        """Representation."""
         return f"QuadratureWeight({self.index})"
 
     @property
@@ -79,7 +94,10 @@ class QuadratureWeight:
 
 
 class JacobianDeterminant:
+    """The determinant of the Jacobian."""
+
     def __init__(self, domain, point):
+        """Initalise."""
         self.domain = domain
         self.point = point
 
@@ -94,12 +112,16 @@ class JacobianDeterminant:
 
 
 class QuadratureLoop:
+    """A loop over the points in a quadrature rule."""
+
     def __init__(self, body, rule, variable):
+        """Initalise."""
         self.body = body
         self.rule = rule
         self.variable = variable
 
     def __repr__(self):
+        """Representation."""
         return f"QuadratureLoop({self.variable})"
 
     @property
@@ -114,16 +136,21 @@ class QuadratureLoop:
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return (
-            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; ++{self.variable})\n"
+            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
+            f"++{self.variable})\n"
             "{\n" + indented(self.body.generate_c(), 2) + "\n}"
         )
 
 
 class Scalar:
+    """A scalar."""
+
     def __init__(self, value):
+        """Initalise."""
         self.value = value
 
     def __repr__(self):
+        """Representation."""
         return f"{self.value}"
 
     @property
@@ -141,17 +168,22 @@ class Scalar:
 
 
 def indented(code, spaces):
+    """Add indentation to a block of code."""
     return "\n".join(" " * spaces + line for line in code.split("\n"))
 
 
 class Loop:
+    """A for loop."""
+
     def __init__(self, variable: str, start: int, end: int, body):
+        """Initalise."""
         self.variable = variable
         self.start = start
         self.end = end
         self.body = body
 
     def __repr__(self):
+        """Representation."""
         return f"Loop({self.variable}, {self.start}, {self.end})"
 
     @property
@@ -166,18 +198,23 @@ class Loop:
     def generate_c(self, bracketed: bool = False) -> list[str]:
         """Generate code for this object."""
         return (
-            f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; ++{self.variable})\n"
+            f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; "
+            f"++{self.variable})\n"
             "{\n" + indented(self.body.generate_c(), 2) + "\n}"
         )
 
 
 class EvaluatedBasisFunction:
+    """A basis function evaluated at a point."""
+
     def __init__(self, element, basis_index, point):
+        """Initalise."""
         self.element = element
         self.basis_index = basis_index
         self.point = point
 
     def __repr__(self):
+        """Representation."""
         return f"EvaluatedBasisFunction({self.element!r}, {self.basis_index}, {self.point!r})"
 
     @property
@@ -191,14 +228,21 @@ class EvaluatedBasisFunction:
 
 
 class EvaluatedBasisFunctionDerivative:
+    """A derivative of a basis function evaluated at a point."""
+
     def __init__(self, element, basis_index, point, derivative):
+        """Initalise."""
         self.element = element
         self.basis_index = basis_index
         self.point = point
         self.derivative = derivative
 
     def __repr__(self):
-        return f"EvaluatedBasisFunctionDerivative({self.element!r}, {self.basis_index}, {self.point!r}, {self.derivative})"
+        """Representation."""
+        return (
+            f"EvaluatedBasisFunctionDerivative({self.element!r}, {self.basis_index}, "
+            f"{self.point!r}, {self.derivative})"
+        )
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -211,11 +255,15 @@ class EvaluatedBasisFunctionDerivative:
 
 
 class PushedForward:
+    """A function on a reference cell that has been mapped to a physical cell."""
+
     def __init__(self, map, function):
+        """Initalise."""
         self.map = map
         self.function = function
 
     def __repr__(self):
+        """Representation."""
         return f"PushedForward({self.map})"
 
     @property
@@ -229,13 +277,17 @@ class PushedForward:
 
 
 class VariableNamer:
+    """Class for naming variables to ensure that temporary variables do not have clashing names."""
+
     def __init__(self):
+        """Initalise."""
         self.i = -1
         self.n = -1
         self.fe_i = -1
         self.qr_i = -1
 
     def variable(self):
+        """Get a new variable name."""
         chars = ["i", "j", "k"]
         self.i += 1
         if self.i == len(chars):
@@ -247,10 +299,12 @@ class VariableNamer:
             return f"{chars[self.i]}{self.n}"
 
     def finite_element_table(self):
+        """Get a new finite element table name."""
         self.fe_i += 1
         return f"FE{self.fe_i}"
 
     def quadrature_table(self):
+        """Get a new quadrature weight table name."""
         self.qr_i += 1
         return f"QW{self.qr_i}"
 
@@ -259,6 +313,7 @@ global_variable_namer = VariableNamer()
 
 
 def flatten_component(indices, shape, bracketed=False):
+    """Flatten the component in an array access."""
     assert len(indices) == len(shape)
     if len(indices) == 1:
         return indices[0]
@@ -273,7 +328,10 @@ def flatten_component(indices, shape, bracketed=False):
 
 
 class AddToLocalTensor:
+    """Add to an entry in the local tensor for the current cell."""
+
     def __init__(self, component, shape, body):
+        """Initalise."""
         self.component = component
         self.shape = shape
         self.body = body
@@ -288,6 +346,7 @@ class AddToLocalTensor:
         return reconstruct(self, (self.component, self.shape, self.body), replacements)
 
     def __repr__(self):
+        """Representation."""
         return f"AddToLocalTensor({self.component})"
 
     def generate_c(self, bracketed: bool = False) -> str:
@@ -302,7 +361,10 @@ class AddToLocalTensor:
 
 
 class ArrayEntry:
+    """A single item in an array."""
+
     def __init__(self, array, index):
+        """Initalise."""
         self.array = array
         self.index = index
 
@@ -316,6 +378,7 @@ class ArrayEntry:
         return self
 
     def __repr__(self):
+        """Representation."""
         return f"ArrayEntry({self.array}, {self.index})"
 
     def generate_c(self, bracketed: bool = False) -> str:
@@ -326,6 +389,7 @@ class ArrayEntry:
 def apply_push_forwards(
     graph: Graph,
 ) -> Graph:
+    """Apply push forward maps to functions."""
     return replace(
         graph,
         {
@@ -339,6 +403,7 @@ def apply_push_forwards(
 def convert_complex_to_real(
     graph: Graph,
 ) -> Graph:
+    """Take the real part of all complex values."""
     return replace(graph, {node: node.init_arg for node in graph if isinstance(node, Conj)})
 
 
@@ -347,6 +412,7 @@ def integrals_to_quadrature(
     rules: dict[RepresentedByGraph, QuadratureRule],
     variable_namer=global_variable_namer,
 ) -> Graph:
+    """Replace integrals with quadrature."""
     updated_nodes = {}
     to_replace = {}
 
@@ -369,7 +435,8 @@ def integrals_to_quadrature(
                     )
                 if len(i_space.elements) != 1:
                     raise NotImplementedError(
-                        "Code generation currently only implemented for spaces with exactly one element"
+                        "Code generation currently only implemented for spaces with "
+                        "exactly one element"
                     )
                 tensor_shape_components[i.component] = i_space.elements[0].dim
             tensor_shape = tuple(
@@ -425,6 +492,7 @@ def tabulate_finite_elements(
     graph,
     variable_namer=global_variable_namer,
 ):
+    """Generate tables of values for finite elements that need to be evaluated."""
     table_map = {}
     tables = {}
     to_replace = {}
@@ -461,6 +529,7 @@ def tabulate_quadrature(
     graph,
     variable_namer=global_variable_namer,
 ):
+    """Generate tables of values for quadrature rules."""
     table_map = {}
     tables = {}
     to_replace = {}
@@ -479,6 +548,7 @@ def expand_jacobians(
     graph,
     variable_namer=global_variable_namer,
 ) -> Graph:
+    """Replace jacobians with evaluations of the derivatives of finite elements."""
     to_replace = {}
 
     for node in graph:
@@ -710,7 +780,5 @@ def generate(
             "const uint8_t* restrict, void*);"
         ),
     }
-
-    print(code)
 
     return code, signatures

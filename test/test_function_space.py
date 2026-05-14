@@ -31,10 +31,12 @@ def test_function_space(cell, gdim):
 @pytest.mark.parametrize("gdim", [2, 3])
 def test_function_space_multiple_cells(gdim):
     """Test function space with multiple cells."""
-    domain = coordinate_element([
-        LagrangeElement(triangle, 1, (3,)),
-        LagrangeElement(quadrilateral, 1, (3,)),
-    ])
+    domain = coordinate_element(
+        [
+            LagrangeElement(triangle, 1, (3,)),
+            LagrangeElement(quadrilateral, 1, (3,)),
+        ]
+    )
     space = function_space(
         domain,
         [LagrangeElement(triangle, 2), LagrangeElement(quadrilateral, 2)],
