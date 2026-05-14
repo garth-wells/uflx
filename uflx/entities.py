@@ -42,3 +42,7 @@ class AbstractEntity(ABC):
         Returns:
             A list of sub-entities of the given dimension.
         """
+
+    @abstractmethod
+    def __hash__(self):
+        """Hash."""

@@ -9,9 +9,24 @@ A finite element is an object that is used to define basis functions on a single
 The entity on which the element is defined is called the cell.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 from uflx.entities import AbstractEntity
+from uflx.maps import AbstractReferenceMap
+
+
+class Dimension:
+    """The dimension of a finite element."""
+
+    def __init__(self, element: AbstractFiniteElement):
+        """Initialise."""
+        self._e = element
+
+    def element(self) -> AbstractFiniteElement:
+        """The finite element."""
+        return self._e
 
 
 class AbstractFiniteElement(ABC):
@@ -54,6 +69,15 @@ class AbstractFiniteElement(ABC):
         Lagrange space includes the degree 2 polynomial xy.
         """
 
+    @property
+    def dim(self) -> int | Dimension:
+        """The dimension of the finite element, ie the number of basis functions."""
+        return Dimension(self)
+
+    @abstractmethod
+    def __hash__(self):
+        """Hash."""
+
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     """Abstract base class for a reference-mapped finite element.
@@ -69,3 +93,8 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     @abstractmethod
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
+
+    @property
+    @abstractmethod
+    def map_type(self) -> AbstractReferenceMap:
+        """Get the push forward and pull back map."""

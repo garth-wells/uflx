@@ -2,13 +2,14 @@
 
 from utils import LagrangeElement, triangle
 
-from uflx import TestFunction, TrialFunction, domain, dx, function_space, inner
+from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, inner
 
 
 def test_simple_form():
     """Test a simple form."""
     element = LagrangeElement(triangle, 2)
-    space = function_space(domain(triangle), element)
+    domain = coordinate_element(LagrangeElement(triangle, 1, (2,)))
+    space = function_space(domain, element)
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(u, v) * dx

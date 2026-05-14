@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 
 from uflx.entities import AbstractEntity
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
 class AbstractDomain(ABC):
@@ -50,16 +51,54 @@ class Domain(AbstractDomain):
         return self._cells
 
 
-def domain(cells: Sequence[AbstractEntity] | AbstractEntity, gdim: int | None = None):
+class AbstractCoordinateElement(AbstractDomain):
+    """Abstract coordinate element.
+
+    In a coordinate element, the geometry of the cell is represented by a finite element.
+    """
+
+    @property
+    @abstractmethod
+    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
+        """Get the cells in the mesh."""
+
+
+class CoordinateElement(AbstractCoordinateElement):
+    """A coordinate element."""
+
+    def __init__(self, elements: tuple[AbstractReferenceMappedFiniteElement, ...]):
+        """Initialise."""
+        self._elements = elements
+
+    @property
+    def geometric_dimension(self) -> int:
+        """Dimension of the space this domain is embedded in."""
+        return self._elements[0].reference_value_shape[0]
+
+    @property
+    def cells(self) -> tuple[AbstractEntity, ...]:
+        """Get the cells in the domain."""
+        return tuple(e.cell for e in self._elements)
+
+    @property
+    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
+        """Get the elements in the domain."""
+        return self._elements
+
+
+def coordinate_element(
+    elements: Sequence[AbstractReferenceMappedFiniteElement] | AbstractReferenceMappedFiniteElement,
+):
     """Create a domain.
 
     Args:
-        cells: The cell or cells included in this domain
-        gdim: The geometric dimension of the space in which this domain is embedded
+        elements: The finite element(s) used to define the geometry of the cells in this domain
     """
-    if isinstance(cells, AbstractEntity):
-        cells = (cells,)
-    if gdim is None:
-        gdim = max(cell.topological_dimension for cell in cells)
+    if isinstance(elements, AbstractReferenceMappedFiniteElement):
+        elements = (elements,)
+    assert len(elements[0].reference_value_shape) == 1
+    (gdim,) = elements[0].reference_value_shape
+    for e in elements:
+        assert e.reference_value_shape == (gdim,)
 
-    return Domain(tuple(cells), gdim)
+    return CoordinateElement(tuple(elements))
