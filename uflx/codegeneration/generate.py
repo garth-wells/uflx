@@ -7,6 +7,7 @@ import numpy as np
 
 from uflx.codegeneration import symbols
 from uflx.codegeneration.c import ConvertToCCode
+from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
@@ -14,7 +15,6 @@ from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.complex import take_real_part
 
 
 def reconstruct(object, args, replacements):
