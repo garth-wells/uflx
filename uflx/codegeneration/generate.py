@@ -9,15 +9,19 @@ from uflx.codegeneration import symbols
 from uflx.codegeneration.c import GenerateC, tables_to_c
 from uflx.codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx.complex import take_real_part
-from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
-from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
-from uflx.quadrature import QuadratureLoop, QuadraturePoint, QuadratureRule, QuadratureWeight
+from uflx.quadrature import (
+    QuadratureLoop,
+    QuadraturePoint,
+    QuadratureRule,
+    QuadratureWeight,
+    quadrature_rule,
+)
+from uflx.scalars import RealScalar
 from uflx.utils import indented
 
 
@@ -44,102 +48,15 @@ class JacobianDeterminant(AbstractExpression):
         return self.__class__(self.domain, self.point)
 
 
-class Scalar(AbstractExpression):
-    """A scalar."""
-
-    def __init__(self, value):
-        """Initalise."""
-        self.value = value
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        return f"{self.value}"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.value)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.value}"
-
-
-class EvaluatedBasisFunction(AbstractExpression):
-    """A basis function evaluated at a point."""
-
-    def __init__(self, element, basis_index, point):
-        """Initalise."""
-        self.element = element
-        self.basis_index = basis_index
-        self.point = point
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        return f"EvaluatedBasisFunction({self.element!r}, {self.basis_index}, {self.point!r})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.element, self.basis_index, self.point)
-
-
-class EvaluatedBasisFunctionDerivative(AbstractExpression):
-    """A derivative of a basis function evaluated at a point."""
-
-    def __init__(self, element, basis_index, point, derivative):
-        """Initalise."""
-        self.element = element
-        self.basis_index = basis_index
-        self.point = point
-        self.derivative = derivative
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        return (
-            f"EvaluatedBasisFunctionDerivative({self.element!r}, {self.basis_index}, "
-            f"{self.point!r}, {self.derivative})"
-        )
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.element, self.basis_index, self.point, self.derivative)
-
-
 def integrals_to_quadrature(
     graph: Graph,
     rules: dict[AbstractMeasure, QuadratureRule],
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
+    from uflx.finite_elements import EvaluatedBasisFunction
+    from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
+    from uflx.functions import Argument
     from uflx.operators import Abs, Mult
 
     updated_nodes: dict[GraphNode, GraphNode] = {}
@@ -223,43 +140,6 @@ def integrals_to_quadrature(
     return new_graph
 
 
-def tabulate_finite_elements(
-    graph,
-    variable_namer=symbols.global_variable_namer,
-):
-    """Generate tables of values for finite elements that need to be evaluated."""
-    table_map = {}
-    tables = {}
-    to_replace = {}
-    for node in graph:
-        if isinstance(node, EvaluatedBasisFunction):
-            if not isinstance(node.point, QuadraturePoint):
-                raise NotImplementedError()
-
-            id = (node.element, node.point.rule, 0)
-            if id not in table_map:
-                name = variable_namer.finite_element_table()
-                table_map[id] = name
-                tables[name] = node.element.tabulate(
-                    node.point.rule.points,
-                    tuple(0 for _ in range(node.element.cell.topological_dimension)),
-                )
-            to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
-
-        if isinstance(node, EvaluatedBasisFunctionDerivative):
-            if not isinstance(node.point, QuadraturePoint):
-                raise NotImplementedError()
-
-            id = (node.element, node.point.rule, node.derivative)
-            if id not in table_map:
-                name = variable_namer.finite_element_table()
-                table_map[id] = name
-                tables[name] = node.element.tabulate(node.point.rule.points, node.derivative)
-            to_replace[node] = ArrayEntry(table_map[id], (node.point.index, node.basis_index))
-
-    return tables, replace(graph, to_replace)
-
-
 def tabulate_quadrature(
     graph,
     variable_namer=symbols.global_variable_namer,
@@ -284,6 +164,8 @@ def expand_jacobians(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
+    from uflx.domains import AbstractCoordinateElement
+    from uflx.finite_elements import EvaluatedBasisFunctionDerivative
     from uflx.operators import Add, Mult, Subtract
 
     to_replace: dict[GraphNode, GraphNode] = {}
@@ -299,7 +181,7 @@ def expand_jacobians(
             gdim = node.domain.geometric_dimension
 
             if tdim == 0 and gdim == 0:
-                to_replace[node] = Scalar(1.0)
+                to_replace[node] = RealScalar(1.0)
             elif tdim == 2 and gdim == 2:
                 j00: AbstractExpression = Mult(
                     ArrayEntry(symbols.coordinate_dofs, (0,)),
@@ -368,6 +250,8 @@ def generate(
     Returns:
         Code
     """
+    from uflx.finite_elements import tabulate_finite_elements
+
     if language != "C":
         raise NotImplementedError("Only generation of C is supported for now")
 
@@ -377,7 +261,7 @@ def generate(
 
     # TODO: get this from somewhere
     rules: dict[AbstractMeasure, QuadratureRule] = {
-        dx: QuadratureRule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
+        dx: quadrature_rule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
     graph = integrals_to_quadrature(graph, rules)
@@ -403,6 +287,7 @@ def generate(
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
+    graph.print()
     assert isinstance(graph.root, GenerateC)
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"

@@ -81,8 +81,8 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         """Hash."""
         return hash(("uflx_test.LagrangeElement", self._cell, self._degree))
 
-    def tabulate(self, points, derivative):
-        """Tabulate."""
+    def tabulate(self, points: np.ndarray, derivative: tuple[int, ...]) -> np.ndarray:
+        """Create table of basis function values."""
         if isinstance(self._cell, Point):
             return np.array([[1.0] for () in points])
 
