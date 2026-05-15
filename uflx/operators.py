@@ -8,7 +8,7 @@
 from abc import abstractmethod
 from typing import Self
 
-from uflx.codegeneration.c import ConvertToCCode
+from uflx.codegeneration.c import GenerateC
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 
@@ -95,8 +95,8 @@ class Mult(BinaryOperator):
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        assert isinstance(self.first, ConvertToCCode)
-        assert isinstance(self.second, ConvertToCCode)
+        assert isinstance(self.first, GenerateC)
+        assert isinstance(self.second, GenerateC)
         return self.first.generate_c(True) + " * " + self.second.generate_c(True)
 
 
@@ -110,8 +110,8 @@ class Add(BinaryOperator):
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        assert isinstance(self.first, ConvertToCCode)
-        assert isinstance(self.second, ConvertToCCode)
+        assert isinstance(self.first, GenerateC)
+        assert isinstance(self.second, GenerateC)
         code = self.first.generate_c() + " + " + self.second.generate_c()
         if bracketed:
             return f"({code})"
@@ -129,8 +129,8 @@ class Subtract(BinaryOperator):
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        assert isinstance(self.first, ConvertToCCode)
-        assert isinstance(self.second, ConvertToCCode)
+        assert isinstance(self.first, GenerateC)
+        assert isinstance(self.second, GenerateC)
         code = self.first.generate_c() + " - " + self.second.generate_c(True)
         if bracketed:
             return f"({code})"
@@ -174,7 +174,7 @@ class Abs(UnaryOperator):
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
-        assert isinstance(self.argument, ConvertToCCode)
+        assert isinstance(self.argument, GenerateC)
         return f"fabs({self.argument.generate_c()})"
 
 
