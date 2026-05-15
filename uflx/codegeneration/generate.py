@@ -6,7 +6,8 @@ import networkx as nx
 import numpy as np
 
 from uflx.codegeneration import symbols
-from uflx.codegeneration.c import ConvertToCCode
+from uflx.codegeneration.c import GenerateC, tables_to_c
+from uflx.codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
@@ -15,6 +16,7 @@ from uflx.functions import Argument
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
+from uflx.maps import PushedForward, apply_push_forwards
 from uflx.quadrature import QuadratureLoop, QuadraturePoint, QuadratureRule, QuadratureWeight
 from uflx.utils import indented
 
@@ -70,40 +72,6 @@ class Scalar(AbstractExpression):
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return f"{self.value}"
-
-
-class Loop:
-    """A for loop."""
-
-    def __init__(self, variable: str, start: int, end: int, body):
-        """Initalise."""
-        self.variable = variable
-        self.start = start
-        self.end = end
-        self.body = body
-
-    def __repr__(self):
-        """Representation."""
-        return f"Loop({self.variable}, {self.start}, {self.end})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return {self.body}
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(
-            self.variable, self.start, self.end, replacements.get(self.body, self.body)
-        )
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return (
-            f"for (int {self.variable}={self.start}; {self.variable}!={self.end}; "
-            f"++{self.variable})\n"
-            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
-        )
 
 
 class EvaluatedBasisFunction(AbstractExpression):
@@ -164,126 +132,6 @@ class EvaluatedBasisFunctionDerivative(AbstractExpression):
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
         return self.__class__(self.element, self.basis_index, self.point, self.derivative)
-
-
-class PushedForward(AbstractExpression):
-    """A function on a reference cell that has been mapped to a physical cell."""
-
-    def __init__(self, map, function):
-        """Initalise."""
-        self.map = map
-        self.function = function
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return self.function.value_shape
-
-    def __repr__(self):
-        """Representation."""
-        return f"PushedForward({self.map})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return {self.function}
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.map, replacements.get(self.function, self.function))
-
-
-def flatten_component(indices, shape, bracketed=False):
-    """Flatten the component in an array access."""
-    assert len(indices) == len(shape)
-    if len(indices) == 1:
-        return indices[0]
-
-    component = (
-        flatten_component(indices[:-1], shape[:-1], True) + f" * {shape[-1]} + {indices[-1]}"
-    )
-    if bracketed:
-        return f"({component})"
-    else:
-        return f"{component}"
-
-
-class AddToLocalTensor:
-    """Add to an entry in the local tensor for the current cell."""
-
-    def __init__(self, component, shape, body):
-        """Initalise."""
-        self.component = component
-        self.shape = shape
-        self.body = body
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return {self.body}
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.component, self.shape, replacements.get(self.body, self.body))
-
-    def __repr__(self):
-        """Representation."""
-        return f"AddToLocalTensor({self.component})"
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return (
-            f"{symbols.local_tensor}["
-            + flatten_component(self.component, self.shape)
-            + "] += "
-            + self.body.generate_c()
-            + ";"
-        )
-
-
-class ArrayEntry(AbstractExpression):
-    """A single item in an array."""
-
-    def __init__(self, array, index):
-        """Initalise."""
-        self.array = array
-        self.index = index
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.array, self.index)
-
-    def __repr__(self):
-        """Representation."""
-        return f"ArrayEntry({self.array}, {self.index})"
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
-
-
-def apply_push_forwards(
-    graph: Graph,
-) -> Graph:
-    """Apply push forward maps to functions."""
-    return replace(
-        graph,
-        {
-            node: node.map.push_forward_symbolic(node.function)
-            for node in graph
-            if isinstance(node, PushedForward)
-        },
-    )
 
 
 def integrals_to_quadrature(
@@ -507,25 +355,6 @@ def expand_jacobians(
     return replace(graph, to_replace)
 
 
-def c_table(table: np.ndarray) -> str:
-    """Convert a numpy array to C."""
-    if len(table.shape) == 1:
-        return "{" + ", ".join(f"{i}" for i in table) + "}"
-    return "{" + ", ".join(c_table(i) for i in table) + "}"
-
-
-def tables_to_c(tables: dict[str, np.ndarray]) -> str:
-    """Convert tables of values to a string of code."""
-    return "\n".join(
-        f"static const double {variable}["
-        + "][".join(f"{i}" for i in table.shape)
-        + "] = "
-        + c_table(table)
-        + ";"
-        for variable, table in tables.items()
-    )
-
-
 def generate(
     form: RepresentedByGraph,
     language: str = "C",
@@ -574,7 +403,7 @@ def generate(
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
-    assert isinstance(graph.root, ConvertToCCode)
+    assert isinstance(graph.root, GenerateC)
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
