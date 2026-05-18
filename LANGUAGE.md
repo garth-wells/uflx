@@ -45,7 +45,7 @@ A domain or mesh is the integration domain of a form. For a minimal language def
 
 - topological dimension,
 - geometric dimension,
-- and a coordinate element, if geometry is represented symbolically.
+- and a coordinate element, if geometry is represented using a finite element.
 
 The actual mesh is still external to UFLx.
 
