@@ -12,7 +12,7 @@ UFLx is not a full PDE language. It does not own the actual mesh, boundary marke
 
 In one sentence:
 
-> UFLx is a typed symbolic expression language for finite-element integrals.
+> UFLx is a typed symbolic expression language for finite-element forms.
 
 ## 2. The minimal object model
 
