@@ -143,7 +143,7 @@ A valid integral has a scalar-valued integrand with no unresolved free indices.
 
 A form is a multi-linear functional $a(u, v, w, \ldots): V_1 \times V_2 \times V_3 \times \ldots \to \mathbb{R}$.
 
-Arguments determine the arity of a form. A form with no arguments is a functional. A form with one argument is a linear form. A form with two arguments is a bilinear form.
+Arguments determine the arity of a form.
 
 > Legacy note: In contrast to the legacy UFL, in UFLx a form does not need to be defined as a sum of integrals. For example, the following is a valid UFLx form: `a = (u * dx) * (v * dx)`, or `a = PointEvaluation(u, (0.5, 0.5)) * PointEvaluation(v, (0.5, 0.5))`.
 
