@@ -1,6 +1,6 @@
 # Minimal UFLx language definition
 
-This note describes the smallest useful language model behind legacy UFLx. It intentionally avoids implementation details, compiler algorithms, and broad redesign ideas.
+This note describes the smallest useful language model behind UFLx. It intentionally avoids implementation details, compiler algorithms, and broad redesign ideas.
 
 ## 1. What UFLx is
 
