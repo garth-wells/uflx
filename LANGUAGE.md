@@ -141,7 +141,7 @@ A valid integral has a scalar-valued integrand with no unresolved free indices.
 
 ### Forms
 
-A form is a multi-linear functional $a(u, v, w, \ldots): V_1 \times V_2 \times V_3 \times \ldots \to \mathbb{R}$.
+A form is a multi-linear functional $a(u, v, w, \ldots): U \times V \times W \times \ldots \to \{\mathbb{R}, \mathbb C\}$.
 
 Arguments determine the arity of a form.
 
