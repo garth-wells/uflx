@@ -39,9 +39,9 @@ vP2 = FiniteElement("Lagrange", triangle, 2, (2,))
 
 The element says what kind of discrete field is being represented. It does not store actual coefficient values.
 
-### Domains and meshes
+### Domains
 
-A domain or mesh is the integration domain of a form. For a minimal language definition, a domain only needs to provide:
+A domain is the integration domain of a form. For a minimal language definition, a domain only needs to provide:
 
 - topological dimension,
 - geometric dimension,
