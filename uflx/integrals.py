@@ -6,7 +6,7 @@
 """Measures and integrals."""
 
 from abc import ABC, abstractmethod
-from typing import Self, Any
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode, generate_graph

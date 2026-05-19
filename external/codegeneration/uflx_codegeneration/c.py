@@ -4,8 +4,8 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 from uflx.expressions import Abs, Add, Mult, Subtract
-from uflx.quadrature import QuadratureLoop
 from uflx.points import PointComponent
+from uflx.quadrature import QuadratureLoop
 
 from uflx_codegeneration.utils import indented
 

@@ -9,7 +9,7 @@ A function is an item contained in a function space.
 """
 
 from abc import abstractmethod
-from typing import Self, Any
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractFunctionSpace

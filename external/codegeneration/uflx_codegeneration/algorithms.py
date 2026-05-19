@@ -4,7 +4,7 @@ from collections.abc import Hashable
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from uflx.finite_elements import AbstractEvaluatedBasisFunction, EvaluatedBasisFunction
+from uflx.finite_elements import AbstractEvaluatedBasisFunction
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 

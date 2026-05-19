@@ -1,8 +1,7 @@
 """Quadrature rules."""
 
-from abc import ABC, abstractmethod
 from collections.abc import Hashable, Sequence
-from typing import Self, Any
+from typing import Any
 
 import numpy as np
 
@@ -56,7 +55,6 @@ class QuadraturePoint(PointInSet):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self.rule, self._index
-
 
 
 class QuadratureWeight(AbstractExpression):

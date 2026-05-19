@@ -1,8 +1,8 @@
 """Sets of points."""
 
-from abc import ABC, abstractmethod
-from collections.abc import Hashable, Sequence
-from typing import Self, Any
+from abc import abstractmethod
+from collections.abc import Hashable
+from typing import Any
 
 import numpy as np
 
@@ -32,6 +32,7 @@ class Point(AbstractPoint):
     """A single point in R^d."""
 
     def __init__(self, *components: AbstractExpression):
+        """Initialise."""
         self._components = components
 
     @property

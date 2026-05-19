@@ -4,7 +4,7 @@ These maps are uses to map function values between reference cells and physical 
 """
 
 from abc import ABC, abstractmethod
-from typing import Protocol, Self, runtime_checkable, Any
+from typing import Any, Protocol, runtime_checkable
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode

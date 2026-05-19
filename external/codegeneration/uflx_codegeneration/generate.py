@@ -1,21 +1,20 @@
 """Code generation."""
 
-from typing import Self, Any
+from typing import Any
 
 import networkx as nx
-import numpy as np
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression
 from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import Argument, AbstractFunction
-from uflx.geometry import SingleSpatialCoordinate, ReferenceToPhysical
+from uflx.functions import AbstractFunction, Argument
+from uflx.geometry import ReferenceToPhysical, SingleSpatialCoordinate
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
-from uflx.points import PointComponent, Point
+from uflx.points import Point, PointComponent
 from uflx.quadrature import (
     QuadratureLoop,
     QuadraturePoint,
@@ -23,7 +22,7 @@ from uflx.quadrature import (
     QuadratureWeight,
     quadrature_rule,
 )
-from uflx.scalars import RealScalar, Integer
+from uflx.scalars import Integer, RealScalar
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.algorithms import tabulate_finite_elements
@@ -100,10 +99,13 @@ def integrals_to_quadrature(
                         raise NotImplementedError(
                             "Code generation only implemented for reference mapped domain"
                         )
-                    to_replace[i] = PointComponent(ReferenceToPhysical(
-                        QuadraturePoint(rule, qvariable),
-                        domain,
-                    ), i._component)
+                    to_replace[i] = PointComponent(
+                        ReferenceToPhysical(
+                            QuadraturePoint(rule, qvariable),
+                            domain,
+                        ),
+                        i._component,
+                    )
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
@@ -185,10 +187,19 @@ def tabulate_quadrature(
                 name = variable_namer.quadrature_table()
                 table_map[id] = name
                 tables[name] = node.rule.points
-            to_replace[node] = Point(*[
-                ArrayEntry(table_map[id], (node.dim * node.index + i if isinstance(node.index, int) else f"{node.dim} * {node.index} + {i}",))
-                for i in range(node.dim)
-            ])
+            to_replace[node] = Point(
+                *[
+                    ArrayEntry(
+                        table_map[id],
+                        (
+                            node.dim * node.index + i
+                            if isinstance(node.index, int)
+                            else f"{node.dim} * {node.index} + {i}",
+                        ),
+                    )
+                    for i in range(node.dim)
+                ]
+            )
 
     return tables, replace(graph, to_replace)
 
@@ -239,8 +250,8 @@ def expand_geometry(
         if isinstance(node, ReferenceToPhysical):
             if len(node.domain.elements) != 1:
                 raise NotImplementedError("Only domains with exactly on element supported for now.")
-            element, = node.domain.elements
-            dim, = element.reference_value_shape
+            (element,) = node.domain.elements
+            (dim,) = element.reference_value_shape
 
             components = [Integer(0) for _ in range(dim)]
             assert isinstance(element.dim, int)

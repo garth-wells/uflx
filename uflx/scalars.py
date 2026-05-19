@@ -1,6 +1,6 @@
 """Scalar values."""
 
-from typing import Self, Any
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode

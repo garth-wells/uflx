@@ -1,6 +1,6 @@
 """Geometry."""
 
-from typing import Self, Any
+from typing import Any
 
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
@@ -62,7 +62,10 @@ class SpatialCoordinate(AbstractExpression):
 
 
 class ReferenceToPhysical(AbstractPoint):
+    """A point mapped from the reference cell to a physical cell."""
+
     def __init__(self, point: AbstractPoint, domain: AbstractCoordinateElement):
+        """Initialise."""
         self._point = point
         self._domain = domain
 

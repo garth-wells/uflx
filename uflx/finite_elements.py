@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from types import MethodType
-from typing import Protocol, Self, runtime_checkable, Any
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -148,7 +148,9 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
 class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     """A basis function evaluated at a point."""
 
-    def __init__(self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint):
+    def __init__(
+        self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint
+    ):
         """Initalise."""
         self._element = element
         self._basis_index = basis_index
