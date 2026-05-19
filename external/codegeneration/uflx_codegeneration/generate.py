@@ -10,6 +10,7 @@ from uflx.expressions import AbstractExpression
 from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import Argument
+from uflx.geometry import SingleSpatialCoordinate
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
@@ -17,6 +18,7 @@ from uflx.maps import PushedForward, apply_push_forwards
 from uflx.quadrature import (
     QuadratureLoop,
     QuadraturePoint,
+    QuadraturePointComponent,
     QuadratureRule,
     QuadratureWeight,
     quadrature_rule,
@@ -64,6 +66,9 @@ def integrals_to_quadrature(
 
     for node in reversed(list(nx.topological_sort(graph))):
         if isinstance(node, AbstractIntegral):
+            rule = rules[node.measure]
+            qvariable = variable_namer.variable()
+
             tensor_shape_components = {}
 
             if not isinstance(node.measure, Measure):
@@ -75,6 +80,8 @@ def integrals_to_quadrature(
             for i in nx.descendants(graph, node):
                 if isinstance(i, Argument):
                     arguments.append(i)
+                if isinstance(i, SingleSpatialCoordinate):
+                    to_replace[i] = QuadraturePointComponent(rule, qvariable, i._component)
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
@@ -97,11 +104,9 @@ def integrals_to_quadrature(
                 "0" if component == 1 else variable_namer.variable() for component in tensor_shape
             )
 
-            qvariable = variable_namer.variable()
-
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
-                point = QuadraturePoint(rules[node.measure], variables[a.component])
+                point = QuadraturePoint(rule, variables[a.component])
                 to_replace[a] = PushedForward(
                     a.function_space.elements[0].map_type,
                     EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
@@ -146,11 +151,19 @@ def tabulate_quadrature(
     to_replace = {}
     for node in graph:
         if isinstance(node, QuadratureWeight):
-            if node.rule not in table_map:
+            id = (node.rule, "weights")
+            if id not in table_map:
                 name = variable_namer.quadrature_table()
-                table_map[node.rule] = name
+                table_map[id] = name
                 tables[name] = np.array(node.rule.weights)
-            to_replace[node] = ArrayEntry(table_map[node.rule], (node.index,))
+            to_replace[node] = ArrayEntry(table_map[id], (node.index,))
+        if isinstance(node, QuadraturePointComponent):
+            id = (node.rule, f"point[{node.component}]")
+            if id not in table_map:
+                name = variable_namer.quadrature_table()
+                table_map[id] = name
+                tables[name] = np.array(node.rule.points)[:, node.component]
+            to_replace[node] = ArrayEntry(table_map[id], (node.index,))
 
     return tables, replace(graph, to_replace)
 

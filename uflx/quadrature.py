@@ -68,7 +68,55 @@ class QuadraturePoint(PointInSet):
 
     def __repr__(self):
         """Representation."""
-        return f"QuadraturePoint({self.index})"
+        return f"QuadraturePoint({self._index})"
+
+
+class QuadraturePointComponent(AbstractExpression):
+    """A component of a quadrature point."""
+
+    def __init__(self, rule: QuadratureRule, index: int | str, component: int | str):
+        """Initalise."""
+        self.rule = rule
+        self._index = index
+        self._component = component
+
+    @property
+    def index(self) -> int | str:
+        """Get the index of the point in the set."""
+        return self._index
+
+    @property
+    def component(self) -> int | str:
+        """Get the component of the point."""
+        return self._component
+
+    @property
+    def points(self) -> np.ndarray:
+        """Get all the points in the set."""
+        return self.rule.points
+
+    @property
+    def points_id(self) -> Hashable:
+        """Get an identifier for the set of points."""
+        return self.rule
+
+    def __repr__(self):
+        """Representation."""
+        return f"QuadraturePointComponent({self._index}, {self._component})"
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
+        """Reconstruct this node with some arguments replaced."""
+        self.__class__(self.rule, self._index, self._component)
 
 
 class QuadratureWeight(AbstractExpression):
