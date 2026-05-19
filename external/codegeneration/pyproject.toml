@@ -11,8 +11,8 @@ authors = [
 ]
 dependencies = ["uflx", "numpy", "cffi", "setuptools"]
 
-[tool.setuptools]
-packages = ["uflx"]
+[tool.setuptools.packages.find]
+exclude = ["external"]
 
 [project.urls]
 homepage = "https://github.com/garth-wells/uflx"
