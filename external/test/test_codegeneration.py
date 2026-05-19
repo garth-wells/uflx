@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import uflx_codegeneration
 from cffi import FFI
-from utils import LagrangeElement, triangle
+from uflx.test_utils import LagrangeElement, triangle
 
 from uflx import (
     SpatialCoordinate,

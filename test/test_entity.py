@@ -6,7 +6,8 @@
 """Test entities."""
 
 import pytest
-from utils import interval, point, tetrahedron, triangle
+
+from uflx.test_utils import interval, point, tetrahedron, triangle
 
 
 @pytest.mark.parametrize(

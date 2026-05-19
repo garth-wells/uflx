@@ -6,9 +6,11 @@
 """Test function spaces."""
 
 import pytest
-from utils import LagrangeElement, quadrilateral, tetrahedron, triangle
 
 from uflx import coordinate_element, function_space
+
+from uflx.test_utils import triangle, tetrahedron, quadrilateral, LagrangeElement
+
 
 
 @pytest.mark.parametrize(
