@@ -12,7 +12,6 @@ The entity on which the element is defined is called the cell.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
 from types import MethodType
 from typing import Protocol, Self, runtime_checkable
 
@@ -20,8 +19,7 @@ import numpy as np
 
 from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
-from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
+from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
 from uflx.quadrature import PointInSet
 from uflx.scalars import AbstractInteger

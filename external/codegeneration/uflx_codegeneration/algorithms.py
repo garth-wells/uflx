@@ -1,13 +1,15 @@
 """Algorithms."""
 
-from typing import Hashable
-import numpy as np
+from collections.abc import Hashable
 from typing import Protocol, runtime_checkable
+
+import numpy as np
+from uflx.finite_elements import AbstractEvaluatedBasisFunction
+from uflx.graphs import Graph, GraphNode
+from uflx.graphs.algorithms import replace
+
 from uflx_codegeneration import symbols
 from uflx_codegeneration.nodes import ArrayEntry
-from uflx.graphs import Graph, GraphNode
-from uflx.finite_elements import AbstractEvaluatedBasisFunction
-from uflx.graphs.algorithms import replace
 
 
 @runtime_checkable

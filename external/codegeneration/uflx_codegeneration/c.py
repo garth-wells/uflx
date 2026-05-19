@@ -1,11 +1,12 @@
 """Generation of C code."""
 
 from typing import Protocol, runtime_checkable
-from uflx.expressions import Mult, Add, Subtract, Abs
-from uflx.quadrature import QuadratureLoop
-from uflx_codegeneration.utils import indented
 
 import numpy as np
+from uflx.expressions import Abs, Add, Mult, Subtract
+from uflx.quadrature import QuadratureLoop
+
+from uflx_codegeneration.utils import indented
 
 
 @runtime_checkable
@@ -55,6 +56,7 @@ def add_generate_c(self, bracketed: bool = False) -> str:
     else:
         return code
 
+
 Add.generate_c = add_generate_c
 
 
@@ -67,6 +69,7 @@ def subtract_generate_c(self, bracketed: bool = False) -> str:
         return f"({code})"
     else:
         return code
+
 
 Subtract.generate_c = subtract_generate_c
 
@@ -88,5 +91,6 @@ def ql_generate_c(self, bracketed: bool = False) -> str:
         f"++{self.variable})\n"
         "{\n" + indented(self.body.generate_c(), 2) + "\n}"
     )
+
 
 QuadratureLoop.generate_c = ql_generate_c

@@ -5,7 +5,6 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
-
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 
 
