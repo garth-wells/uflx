@@ -2,12 +2,12 @@
 
 from typing import Self
 
-from uflx.codegeneration import symbols
-from uflx.codegeneration.c import GenerateC
+from uflx_codegeneration import symbols
+from uflx_codegeneration.c import GenerateC
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.scalars import AbstractInteger
-from uflx.utils import indented
+from uflx_codegeneration.utils import indented
 
 
 def flatten_component(

@@ -11,13 +11,13 @@ from uflx import (
     SpatialCoordinate,
     TestFunction,
     TrialFunction,
-    codegeneration,
     coordinate_element,
     dx,
     function_space,
     grad,
     inner,
 )
+import uflx_codegeneration
 
 code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
 if not os.path.isdir(code_dir):
@@ -32,7 +32,7 @@ def test_mass_matrix():
     v = TestFunction(space)
     form = inner(u, v) * dx
 
-    code, signatures = codegeneration.generate(form)
+    code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
@@ -107,7 +107,7 @@ def test_stiffness_matrix():
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
 
-    code, signatures = codegeneration.generate(form)
+    code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
@@ -181,7 +181,7 @@ def test_linear_form():
     x = SpatialCoordinate(2)
     form = x[0] * v * dx
 
-    code, signatures = codegeneration.generate(form)
+    code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])

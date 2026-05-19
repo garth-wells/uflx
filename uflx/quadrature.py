@@ -6,10 +6,8 @@ from typing import Self
 
 import numpy as np
 
-from uflx.codegeneration.c import GenerateC
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.utils import indented
 
 
 class PointInSet(ABC):
@@ -126,15 +124,6 @@ class QuadratureLoop:
     def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
         """Reconstruct this node with some arguments replaced."""
         return self.__class__(replacements.get(self.body, self.body), self.rule, self.variable)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.body, GenerateC)
-        return (
-            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
-            f"++{self.variable})\n"
-            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
-        )
 
 
 def quadrature_rule(

@@ -50,10 +50,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install UFL
+
+      - name: Install UFLx
         run: pip -v install .[ci,docs]
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
+
+      - name: Install UFLx
+        run: pip -v install external/codegeneration
+      - name: Run units tests
+        run: pytest -n auto --durations 20 external/test/
+
       - name: Build doc
         working-directory: ./doc
         run: make html

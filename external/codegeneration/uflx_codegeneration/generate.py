@@ -5,9 +5,9 @@ from typing import Self
 import networkx as nx
 import numpy as np
 
-from uflx.codegeneration import symbols
-from uflx.codegeneration.c import GenerateC, tables_to_c
-from uflx.codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration import symbols
+from uflx_codegeneration.c import GenerateC, tables_to_c
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx.complex import take_real_part
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
@@ -22,7 +22,12 @@ from uflx.quadrature import (
     quadrature_rule,
 )
 from uflx.scalars import RealScalar
-from uflx.utils import indented
+from uflx_codegeneration.utils import indented
+from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
+from uflx.functions import Argument
+from uflx.domains import AbstractCoordinateElement
+from uflx.finite_elements import (EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative)
+from uflx_codegeneration.algorithms import tabulate_finite_elements
 
 
 class JacobianDeterminant(AbstractExpression):
@@ -54,10 +59,6 @@ def integrals_to_quadrature(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
-    from uflx.finite_elements import EvaluatedBasisFunction
-    from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-    from uflx.functions import Argument
-
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
 
@@ -159,9 +160,6 @@ def expand_jacobians(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
-    from uflx.domains import AbstractCoordinateElement
-    from uflx.finite_elements import EvaluatedBasisFunctionDerivative
-
     to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in graph:
@@ -224,8 +222,6 @@ def generate(
     Returns:
         Code
     """
-    from uflx.finite_elements import tabulate_finite_elements
-
     if language != "C":
         raise NotImplementedError("Only generation of C is supported for now")
 

@@ -11,7 +11,6 @@ An expression is any algebraic expression that could be used as an integrand.
 from abc import ABC, abstractmethod
 from typing import Self
 
-from uflx.codegeneration.c import GenerateC
 from uflx.graphs import GraphNode
 
 
@@ -110,12 +109,6 @@ class Mult(BinaryOperator):
         """The value shape of the expression."""
         return ()
 
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.first, GenerateC)
-        assert isinstance(self.second, GenerateC)
-        return self.first.generate_c(True) + " * " + self.second.generate_c(True)
-
 
 class Add(BinaryOperator):
     """Addition operator."""
@@ -124,16 +117,6 @@ class Add(BinaryOperator):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.first, GenerateC)
-        assert isinstance(self.second, GenerateC)
-        code = self.first.generate_c() + " + " + self.second.generate_c()
-        if bracketed:
-            return f"({code})"
-        else:
-            return code
 
 
 class Subtract(BinaryOperator):
@@ -144,16 +127,6 @@ class Subtract(BinaryOperator):
         """The value shape of the expression."""
         return ()
 
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.first, GenerateC)
-        assert isinstance(self.second, GenerateC)
-        code = self.first.generate_c() + " - " + self.second.generate_c(True)
-        if bracketed:
-            return f"({code})"
-        else:
-            return code
-
 
 class Abs(UnaryOperator):
     """Absolute value operator."""
@@ -162,8 +135,3 @@ class Abs(UnaryOperator):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return self.argument.value_shape
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.argument, GenerateC)
-        return f"fabs({self.argument.generate_c()})"
