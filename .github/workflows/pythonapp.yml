@@ -60,8 +60,9 @@ jobs:
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
 
-      - name: Install UFLx
-        run: pip -v install external/codegeneration
+      - name: Install external libraries
+        run: |
+          pip -v install external/codegeneration
       - name: Run units tests
         run: pytest -n auto --durations 20 external/test/
 
