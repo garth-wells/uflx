@@ -8,6 +8,7 @@ from cffi import FFI
 from utils import LagrangeElement, triangle
 
 from uflx import (
+    SpatialCoordinate,
     TestFunction,
     TrialFunction,
     codegeneration,
@@ -174,12 +175,10 @@ def test_stiffness_matrix():
 
 def test_linear_form():
     """Test code generation for a mass matrix."""
-    from uflx import spatial_coordinate, sin
-
     element = LagrangeElement(triangle, 1)
     space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
     v = TestFunction(space)
-    x = spatial_coordinate()
+    x = SpatialCoordinate(2)
     form = x[0] * v * dx
 
     code, signatures = codegeneration.generate(form)
@@ -191,7 +190,7 @@ def test_linear_form():
         np.array([0.0037500000000000033, 0.0075, 0.0037500000000000033]),
         np.array([0.011249999999999982, 0.01125, 0.0075]),
         np.array([0.05541666666666667, 0.07583333333333332, 0.05541666666666664]),
-        no.array([0.09625000000000011, 0.09624999999999997, 0.07583333333333334]),
+        np.array([0.09625000000000011, 0.09624999999999997, 0.07583333333333334]),
     ]
 
     filename = "test_linear_form"
@@ -222,4 +221,3 @@ def test_linear_form():
             ffi.NULL,
         )
         assert np.allclose(vec, expected_vec)
-

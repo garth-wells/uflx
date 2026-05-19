@@ -1,7 +1,6 @@
 """Linear form using symfem."""
 
 import symfem
-import sympy
 
 mesh_points = [[x, y] for y in [0, 1] for x in [0, 0.3, 1]]
 mesh_triangles = [

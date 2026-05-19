@@ -57,7 +57,6 @@ def integrals_to_quadrature(
     from uflx.finite_elements import EvaluatedBasisFunction
     from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
     from uflx.functions import Argument
-    from uflx.operators import Abs, Mult
 
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
@@ -111,14 +110,10 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert a.function_space.domain == domain
 
-            integrand = Mult(
-                Mult(
-                    QuadratureWeight(rules[node.measure], variables[a.component]),
-                    Abs(
-                        JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable))
-                    ),
-                ),
-                node.integrand,
+            integrand = (
+                QuadratureWeight(rules[node.measure], variables[a.component])
+                * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
+                * node.integrand
             )
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
@@ -166,7 +161,6 @@ def expand_jacobians(
     """Replace jacobians with evaluations of the derivatives of finite elements."""
     from uflx.domains import AbstractCoordinateElement
     from uflx.finite_elements import EvaluatedBasisFunctionDerivative
-    from uflx.operators import Add, Mult, Subtract
 
     to_replace: dict[GraphNode, GraphNode] = {}
 
@@ -183,55 +177,35 @@ def expand_jacobians(
             if tdim == 0 and gdim == 0:
                 to_replace[node] = RealScalar(1.0)
             elif tdim == 2 and gdim == 2:
-                j00: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (0,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
-                )
-                j01: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (0,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
-                )
-                j10: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (1,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
-                )
-                j11: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (1,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
-                )
+                j00: AbstractExpression = ArrayEntry(
+                    symbols.coordinate_dofs, (0,)
+                ) * EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0))
+                j01: AbstractExpression = ArrayEntry(
+                    symbols.coordinate_dofs, (0,)
+                ) * EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1))
+                j10: AbstractExpression = ArrayEntry(
+                    symbols.coordinate_dofs, (1,)
+                ) * EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0))
+                j11: AbstractExpression = ArrayEntry(
+                    symbols.coordinate_dofs, (1,)
+                ) * EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1))
 
                 assert isinstance(element.dim, int)
                 for i in range(1, element.dim):
-                    j00 = Add(
-                        j00,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
-                        ),
-                    )
-                    j01 = Add(
-                        j01,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
-                        ),
-                    )
-                    j10 = Add(
-                        j10,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
-                        ),
-                    )
-                    j11 = Add(
-                        j11,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
-                        ),
-                    )
+                    j00 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
+                    j01 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
+                    j10 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i + 1,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
+                    j11 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i + 1,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
 
-                to_replace[node] = Subtract(Mult(j00, j11), Mult(j01, j10))
+                to_replace[node] = j00 * j11 - j01 * j10
             else:
                 raise NotImplementedError()
     return replace(graph, to_replace)
