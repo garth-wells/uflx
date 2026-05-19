@@ -5,12 +5,14 @@ description = "Code generation built on top of ULFx"
 readme = "README.md"
 requires-python = ">=3.11.0"
 license = "MIT"
-packages = ["uflx"]
 authors = [
     { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
     { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
 ]
 dependencies = ["uflx", "numpy", "cffi", "setuptools"]
+
+[tool.setuptools]
+packages = ["uflx"]
 
 [project.urls]
 homepage = "https://github.com/garth-wells/uflx"
