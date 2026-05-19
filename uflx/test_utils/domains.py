@@ -1,4 +1,4 @@
-"""Implmentations of domains"""
+"""Implmentations of domains."""
 
 from uflx.entities import AbstractEntity
 

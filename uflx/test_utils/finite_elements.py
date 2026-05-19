@@ -1,10 +1,18 @@
 """Implmentations of finite elements."""
 
 import numpy as np
+
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
-from uflx.test_utils.domains import Point, Interval, Triangle, Tetrahedron, Quadrilateral, Tetrahedron, Hexahedron
+from uflx.test_utils.domains import (
+    Hexahedron,
+    Interval,
+    Point,
+    Quadrilateral,
+    Tetrahedron,
+    Triangle,
+)
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):

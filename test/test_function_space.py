@@ -8,9 +8,7 @@
 import pytest
 
 from uflx import coordinate_element, function_space
-
-from uflx.test_utils import triangle, tetrahedron, quadrilateral, LagrangeElement
-
+from uflx.test_utils import LagrangeElement, quadrilateral, tetrahedron, triangle
 
 
 @pytest.mark.parametrize(

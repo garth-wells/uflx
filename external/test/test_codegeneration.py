@@ -6,7 +6,6 @@ import numpy as np
 import pytest
 import uflx_codegeneration
 from cffi import FFI
-from uflx.test_utils import LagrangeElement, triangle
 
 from uflx import (
     SpatialCoordinate,
@@ -18,6 +17,7 @@ from uflx import (
     grad,
     inner,
 )
+from uflx.test_utils import LagrangeElement, triangle
 
 code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
 if not os.path.isdir(code_dir):

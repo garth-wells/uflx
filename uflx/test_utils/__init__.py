@@ -5,11 +5,18 @@
 # SPDX-License-Identifier:    MIT
 """Utilities for testing UFLx."""
 
-from contextlib import contextmanager
 import os
 import warnings
+from contextlib import contextmanager
 
-from uflx.test_utils.domains import interval, triangle, quadrilateral, tetrahedron, hexahedron, point
+from uflx.test_utils.domains import (
+    hexahedron,
+    interval,
+    point,
+    quadrilateral,
+    tetrahedron,
+    triangle,
+)
 from uflx.test_utils.finite_elements import LagrangeElement
 
 if not os.environ.get("UFLX_ENABLE_TESTING", "0") == "1":
