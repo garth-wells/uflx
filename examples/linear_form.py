@@ -23,7 +23,7 @@ print(mesh_points)
 
 e = symfem.create_element("triangle", "Lagrange", 1)
 
-vector = [0 for _ in mesh_points]
+vector = [0.0 for _ in mesh_points]
 
 f = symfem.symbols.x[0]
 

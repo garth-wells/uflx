@@ -43,7 +43,7 @@ def mult_generate_c(self, bracketed: bool = False) -> str:
     return self.first.generate_c(True) + " * " + self.second.generate_c(True)
 
 
-Mult.generate_c = mult_generate_c
+setattr(Mult, "generate_c", mult_generate_c)
 
 
 def add_generate_c(self, bracketed: bool = False) -> str:
@@ -57,7 +57,7 @@ def add_generate_c(self, bracketed: bool = False) -> str:
         return code
 
 
-Add.generate_c = add_generate_c
+setattr(Add, "generate_c", add_generate_c)
 
 
 def subtract_generate_c(self, bracketed: bool = False) -> str:
@@ -71,7 +71,7 @@ def subtract_generate_c(self, bracketed: bool = False) -> str:
         return code
 
 
-Subtract.generate_c = subtract_generate_c
+setattr(Subtract, "generate_c", subtract_generate_c)
 
 
 def abs_generate_c(self, bracketed: bool = False) -> str:
@@ -80,7 +80,7 @@ def abs_generate_c(self, bracketed: bool = False) -> str:
     return f"fabs({self.argument.generate_c()})"
 
 
-Abs.generate_c = abs_generate_c
+setattr(Abs, "generate_c", abs_generate_c)
 
 
 def ql_generate_c(self, bracketed: bool = False) -> str:
@@ -93,4 +93,4 @@ def ql_generate_c(self, bracketed: bool = False) -> str:
     )
 
 
-QuadratureLoop.generate_c = ql_generate_c
+setattr(QuadratureLoop, "generate_c", ql_generate_c)
