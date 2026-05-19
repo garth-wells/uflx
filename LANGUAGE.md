@@ -33,11 +33,11 @@ At minimum, an element is defined by:
 Examples:
 
 ```python
-P1 = FiniteElement("Lagrange", triangle, 1, ())
-vP2 = FiniteElement("Lagrange", triangle, 2, (2,))
+P1 = FiniteElement(family="Lagrange", cell=triangle, degree=1, shape=())
+vP2 = FiniteElement(family="Lagrange", cell=triangle, degree=2, shape=(2,))
 ```
 
-The element says what kind of discrete field is being represented. It does not store actual coefficient values.
+The element describes what kind of discrete field is being represented. It does not store actual coefficient values.
 
 ### Domains
 
@@ -51,14 +51,19 @@ The actual mesh is still external to UFLx.
 
 ### Function spaces
 
-A function space combines a domain with a finite element.
-Conceptually:
+A function space defines a finite-dimensional space of functions. There are three types of function spaces:
+1. standard finite-element spaces, defined by a domain and an element,
+2. constant function spaces, defined by a shape and a scalar type,
+3. non-finite-element function spaces, defined by domain, shape and scalar type, but no element.
 
+Examples:
 ```python
-V = FunctionSpace(mesh, element)
+V = FunctionSpace(domain=domain, element=element)                      # standard finite-element space
+C = FunctionSpace(shape=(2,), scalar_type="real")                      # constant function space
+N = FunctionSpace(domain=domain, shape=(2,), scalar_type="real")       # non-finite-element function space
 ```
 
-In older examples, `Argument` and `Coefficient` are sometimes created directly from an element. This is not allowed.
+In older UFL examples, `Argument` and `Coefficient` are sometimes created directly from an element. This is not allowed.
 
 ### Terminals
 
@@ -66,17 +71,22 @@ Terminals are the leaves of UFLx expression trees.
 
 The essential terminals are:
 
-- `Argument`, representing an arbitrary basis/test/trial function,
-- `Coefficient`, representing a user-supplied discrete function,
+- `Argument`, representing an arbitrary basis function of a function space,
+
+   It has a `number` attribute to represent the position of the `Argument` in the form. For example, consider a bilinear form `a(u, v)`. The `Argument` representing `u` has `number=1`, and the `Argument` representing `v` has `number=0`.
+
+   > Experimental (API breaking) note: Existence of an `Argument` and a `Coefficient` is rooted deep into the legacy UFL. However, more useful concept would be to only allow for `Function` terminals, which can represent both known and unknown functions. It would be a responsibility of the user, when creating a form, to define which of the `Function` terminals are to be considered as "arguments" and which not. This would be much closer to a mathematical notation and would solve many user error of having to treat `Argument` and `Coefficient` differently.
+
+- `Coefficient`, representing a known function in a function space,
 - literals such as numbers,
 - and geometric quantities such as coordinates, normals, Jacobians, cell diameter, facet area, etc.
 
 Example:
 
 ```python
-v = TestFunction(V, name="v")
-u = TrialFunction(V, name="u")
-f = Coefficient(V, name="f")
+v = Argument(function_space=V, name="v", number=0)
+u = Argument(function_space=V, name="u", number=1)
+f = Coefficient(function_space=V, name="f")
 ```
 
 > Legacy note: There is no `Constant` in UFLx as a means to represent literal value which is not known at compile time.
@@ -97,7 +107,6 @@ A minimal expression carries these static properties:
 
 - tensor shape,
 - free indices,
-- index dimensions,
 - associated domain or domains,
 - scalar type (real or complex),
 - continuity information,
@@ -153,6 +162,12 @@ Examples:
 a = inner(grad(v), grad(u)) * dx
 L = v * f * dx
 F = a - L
+```
+
+> Experimental (API breaking) note: Similar to the `Argument` and `Coefficient` terminals, the `Form` in the legacy UFL is defined implicitly, by the presence of `Argument` terminals. In UFLx, a `Form` could be an explicit object that can be created by the user, e.g.
+
+```python
+a = Form(inner(grad(v), grad(u)) * dx, arguments=[u, v])
 ```
 
 
