@@ -14,7 +14,7 @@ from uflx_codegeneration.utils import indented
 class GenerateC(Protocol):
     """Protocol for Objects that can be converted to C code."""
 
-    def generate_c(self, bracketed: bool = False) -> str:
+    def generate_c(self) -> str:
         """Generate code for this object."""
 
 
@@ -37,53 +37,43 @@ def tables_to_c(tables: dict[str, np.ndarray]) -> str:
     )
 
 
-def mult_generate_c(self, bracketed: bool = False) -> str:
+def mult_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.first, GenerateC):
-        from uflx.graphs import generate_graph
-        print(generate_graph(self.first).print())
         raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
     if not isinstance(self.second, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
-    return self.first.generate_c(True) + " * " + self.second.generate_c(True)
+    return f"({self.first.generate_c()} * {self.second.generate_c()})"
 
 
 setattr(Mult, "generate_c", mult_generate_c)
 
 
-def add_generate_c(self, bracketed: bool = False) -> str:
+def add_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.first, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
     if not isinstance(self.second, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
-    code = self.first.generate_c() + " + " + self.second.generate_c()
-    if bracketed:
-        return f"({code})"
-    else:
-        return code
+    return f"({self.first.generate_c()} + {self.second.generate_c()})"
 
 
 setattr(Add, "generate_c", add_generate_c)
 
 
-def subtract_generate_c(self, bracketed: bool = False) -> str:
+def subtract_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.first, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
     if not isinstance(self.second, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
-    code = self.first.generate_c() + " - " + self.second.generate_c()
-    if bracketed:
-        return f"({code})"
-    else:
-        return code
+    return f"({self.first.generate_c()} - {self.second.generate_c()})"
 
 
 setattr(Subtract, "generate_c", subtract_generate_c)
 
 
-def abs_generate_c(self, bracketed: bool = False) -> str:
+def abs_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.argument, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.argument.__class__}")
@@ -111,7 +101,6 @@ def pc_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
     c = self.point.get_component(self.component)
     if isinstance(c, PointComponent):
-        print(self)
         raise NotImplementedError(f"GenerateC is not implemented for {self.__class__}")
     if not isinstance(c, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {c.__class__}")
