@@ -2,7 +2,7 @@
 
 import networkx as nx
 
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs.graphs import Graph, GraphNode, generate_graph, reconstruct_node
 
 
 def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
@@ -22,6 +22,6 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
         if node in replacements:
             node_map[node] = replacements[node]
         elif any(a in node_map for a in node.successors):
-            node_map[node] = node.reconstruct(node_map)
+            node_map[node] = reconstruct_node(node, node_map)
 
     return generate_graph(node_map.get(graph.root, graph.root))

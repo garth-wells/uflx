@@ -32,25 +32,6 @@ class AbstractDomain(ABC):
         """Get the cells in the mesh."""
 
 
-class Domain(AbstractDomain):
-    """A set of cells embedded in R^d."""
-
-    def __init__(self, cells: tuple[AbstractEntity, ...], gdim: int):
-        """Initialise."""
-        self._cells = cells
-        self._gdim = gdim
-
-    @property
-    def geometric_dimension(self) -> int:
-        """Dimension of the space this domain is embedded in."""
-        return self._gdim
-
-    @property
-    def cells(self) -> tuple[AbstractEntity, ...]:
-        """Get the cells in the mesh."""
-        return self._cells
-
-
 class AbstractCoordinateElement(AbstractDomain):
     """Abstract coordinate element.
 

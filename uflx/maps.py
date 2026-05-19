@@ -4,7 +4,7 @@ These maps are uses to map function values between reference cells and physical 
 """
 
 from abc import ABC, abstractmethod
-from typing import Protocol, Self, runtime_checkable
+from typing import Protocol, Self, runtime_checkable, Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode
@@ -15,22 +15,22 @@ class AbstractReferenceMap(ABC):
     """Abstract base class for reference maps."""
 
     @abstractmethod
-    def push_forward_symbolic(self, function):
+    def push_forward_symbolic(self, function: AbstractExpression):
         """Map function values from a reference cell to a physical cell."""
 
     @abstractmethod
-    def pull_back_symbolic(self, function):
+    def pull_back_symbolic(self, function: AbstractExpression):
         """Map function values from a physical cell to a reference cell."""
 
 
 class IdentityReferenceMap(AbstractReferenceMap):
     """Indentity map."""
 
-    def push_forward_symbolic(self, function):
+    def push_forward_symbolic(self, function: AbstractExpression):
         """Map function values from a reference cell to a physical cell."""
         return function
 
-    def pull_back_symbolic(self, function):
+    def pull_back_symbolic(self, function: AbstractExpression):
         """Map function values from a physical cell to a reference cell."""
         return function
 
@@ -65,11 +65,10 @@ class PushedForward(AbstractExpression):
         """The successors of this node."""
         return {self.function}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        function = replacements.get(self.function, self.function)
-        assert isinstance(function, AbstractExpression)
-        return self.__class__(self.map, function)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.map, self.function
 
     def apply_push_forward(self) -> AbstractExpression:
         """Apply the push forward."""

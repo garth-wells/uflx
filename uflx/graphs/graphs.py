@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, Self, runtime_checkable
+from typing import Any, Protocol, Self, runtime_checkable
 
 from networkx import DiGraph
 
@@ -57,8 +57,9 @@ class GraphNode(Protocol):
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
 
 class RepresentedByGraph(Protocol):
@@ -83,3 +84,9 @@ def generate_graph(node: GraphNode) -> Graph:
         added_nodes = set().union(*[n.successors for n in added_nodes])
 
     return graph
+
+
+def reconstruct_node(node: GraphNode, replacements: dict[GraphNode, GraphNode]) -> GraphNode:
+    """Reconstruct a node with replacements made."""
+    args = [replacements.get(i, i) if isinstance(i, GraphNode) else i for i in node.init_args]
+    return node.__class__(*args)  # type: ignore

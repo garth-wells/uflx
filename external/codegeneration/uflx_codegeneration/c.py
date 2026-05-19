@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 from uflx.expressions import Abs, Add, Mult, Subtract
 from uflx.quadrature import QuadratureLoop
+from uflx.points import PointComponent
 
 from uflx_codegeneration.utils import indented
 
@@ -38,8 +39,12 @@ def tables_to_c(tables: dict[str, np.ndarray]) -> str:
 
 def mult_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
-    assert isinstance(self.first, GenerateC)
-    assert isinstance(self.second, GenerateC)
+    if not isinstance(self.first, GenerateC):
+        from uflx.graphs import generate_graph
+        print(generate_graph(self.first).print())
+        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
+    if not isinstance(self.second, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
     return self.first.generate_c(True) + " * " + self.second.generate_c(True)
 
 
@@ -48,8 +53,10 @@ setattr(Mult, "generate_c", mult_generate_c)
 
 def add_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
-    assert isinstance(self.first, GenerateC)
-    assert isinstance(self.second, GenerateC)
+    if not isinstance(self.first, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
+    if not isinstance(self.second, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
     code = self.first.generate_c() + " + " + self.second.generate_c()
     if bracketed:
         return f"({code})"
@@ -62,8 +69,10 @@ setattr(Add, "generate_c", add_generate_c)
 
 def subtract_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
-    assert isinstance(self.first, GenerateC)
-    assert isinstance(self.second, GenerateC)
+    if not isinstance(self.first, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
+    if not isinstance(self.second, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
     code = self.first.generate_c() + " - " + self.second.generate_c()
     if bracketed:
         return f"({code})"
@@ -76,7 +85,8 @@ setattr(Subtract, "generate_c", subtract_generate_c)
 
 def abs_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
-    assert isinstance(self.argument, GenerateC)
+    if not isinstance(self.argument, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.argument.__class__}")
     return f"fabs({self.argument.generate_c()})"
 
 
@@ -85,7 +95,8 @@ setattr(Abs, "generate_c", abs_generate_c)
 
 def ql_generate_c(self, bracketed: bool = False) -> str:
     """Generate code for this object."""
-    assert isinstance(self.body, GenerateC)
+    if not isinstance(self.body, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.body.__class__}")
     return (
         f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
         f"++{self.variable})\n"
@@ -94,3 +105,17 @@ def ql_generate_c(self, bracketed: bool = False) -> str:
 
 
 setattr(QuadratureLoop, "generate_c", ql_generate_c)
+
+
+def pc_generate_c(self, bracketed: bool = False) -> str:
+    """Generate code for this object."""
+    c = self.point.get_component(self.component)
+    if isinstance(c, PointComponent):
+        print(self)
+        raise NotImplementedError(f"GenerateC is not implemented for {self.__class__}")
+    if not isinstance(c, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {c.__class__}")
+    return c.generate_c()
+
+
+setattr(PointComponent, "generate_c", pc_generate_c)

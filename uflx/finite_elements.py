@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from types import MethodType
-from typing import Protocol, Self, runtime_checkable
+from typing import Protocol, Self, runtime_checkable, Any
 
 import numpy as np
 
@@ -21,7 +21,7 @@ from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
-from uflx.quadrature import PointInSet
+from uflx.points import AbstractPoint, PointInSet
 from uflx.scalars import AbstractInteger
 
 
@@ -41,9 +41,10 @@ class Dimension(AbstractInteger):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._e)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._e,)
 
 
 class AbstractFiniteElement(ABC):
@@ -147,7 +148,7 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
 class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     """A basis function evaluated at a point."""
 
-    def __init__(self, element: AbstractFiniteElement, basis_index: int | str, point: PointInSet):
+    def __init__(self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint):
         """Initalise."""
         self._element = element
         self._basis_index = basis_index
@@ -177,7 +178,9 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        return self._point.index
+        if isinstance(self._point, PointInSet):
+            return self._point.index
+        return 0
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -193,9 +196,10 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._element, self._basis_index, self._point)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point
 
 
 class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
@@ -254,6 +258,7 @@ class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._element, self._basis_index, self._point, self._derivative)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point, self._derivative

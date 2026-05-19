@@ -9,7 +9,7 @@ An expression is any algebraic expression that could be used as an integrand.
 """
 
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Self, Any
 
 from uflx.graphs import GraphNode
 
@@ -27,9 +27,10 @@ class AbstractExpression(ABC):
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
 
+    @property
     @abstractmethod
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
     def __mul__(self, other):
         """Multiply."""
@@ -69,11 +70,10 @@ class UnaryOperator(AbstractExpression):
         """The successors of this node."""
         return {self.argument}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        arg = replacements.get(self.argument, self.argument)
-        assert isinstance(arg, AbstractExpression)
-        return self.__class__(arg)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.argument,)
 
 
 class BinaryOperator(AbstractExpression):
@@ -92,13 +92,10 @@ class BinaryOperator(AbstractExpression):
         """The successors of this node."""
         return {self.first, self.second}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        first = replacements.get(self.first, self.first)
-        second = replacements.get(self.second, self.second)
-        assert isinstance(first, AbstractExpression)
-        assert isinstance(second, AbstractExpression)
-        return self.__class__(first, second)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.first, self.second
 
 
 class Mult(BinaryOperator):

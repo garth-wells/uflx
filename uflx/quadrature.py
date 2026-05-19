@@ -2,31 +2,13 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Hashable, Sequence
-from typing import Self
+from typing import Self, Any
 
 import numpy as np
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-
-
-class PointInSet(ABC):
-    """A single point in a set of points."""
-
-    @property
-    @abstractmethod
-    def points(self) -> np.ndarray:
-        """Get all the points in the set."""
-
-    @property
-    @abstractmethod
-    def index(self) -> int | str:
-        """Get the index of the point in the set."""
-
-    @property
-    @abstractmethod
-    def points_id(self) -> Hashable:
-        """Get an identifier for the set of points."""
+from uflx.points import PointInSet
 
 
 class QuadratureRule:
@@ -70,53 +52,11 @@ class QuadraturePoint(PointInSet):
         """Representation."""
         return f"QuadraturePoint({self._index})"
 
-
-class QuadraturePointComponent(AbstractExpression):
-    """A component of a quadrature point."""
-
-    def __init__(self, rule: QuadratureRule, index: int | str, component: int | str):
-        """Initalise."""
-        self.rule = rule
-        self._index = index
-        self._component = component
-
     @property
-    def index(self) -> int | str:
-        """Get the index of the point in the set."""
-        return self._index
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.rule, self._index
 
-    @property
-    def component(self) -> int | str:
-        """Get the component of the point."""
-        return self._component
-
-    @property
-    def points(self) -> np.ndarray:
-        """Get all the points in the set."""
-        return self.rule.points
-
-    @property
-    def points_id(self) -> Hashable:
-        """Get an identifier for the set of points."""
-        return self.rule
-
-    def __repr__(self):
-        """Representation."""
-        return f"QuadraturePointComponent({self._index}, {self._component})"
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        self.__class__(self.rule, self._index, self._component)
 
 
 class QuadratureWeight(AbstractExpression):
@@ -146,9 +86,10 @@ class QuadratureWeight(AbstractExpression):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.rule, self._index)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.rule, self._index
 
 
 class QuadratureLoop:
@@ -169,9 +110,10 @@ class QuadratureLoop:
         """The successors of this node."""
         return {self.body}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(replacements.get(self.body, self.body), self.rule, self.variable)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.body, self.rule, self.variable
 
 
 def quadrature_rule(
