@@ -9,7 +9,10 @@ authors = [
     { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
     { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
 ]
-dependencies = ["networkx", "numpy", "cffi", "setuptools"]
+dependencies = ["networkx", "numpy"]
+
+[tool.setuptools.packages.find]
+exclude = ["external"]
 
 [project.urls]
 homepage = "https://github.com/garth-wells/uflx"
