@@ -70,7 +70,7 @@ class AbstractIntegral(ABC):
         """Hash."""
         return hash((hash(self.integrand), hash(self.measure)))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
