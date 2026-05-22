@@ -9,7 +9,7 @@ A function is an item contained in a function space.
 """
 
 from abc import abstractmethod
-from typing import Self
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractFunctionSpace
@@ -34,9 +34,10 @@ class AbstractFunction(AbstractExpression):
         """The successors of this node."""
         return set()
 
+    @property
     @abstractmethod
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
 
 class Argument(AbstractFunction):
@@ -63,9 +64,10 @@ class Argument(AbstractFunction):
         """The function space that this function lives in."""
         return self._space
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._space, self._component)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._space, self._component
 
 
 class TestFunction(Argument):
@@ -77,9 +79,10 @@ class TestFunction(Argument):
         """Initialise."""
         super().__init__(space, 0)
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._space)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._space,)
 
 
 class TrialFunction(Argument):
@@ -89,6 +92,7 @@ class TrialFunction(Argument):
         """Initialise."""
         super().__init__(space, 1)
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._space)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._space,)

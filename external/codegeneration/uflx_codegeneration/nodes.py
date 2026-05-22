@@ -1,13 +1,14 @@
 """Graph Nodes representing code structures."""
 
-from typing import Self
+from typing import Any
 
-from uflx.codegeneration import symbols
-from uflx.codegeneration.c import GenerateC
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.scalars import AbstractInteger
-from uflx.utils import indented
+
+from uflx_codegeneration import symbols
+from uflx_codegeneration.c import GenerateC
+from uflx_codegeneration.utils import indented
 
 
 def flatten_component(
@@ -48,11 +49,10 @@ class Loop:
         """The successors of this node."""
         return {self.body}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(
-            self.variable, self.start, self.end, replacements.get(self.body, self.body)
-        )
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.variable, self.start, self.end, self.body
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
@@ -83,11 +83,10 @@ class AddToLocalTensor:
         """The successors of this node."""
         return {self.body}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        body = replacements.get(self.body, self.body)
-        assert isinstance(body, AbstractExpression)
-        return self.__class__(self.component, self.shape, body)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.component, self.shape, self.body
 
     def __repr__(self):
         """Representation."""
@@ -123,9 +122,10 @@ class ArrayEntry(AbstractExpression):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.array, self.index)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.array, self.index
 
     def __repr__(self):
         """Representation."""

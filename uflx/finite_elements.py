@@ -12,20 +12,16 @@ The entity on which the element is defined is called the cell.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
 from types import MethodType
-from typing import Protocol, Self, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from uflx.codegeneration import symbols
-from uflx.codegeneration.nodes import ArrayEntry
 from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
-from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
+from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
-from uflx.quadrature import PointInSet
+from uflx.points import AbstractPoint, PointInSet
 from uflx.scalars import AbstractInteger
 
 
@@ -45,9 +41,10 @@ class Dimension(AbstractInteger):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._e)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._e,)
 
 
 class AbstractFiniteElement(ABC):
@@ -129,42 +126,6 @@ class TabulatableFiniteElement(Protocol):
         """Create table of basis function values."""
 
 
-@runtime_checkable
-class CanBeTabulated(Protocol):
-    """A function that can be tabulated."""
-
-    def generate_table(self) -> np.ndarray:
-        """Create table of basis function values."""
-
-    @property
-    def table_id(self) -> Hashable:
-        """Get the id of the table."""
-
-
-def tabulate_finite_elements(
-    graph: Graph,
-    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, np.ndarray], Graph]:
-    """Generate tables of values for finite elements that need to be evaluated."""
-    table_map: dict[Hashable, str] = {}
-    tables = {}
-    to_replace: dict[GraphNode, GraphNode] = {}
-    for node in graph:
-        if (
-            isinstance(node, CanBeTabulated)
-            and isinstance(node, GraphNode)
-            and isinstance(node, AbstractEvaluatedBasisFunction)
-        ):
-            id = node.table_id
-            if id not in table_map:
-                name = variable_namer.finite_element_table()
-                table_map[id] = name
-                tables[name] = node.generate_table()
-            to_replace[node] = ArrayEntry(table_map[id], (node.point_index, node.basis_index))
-
-    return tables, replace(graph, to_replace)
-
-
 class AbstractEvaluatedBasisFunction(AbstractExpression):
     """Abstract base class for a basis function evaluated at a point in a set of points."""
 
@@ -187,7 +148,9 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
 class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     """A basis function evaluated at a point."""
 
-    def __init__(self, element: AbstractFiniteElement, basis_index: int | str, point: PointInSet):
+    def __init__(
+        self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint
+    ):
         """Initalise."""
         self._element = element
         self._basis_index = basis_index
@@ -217,7 +180,9 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        return self._point.index
+        if isinstance(self._point, PointInSet):
+            return self._point.index
+        return 0
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -233,9 +198,10 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._element, self._basis_index, self._point)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point
 
 
 class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
@@ -294,6 +260,7 @@ class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self._element, self._basis_index, self._point, self._derivative)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point, self._derivative

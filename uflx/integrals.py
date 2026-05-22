@@ -6,7 +6,7 @@
 """Measures and integrals."""
 
 from abc import ABC, abstractmethod
-from typing import Self
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode, generate_graph
@@ -26,9 +26,10 @@ class AbstractMeasure(ABC):
         """The successors of this node."""
         return set()
 
+    @property
     @abstractmethod
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
 
 class AbstractIntegral(ABC):
@@ -54,9 +55,10 @@ class AbstractIntegral(ABC):
         """The successors of this node."""
         return {self.integrand, self.measure}
 
+    @property
     @abstractmethod
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
     def __eq__(self, other):
         """Check for equality."""
@@ -87,29 +89,25 @@ class Integral(AbstractIntegral):
         """The integral measure."""
         return self._measure
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        integrand = replacements.get(self._integrand, self._integrand)
-        measure = replacements.get(self._measure, self._measure)
-        assert isinstance(integrand, AbstractExpression)
-        assert isinstance(measure, AbstractMeasure)
-        return self.__class__(integrand, measure)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._integrand, self._measure
 
 
 class Measure(AbstractMeasure):
     """An integral measure."""
 
-    def __init__(self, *, dim: int | None = None, codim=int | None, boundary_only: bool = False):
+    def __init__(self, dim: int | None = None, codim=int | None, boundary_only: bool = False):
         """Initialise."""
         self._dim = dim
         self._codim = codim
         self._boundary_only = boundary_only
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(dim=self._dim, codim=self._codim, boundary_only=self._boundary_only)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._dim, self._codim, self._boundary_only
 
 
 dx = Measure(codim=0)
-dS = Measure(codim=1)
-ds = Measure(codim=1, boundary_only=True)

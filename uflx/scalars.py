@@ -1,6 +1,6 @@
 """Scalar values."""
 
-from typing import Self
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -35,9 +35,10 @@ class RealScalar(AbstractScalar):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.value)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.value,)
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
@@ -60,9 +61,10 @@ class Integer(AbstractInteger):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.value)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.value,)
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""

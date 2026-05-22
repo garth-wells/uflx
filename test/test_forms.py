@@ -1,8 +1,7 @@
 """Test forms."""
 
-from utils import LagrangeElement, triangle
-
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, inner
+from uflx.test_utils import LagrangeElement, triangle
 
 
 def test_simple_form():

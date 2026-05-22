@@ -6,7 +6,16 @@
 """Test finite elements."""
 
 import pytest
-from utils import LagrangeElement, hexahedron, interval, point, quadrilateral, tetrahedron, triangle
+
+from uflx.test_utils import (
+    LagrangeElement,
+    hexahedron,
+    interval,
+    point,
+    quadrilateral,
+    tetrahedron,
+    triangle,
+)
 
 
 @pytest.mark.parametrize(

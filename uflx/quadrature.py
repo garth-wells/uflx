@@ -1,34 +1,13 @@
 """Quadrature rules."""
 
-from abc import ABC, abstractmethod
 from collections.abc import Hashable, Sequence
-from typing import Self
+from typing import Any
 
 import numpy as np
 
-from uflx.codegeneration.c import GenerateC
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.utils import indented
-
-
-class PointInSet(ABC):
-    """A single point in a set of points."""
-
-    @property
-    @abstractmethod
-    def points(self) -> np.ndarray:
-        """Get all the points in the set."""
-
-    @property
-    @abstractmethod
-    def index(self) -> int | str:
-        """Get the index of the point in the set."""
-
-    @property
-    @abstractmethod
-    def points_id(self) -> Hashable:
-        """Get an identifier for the set of points."""
+from uflx.points import PointInSet
 
 
 class QuadratureRule:
@@ -70,7 +49,12 @@ class QuadraturePoint(PointInSet):
 
     def __repr__(self):
         """Representation."""
-        return f"QuadraturePoint({self.index})"
+        return f"QuadraturePoint({self._index})"
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.rule, self._index
 
 
 class QuadratureWeight(AbstractExpression):
@@ -100,9 +84,10 @@ class QuadratureWeight(AbstractExpression):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.rule, self._index)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.rule, self._index
 
 
 class QuadratureLoop:
@@ -123,18 +108,10 @@ class QuadratureLoop:
         """The successors of this node."""
         return {self.body}
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(replacements.get(self.body, self.body), self.rule, self.variable)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        assert isinstance(self.body, GenerateC)
-        return (
-            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
-            f"++{self.variable})\n"
-            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
-        )
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.body, self.rule, self.variable
 
 
 def quadrature_rule(

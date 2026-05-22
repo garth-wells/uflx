@@ -1,19 +1,20 @@
 """Code generation."""
 
-from typing import Self
+from typing import Any
 
 import networkx as nx
-import numpy as np
-
-from uflx.codegeneration import symbols
-from uflx.codegeneration.c import GenerateC, tables_to_c
-from uflx.codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx.complex import take_real_part
+from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression
+from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
+from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
+from uflx.functions import AbstractFunction, Argument
+from uflx.geometry import ReferenceToPhysical, SingleSpatialCoordinate
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
+from uflx.points import Point, PointComponent
 from uflx.quadrature import (
     QuadratureLoop,
     QuadraturePoint,
@@ -21,8 +22,26 @@ from uflx.quadrature import (
     QuadratureWeight,
     quadrature_rule,
 )
-from uflx.scalars import RealScalar
-from uflx.utils import indented
+from uflx.scalars import Integer, RealScalar
+
+from uflx_codegeneration import symbols
+from uflx_codegeneration.algorithms import tabulate_finite_elements
+from uflx_codegeneration.c import GenerateC, tables_to_c
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration.utils import indented
+
+
+def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
+    """Extract the domain associated with a node."""
+    domain: AbstractDomain | None = None
+    for i in nx.descendants(graph, node):
+        if isinstance(i, AbstractFunction):
+            if domain is None:
+                domain = i.function_space.domain
+            else:
+                domain = i.function_space.domain
+    assert domain is not None
+    return domain
 
 
 class JacobianDeterminant(AbstractExpression):
@@ -43,9 +62,10 @@ class JacobianDeterminant(AbstractExpression):
         """The successors of this node."""
         return set()
 
-    def reconstruct(self, replacements: dict[GraphNode, GraphNode]) -> Self:
-        """Reconstruct this node with some arguments replaced."""
-        return self.__class__(self.domain, self.point)
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.domain, self.point
 
 
 def integrals_to_quadrature(
@@ -54,16 +74,14 @@ def integrals_to_quadrature(
     variable_namer=symbols.global_variable_namer,
 ) -> Graph:
     """Replace integrals with quadrature."""
-    from uflx.finite_elements import EvaluatedBasisFunction
-    from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-    from uflx.functions import Argument
-    from uflx.operators import Abs, Mult
-
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in reversed(list(nx.topological_sort(graph))):
         if isinstance(node, AbstractIntegral):
+            rule = rules[node.measure]
+            qvariable = variable_namer.variable()
+
             tensor_shape_components = {}
 
             if not isinstance(node.measure, Measure):
@@ -75,6 +93,19 @@ def integrals_to_quadrature(
             for i in nx.descendants(graph, node):
                 if isinstance(i, Argument):
                     arguments.append(i)
+                if isinstance(i, SingleSpatialCoordinate):
+                    domain = extract_domain(graph, node)
+                    if not isinstance(domain, AbstractCoordinateElement):
+                        raise NotImplementedError(
+                            "Code generation only implemented for reference mapped domain"
+                        )
+                    to_replace[i] = PointComponent(
+                        ReferenceToPhysical(
+                            QuadraturePoint(rule, qvariable),
+                            domain,
+                        ),
+                        i._component,
+                    )
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
@@ -97,11 +128,9 @@ def integrals_to_quadrature(
                 "0" if component == 1 else variable_namer.variable() for component in tensor_shape
             )
 
-            qvariable = variable_namer.variable()
-
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
-                point = QuadraturePoint(rules[node.measure], variables[a.component])
+                point = QuadraturePoint(rule, variables[a.component])
                 to_replace[a] = PushedForward(
                     a.function_space.elements[0].map_type,
                     EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
@@ -111,14 +140,10 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert a.function_space.domain == domain
 
-            integrand = Mult(
-                Mult(
-                    QuadratureWeight(rules[node.measure], variables[a.component]),
-                    Abs(
-                        JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable))
-                    ),
-                ),
-                node.integrand,
+            integrand = (
+                QuadratureWeight(rules[node.measure], variables[a.component])
+                * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
+                * node.integrand
             )
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
@@ -150,24 +175,40 @@ def tabulate_quadrature(
     to_replace = {}
     for node in graph:
         if isinstance(node, QuadratureWeight):
-            if node.rule not in table_map:
+            id = (node.rule, "weights")
+            if id not in table_map:
                 name = variable_namer.quadrature_table()
-                table_map[node.rule] = name
-                tables[name] = np.array(node.rule.weights)
-            to_replace[node] = ArrayEntry(table_map[node.rule], (node.index,))
+                table_map[id] = name
+                tables[name] = node.rule.weights
+            to_replace[node] = ArrayEntry(table_map[id], (node.index,))
+        if isinstance(node, QuadraturePoint):
+            id = (node.rule, "points")
+            if id not in table_map:
+                name = variable_namer.quadrature_table()
+                table_map[id] = name
+                tables[name] = node.rule.points
+            to_replace[node] = Point(
+                *[
+                    ArrayEntry(
+                        table_map[id],
+                        (
+                            node.dim * node.index + i
+                            if isinstance(node.index, int)
+                            else f"{node.dim} * {node.index} + {i}",
+                        ),
+                    )
+                    for i in range(node.dim)
+                ]
+            )
 
     return tables, replace(graph, to_replace)
 
 
-def expand_jacobians(
-    graph,
-    variable_namer=symbols.global_variable_namer,
+def expand_geometry(
+    graph: Graph,
+    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
 ) -> Graph:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
-    from uflx.domains import AbstractCoordinateElement
-    from uflx.finite_elements import EvaluatedBasisFunctionDerivative
-    from uflx.operators import Add, Mult, Subtract
-
     to_replace: dict[GraphNode, GraphNode] = {}
 
     for node in graph:
@@ -183,57 +224,45 @@ def expand_jacobians(
             if tdim == 0 and gdim == 0:
                 to_replace[node] = RealScalar(1.0)
             elif tdim == 2 and gdim == 2:
-                j00: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (0,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
-                )
-                j01: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (0,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
-                )
-                j10: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (1,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (1, 0)),
-                )
-                j11: AbstractExpression = Mult(
-                    ArrayEntry(symbols.coordinate_dofs, (1,)),
-                    EvaluatedBasisFunctionDerivative(element, 0, node.point, (0, 1)),
-                )
+                j00: AbstractExpression = Integer(0)
+                j01: AbstractExpression = Integer(0)
+                j10: AbstractExpression = Integer(0)
+                j11: AbstractExpression = Integer(0)
 
                 assert isinstance(element.dim, int)
-                for i in range(1, element.dim):
-                    j00 = Add(
-                        j00,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
-                        ),
-                    )
-                    j01 = Add(
-                        j01,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
-                        ),
-                    )
-                    j10 = Add(
-                        j10,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0)),
-                        ),
-                    )
-                    j11 = Add(
-                        j11,
-                        Mult(
-                            ArrayEntry(symbols.coordinate_dofs, (tdim * i + 1,)),
-                            EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1)),
-                        ),
-                    )
+                for i in range(element.dim):
+                    j00 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
+                    j01 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
+                    j10 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i + 1,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
+                    j11 += ArrayEntry(
+                        symbols.coordinate_dofs, (tdim * i + 1,)
+                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
 
-                to_replace[node] = Subtract(Mult(j00, j11), Mult(j01, j10))
+                to_replace[node] = j00 * j11 - j01 * j10
             else:
                 raise NotImplementedError()
+        if isinstance(node, ReferenceToPhysical):
+            if len(node.domain.elements) != 1:
+                raise NotImplementedError("Only domains with exactly on element supported for now.")
+            (element,) = node.domain.elements
+            (dim,) = element.reference_value_shape
+
+            components = [Integer(0) for _ in range(dim)]
+            assert isinstance(element.dim, int)
+            for i in range(element.dim):
+                for j, c in enumerate(components):
+                    components[j] += ArrayEntry(
+                        symbols.coordinate_dofs,
+                        (dim * i + j,),
+                    ) * EvaluatedBasisFunction(element, i, node.reference_point)
+
+            to_replace[node] = Point(*components)
     return replace(graph, to_replace)
 
 
@@ -250,8 +279,6 @@ def generate(
     Returns:
         Code
     """
-    from uflx.finite_elements import tabulate_finite_elements
-
     if language != "C":
         raise NotImplementedError("Only generation of C is supported for now")
 
@@ -266,11 +293,16 @@ def generate(
 
     graph = integrals_to_quadrature(graph, rules)
     graph = apply_push_forwards(graph)
-    graph = expand_jacobians(graph)
+    graph = expand_geometry(graph)
     graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
+    print("----")
+    graph.print()
+    print("----")
     fe_tables, graph = tabulate_finite_elements(graph)
+    graph.print()
+    print("----")
     tables = {**q_tables, **fe_tables}
 
     code = (
