@@ -54,6 +54,9 @@ class AbstractExpression(ABC):
         """Absolute value."""
         return Abs(self)
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__
+
 
 class UnaryOperator(AbstractExpression):
     """A binary operator.
@@ -74,6 +77,9 @@ class UnaryOperator(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (self.argument,)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__
 
 
 class BinaryOperator(AbstractExpression):
@@ -96,6 +102,9 @@ class BinaryOperator(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self.first, self.second
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__
 
 
 class Mult(BinaryOperator):
