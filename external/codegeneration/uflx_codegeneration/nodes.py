@@ -54,7 +54,7 @@ class Loop:
         """The arguments used to initialise this object."""
         return self.variable, self.start, self.end, self.body
 
-    def generate_c(self, bracketed: bool = False) -> str:
+    def generate_c(self) -> str:
         """Generate code for this object."""
         assert isinstance(self.body, GenerateC)
         return (
@@ -92,7 +92,7 @@ class AddToLocalTensor:
         """Representation."""
         return f"AddToLocalTensor({self.component})"
 
-    def generate_c(self, bracketed: bool = False) -> str:
+    def generate_c(self) -> str:
         """Generate code for this object."""
         assert isinstance(self.body, GenerateC)
         return (
@@ -131,6 +131,74 @@ class ArrayEntry(AbstractExpression):
         """Representation."""
         return f"{self.array}[{','.join(str(i) for i in self.index)}]"
 
-    def generate_c(self, bracketed: bool = False) -> str:
+    def generate_c(self) -> str:
         """Generate code for this object."""
         return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
+
+
+class FunctionCall(AbstractExpression):
+    """A call to a function."""
+
+    def __init__(self, function: str, *inputs: Any):
+        """Initalise."""
+        self.function = function
+        self.inputs = inputs
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {i for i in self.inputs if isinstance(i, GraphNode)}
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.function, *self.inputs
+
+    def __repr__(self):
+        """Representation."""
+        return f"FunctionCall({self.function}, (" + ", ".join(f"{i!r}" for i in self.inputs) + "))"
+
+    def generate_c(self) -> str:
+        """Generate code for this object."""
+        return (
+            f"{self.function}("
+            + ", ".join(i.generate_c() if isinstance(i, GenerateC) else f"{i}" for i in self.inputs)
+            + ")"
+        )
+
+
+class Variable(AbstractExpression):
+    """A variable."""
+
+    def __init__(self, dtype: str, variable: str):
+        """Initialise."""
+        self._dtype = dtype
+        self._variable = variable
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._dtype, self._variable
+
+    def __repr__(self):
+        """Representation."""
+        return f"Variable({self._dtype}, {self._variable})"
+
+    def generate_c(self) -> str:
+        """Generate code for this object."""
+        return self._variable

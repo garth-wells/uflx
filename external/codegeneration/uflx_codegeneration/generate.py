@@ -1,15 +1,17 @@
 """Code generation."""
 
-from typing import Any
-
 import networkx as nx
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
-from uflx.expressions import AbstractExpression
-from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
+from uflx.finite_elements import EvaluatedBasisFunction
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractFunction, Argument
-from uflx.geometry import ReferenceToPhysical, SingleSpatialCoordinate
+from uflx.geometry import (
+    JacobianDeterminant,
+    ReferenceToPhysical,
+    SingleSpatialCoordinate,
+    expand_geometry,
+)
 from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
@@ -22,10 +24,9 @@ from uflx.quadrature import (
     QuadratureWeight,
     quadrature_rule,
 )
-from uflx.scalars import Integer, RealScalar
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.algorithms import tabulate_finite_elements
+from uflx_codegeneration.algorithms import insert_geometry_functions, tabulate_finite_elements
 from uflx_codegeneration.c import GenerateC, tables_to_c
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.utils import indented
@@ -42,30 +43,6 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
                 domain = i.function_space.domain
     assert domain is not None
     return domain
-
-
-class JacobianDeterminant(AbstractExpression):
-    """The determinant of the Jacobian."""
-
-    def __init__(self, domain, point):
-        """Initalise."""
-        self.domain = domain
-        self.point = point
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self.domain, self.point
 
 
 def integrals_to_quadrature(
@@ -204,68 +181,6 @@ def tabulate_quadrature(
     return tables, replace(graph, to_replace)
 
 
-def expand_geometry(
-    graph: Graph,
-    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> Graph:
-    """Replace jacobians with evaluations of the derivatives of finite elements."""
-    to_replace: dict[GraphNode, GraphNode] = {}
-
-    for node in graph:
-        if isinstance(node, JacobianDeterminant):
-            if not isinstance(node.domain, AbstractCoordinateElement):
-                raise NotImplementedError()
-            if len(node.domain.elements) > 1:
-                raise NotImplementedError()
-            (element,) = node.domain.elements
-            tdim = element.cell.topological_dimension
-            gdim = node.domain.geometric_dimension
-
-            if tdim == 0 and gdim == 0:
-                to_replace[node] = RealScalar(1.0)
-            elif tdim == 2 and gdim == 2:
-                j00: AbstractExpression = Integer(0)
-                j01: AbstractExpression = Integer(0)
-                j10: AbstractExpression = Integer(0)
-                j11: AbstractExpression = Integer(0)
-
-                assert isinstance(element.dim, int)
-                for i in range(element.dim):
-                    j00 += ArrayEntry(
-                        symbols.coordinate_dofs, (tdim * i,)
-                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
-                    j01 += ArrayEntry(
-                        symbols.coordinate_dofs, (tdim * i,)
-                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
-                    j10 += ArrayEntry(
-                        symbols.coordinate_dofs, (tdim * i + 1,)
-                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (1, 0))
-                    j11 += ArrayEntry(
-                        symbols.coordinate_dofs, (tdim * i + 1,)
-                    ) * EvaluatedBasisFunctionDerivative(element, i, node.point, (0, 1))
-
-                to_replace[node] = j00 * j11 - j01 * j10
-            else:
-                raise NotImplementedError()
-        if isinstance(node, ReferenceToPhysical):
-            if len(node.domain.elements) != 1:
-                raise NotImplementedError("Only domains with exactly on element supported for now.")
-            (element,) = node.domain.elements
-            (dim,) = element.reference_value_shape
-
-            components = [Integer(0) for _ in range(dim)]
-            assert isinstance(element.dim, int)
-            for i in range(element.dim):
-                for j, c in enumerate(components):
-                    components[j] += ArrayEntry(
-                        symbols.coordinate_dofs,
-                        (dim * i + j,),
-                    ) * EvaluatedBasisFunction(element, i, node.reference_point)
-
-            to_replace[node] = Point(*components)
-    return replace(graph, to_replace)
-
-
 def generate(
     form: RepresentedByGraph,
     language: str = "C",
@@ -293,19 +208,28 @@ def generate(
 
     graph = integrals_to_quadrature(graph, rules)
     graph = apply_push_forwards(graph)
+    geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
-    print("----")
-    graph.print()
-    print("----")
     fe_tables, graph = tabulate_finite_elements(graph)
-    graph.print()
-    print("----")
     tables = {**q_tables, **fe_tables}
 
-    code = (
+    code = ""
+    for fname, (dtype, inputs, fgraph) in geometry_functions.items():
+        code += f"{dtype} {fname}("
+        print(inputs)
+        code += ", ".join(f"{i._dtype} {i._variable}" for i in inputs)
+        code += ") {\n"
+        ftables, fgraph = tabulate_finite_elements(fgraph)
+        code += indented(tables_to_c(ftables), 2)
+        code += "\n\n"
+        assert isinstance(fgraph.root, GenerateC)
+        code += f"  return {fgraph.root.generate_c()};\n"
+        code += "}"
+    code += "\n\n"
+    code += (
         "void tabulate_tensor_f64(\n"
         f"    double* restrict {symbols.local_tensor},\n"
         f"    const double* restrict {symbols.coefficients},\n"
@@ -319,7 +243,6 @@ def generate(
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
-    graph.print()
     assert isinstance(graph.root, GenerateC)
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
