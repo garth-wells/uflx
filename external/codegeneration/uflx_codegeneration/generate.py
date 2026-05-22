@@ -3,12 +3,13 @@
 import networkx as nx
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
-from uflx.finite_elements import EvaluatedBasisFunction
+from uflx.finite_elements import EvaluatedReferenceBasisFunction, EvaluatedPhysicalBasisFunction
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractFunction, Argument
 from uflx.geometry import (
     JacobianDeterminant,
     ReferenceToPhysical,
+    PhysicalToReference,
     SingleSpatialCoordinate,
     expand_geometry,
 )
@@ -43,6 +44,23 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
                 domain = i.function_space.domain
     assert domain is not None
     return domain
+
+
+def pull_back_to_reference(
+    graph: Graph,
+) -> Graph:
+    """Pull terms in integrals back to reference values."""
+    to_replace: dict[GraphNode, GraphNode] = {}
+
+    for node in graph:
+        if isinstance(node, EvaluatedPhysicalBasisFunction):
+            to_replace[node] = PushedForward(
+                node._element.map_type,
+                EvaluatedReferenceBasisFunction(node._element, node._basis_index,
+                    node._point.reference_point if isinstance(node._point, ReferenceToPhysical) else PhysicalToReference(node._point)
+                ),
+            )
+    return replace(graph, to_replace)
 
 
 def integrals_to_quadrature(
@@ -108,10 +126,7 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 point = QuadraturePoint(rule, variables[a.component])
-                to_replace[a] = PushedForward(
-                    a.function_space.elements[0].map_type,
-                    EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
-                )
+                to_replace[a] = EvaluatedPhysicalBasisFunction(a.function_space.elements[0], qvariable, ReferenceToPhysical(point, a.function_space.domain))
 
             domain = arguments[0].function_space.domain
             for a in arguments:
@@ -206,11 +221,25 @@ def generate(
         dx: quadrature_rule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
+    print("----")
+    graph.print()
+    print("----")
+
     graph = integrals_to_quadrature(graph, rules)
+    graph.print()
+    print("----")
+    graph = pull_back_to_reference(graph)
+    graph.print()
+    print("----")
     graph = apply_push_forwards(graph)
+    graph.print()
+    print("----")
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = take_real_part(graph)
+
+    graph.print()
+    print("----")
 
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)

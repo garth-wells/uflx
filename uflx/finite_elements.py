@@ -130,8 +130,8 @@ class TabulatableFiniteElement(Protocol):
         """Create table of basis function values."""
 
 
-class AbstractEvaluatedBasisFunction(AbstractExpression):
-    """Abstract base class for a basis function evaluated at a point in a set of points."""
+class AbstractEvaluatedReferenceBasisFunction(AbstractExpression):
+    """Abstract base class for a basis function evaluated at a point in a set of points on the reference cell."""
 
     @property
     @abstractmethod
@@ -149,8 +149,8 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
         """The index of the point in the set of points."""
 
 
-class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
-    """A basis function evaluated at a point."""
+class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
+    """A basis function evaluated at a point on the reference cell."""
 
     def __init__(
         self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint
@@ -195,7 +195,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
 
     def __repr__(self):
         """Representation."""
-        return f"EvaluatedBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
+        return f"EvaluatedReferenceBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -208,8 +208,8 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         return self._element, self._basis_index, self._point
 
 
-class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
-    """A derivative of a basis function evaluated at a point."""
+class EvaluatedReferenceBasisFunctionDerivative(AbstractEvaluatedReferenceBasisFunction):
+    """A derivative of a basis function evaluated at a point on the reference cell."""
 
     def __init__(
         self,
@@ -255,7 +255,147 @@ class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
     def __repr__(self):
         """Representation."""
         return (
-            f"EvaluatedBasisFunctionDerivative({self._element!r}, {self._basis_index}, "
+            f"EvaluatedReferenceBasisFunctionDerivative({self._element!r}, {self._basis_index}, "
+            f"{self._point!r}, {self._derivative})"
+        )
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point, self._derivative
+
+
+class AbstractEvaluatedPhysicalBasisFunction(AbstractExpression):
+    """Abstract base class for a basis function evaluated at a point in a set of points on the physical cell."""
+
+    @property
+    @abstractmethod
+    def element(self) -> AbstractFiniteElement:
+        """The finite element containing this basis function."""
+
+    @property
+    @abstractmethod
+    def basis_index(self) -> int | str:
+        """The index of the basis function."""
+
+    @property
+    @abstractmethod
+    def point_index(self) -> int | str:
+        """The index of the point in the set of points."""
+
+
+class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
+    """A basis function evaluated at a point on the physical cell."""
+
+    def __init__(
+        self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint
+    ):
+        """Initalise."""
+        self._element = element
+        self._basis_index = basis_index
+        self._point = point
+
+        if isinstance(element, TabulatableFiniteElement):
+
+            def generate_table(self):
+                return self._element.tabulate(
+                    self._point.points,
+                    tuple(0 for _ in range(self._element.cell.topological_dimension)),
+                )
+
+            self.generate_table = MethodType(generate_table, self)
+            self.table_id = (self.element, self.point_index)
+
+    @property
+    def element(self) -> AbstractFiniteElement:
+        """The finite element containing this basis function."""
+        return self._element
+
+    @property
+    def basis_index(self) -> int | str:
+        """The index of the basis function."""
+        return self._basis_index
+
+    @property
+    def point_index(self) -> int | str:
+        """The index of the point in the set of points."""
+        if isinstance(self._point, PointInSet):
+            return self._point.index
+        return 0
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    def __repr__(self):
+        """Representation."""
+        return f"EvaluatedPhysicalBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._element, self._basis_index, self._point
+
+
+class EvaluatedPhysicalBasisFunctionDerivative(AbstractEvaluatedPhysicalBasisFunction):
+    """A derivative of a basis function evaluated at a point on the physical cell."""
+
+    def __init__(
+        self,
+        element: AbstractFiniteElement,
+        basis_index: int | str,
+        point,
+        derivative: tuple[int, ...],
+    ):
+        """Initalise."""
+        self._element = element
+        self._basis_index = basis_index
+        self._point = point
+        self._derivative = derivative
+
+        if isinstance(element, TabulatableFiniteElement):
+
+            def generate_table(self):
+                return self._element.tabulate(self._point.points, self._derivative)
+
+            self.generate_table = MethodType(generate_table, self)
+            self.table_id = (self._element, self._point.points_id, self._derivative)
+
+    @property
+    def element(self) -> AbstractFiniteElement:
+        """The finite element containing this basis function."""
+        return self._element
+
+    @property
+    def basis_index(self) -> int | str:
+        """The index of the basis function."""
+        return self._basis_index
+
+    @property
+    def point_index(self) -> int | str:
+        """The index of the point in the set of points."""
+        return self._point.index
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    def __repr__(self):
+        """Representation."""
+        return (
+            f"EvaluatedPhysicalBasisFunctionDerivative({self._element!r}, {self._basis_index}, "
             f"{self._point!r}, {self._derivative})"
         )
 

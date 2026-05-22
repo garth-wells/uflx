@@ -4,7 +4,7 @@ from collections.abc import Hashable
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
-from uflx.finite_elements import AbstractEvaluatedBasisFunction
+from uflx.finite_elements import AbstractEvaluatedReferenceBasisFunction
 from uflx.geometry import JacobianDeterminant, expand_geometry
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
@@ -37,7 +37,7 @@ def tabulate_finite_elements(
         if (
             isinstance(node, CanBeTabulated)
             and isinstance(node, GraphNode)
-            and isinstance(node, AbstractEvaluatedBasisFunction)
+            and isinstance(node, AbstractEvaluatedReferenceBasisFunction)
         ):
             id = node.table_id
             if id not in table_map:

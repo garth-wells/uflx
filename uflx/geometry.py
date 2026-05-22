@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
-from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
+from uflx.finite_elements import EvaluatedReferenceBasisFunction, EvaluatedReferenceBasisFunctionDerivative
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point
@@ -121,11 +121,50 @@ class ReferenceToPhysical(AbstractPoint):
         assert isinstance(element.dim, int)
         for i in range(element.dim):
             for j, c in enumerate(components):
-                components[j] += CoordinateDofComponent(i, j, dim) * EvaluatedBasisFunction(
+                components[j] += CoordinateDofComponent(i, j, dim) * EvaluatedReferenceBasisFunction(
                     element, i, self.reference_point
                 )
 
         return Point(*components)
+
+
+class PhysicalToReference(AbstractPoint):
+    """A point mapped from a physical cell to the reference cell."""
+
+    def __init__(self, point: AbstractPoint, domain: AbstractCoordinateElement):
+        """Initialise."""
+        self._point = point
+        self._domain = domain
+
+    @property
+    def physical_point(self) -> AbstractPoint:
+        """The point on the physical cell."""
+        return self._point
+
+    @property
+    def domain(self) -> AbstractCoordinateElement:
+        """The domain."""
+        return self._domain
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self._point.value_shape
+
+    @property
+    def dim(self) -> int:
+        """The dimension of the point."""
+        raise NotImplementedError()
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return {self._point}
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._point, self._domain
 
 
 class JacobianDeterminant(AbstractExpression):
@@ -171,16 +210,16 @@ class JacobianDeterminant(AbstractExpression):
 
             assert isinstance(element.dim, int)
             for i in range(element.dim):
-                j00 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunctionDerivative(
+                j00 += CoordinateDofComponent(i, 0, tdim) * EvaluatedReferenceBasisFunctionDerivative(
                     element, i, self.point, (1, 0)
                 )
-                j01 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunctionDerivative(
+                j01 += CoordinateDofComponent(i, 0, tdim) * EvaluatedReferenceBasisFunctionDerivative(
                     element, i, self.point, (0, 1)
                 )
-                j10 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunctionDerivative(
+                j10 += CoordinateDofComponent(i, 1, tdim) * EvaluatedReferenceBasisFunctionDerivative(
                     element, i, self.point, (1, 0)
                 )
-                j11 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunctionDerivative(
+                j11 += CoordinateDofComponent(i, 1, tdim) * EvaluatedReferenceBasisFunctionDerivative(
                     element, i, self.point, (0, 1)
                 )
 
