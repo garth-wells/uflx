@@ -71,6 +71,7 @@ class AbstractIntegral(ABC):
         return hash((hash(self.integrand), hash(self.measure)))
 
     def __repr__(self) -> str:
+        """Representation."""
         return self.__class__.__name__
 
 
@@ -113,6 +114,7 @@ class Measure(AbstractMeasure):
         return self._dim, self._codim, self._boundary_only
 
     def __repr__(self) -> str:
+        """Representation."""
         return f"{self.__class__.__name__}{self._dim, self._codim}"
 
 dx = Measure(codim=0)

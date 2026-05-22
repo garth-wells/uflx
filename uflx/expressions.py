@@ -55,6 +55,7 @@ class AbstractExpression(ABC):
         return Abs(self)
 
     def __repr__(self) -> str:
+        """Representation."""
         return self.__class__.__name__
 
 
@@ -79,6 +80,7 @@ class UnaryOperator(AbstractExpression):
         return (self.argument,)
 
     def __repr__(self) -> str:
+        """Representation."""
         return self.__class__.__name__
 
 
@@ -104,6 +106,7 @@ class BinaryOperator(AbstractExpression):
         return self.first, self.second
 
     def __repr__(self) -> str:
+        """Representation."""
         return self.__class__.__name__
 
 

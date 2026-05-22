@@ -97,6 +97,7 @@ class AbstractFiniteElement(ABC):
         """Hash."""
 
     def __repr__(self) -> str:
+        """Representation."""
         return self.__class__.__name__
 
 
