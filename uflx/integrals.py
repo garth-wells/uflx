@@ -117,4 +117,5 @@ class Measure(AbstractMeasure):
         """Representation."""
         return f"{self.__class__.__name__}{self._dim, self._codim}"
 
+
 dx = Measure(codim=0)
