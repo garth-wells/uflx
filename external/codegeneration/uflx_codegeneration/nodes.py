@@ -129,7 +129,7 @@ class ArrayEntry(AbstractExpression):
 
     def __repr__(self):
         """Representation."""
-        return f"ArrayEntry({self.array}, {self.index})"
+        return f"{self.array}[{','.join(str(i) for i in self.index)}]"
 
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
