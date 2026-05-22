@@ -8,6 +8,7 @@ class VariableNamer:
         """Initalise."""
         self.i = -1
         self.n = -1
+        self.geo_i = -1
         self.fe_i = -1
         self.qr_i = -1
 
@@ -32,6 +33,11 @@ class VariableNamer:
         """Get a new quadrature weight table name."""
         self.qr_i += 1
         return f"QW{self.qr_i}"
+
+    def geometry_function_name(self) -> str:
+        """Get a name for a geometry function."""
+        self.geo_i += 1
+        return f"geo{self.geo_i}"
 
 
 global_variable_namer = VariableNamer()

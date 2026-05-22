@@ -4,9 +4,11 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 from uflx.expressions import Abs, Add, Mult, Subtract
+from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 from uflx.quadrature import QuadratureLoop
 
+from uflx_codegeneration import symbols
 from uflx_codegeneration.utils import indented
 
 
@@ -83,7 +85,7 @@ def abs_generate_c(self) -> str:
 setattr(Abs, "generate_c", abs_generate_c)
 
 
-def ql_generate_c(self, bracketed: bool = False) -> str:
+def ql_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.body, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.body.__class__}")
@@ -97,7 +99,7 @@ def ql_generate_c(self, bracketed: bool = False) -> str:
 setattr(QuadratureLoop, "generate_c", ql_generate_c)
 
 
-def pc_generate_c(self, bracketed: bool = False) -> str:
+def pc_generate_c(self) -> str:
     """Generate code for this object."""
     c = self.point.get_component(self.component)
     if isinstance(c, PointComponent):
@@ -108,3 +110,11 @@ def pc_generate_c(self, bracketed: bool = False) -> str:
 
 
 setattr(PointComponent, "generate_c", pc_generate_c)
+
+
+def cdc_generate_c(self) -> str:
+    """Generate code for this object."""
+    return f"{symbols.coordinate_dofs}[{self._tdim * self._point + self._component}]"
+
+
+setattr(CoordinateDofComponent, "generate_c", cdc_generate_c)
