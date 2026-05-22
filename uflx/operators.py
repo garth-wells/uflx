@@ -29,6 +29,15 @@ class Grad(UnaryOperator):
         return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
 
 
+class ReferenceGrad(UnaryOperator):
+    """Gradient operator."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
+
+
 class Conj(UnaryOperator):
     """Complex conjugate operator."""
 

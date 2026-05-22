@@ -3,20 +3,29 @@
 import networkx as nx
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
-from uflx.finite_elements import EvaluatedReferenceBasisFunction, EvaluatedPhysicalBasisFunction
+from uflx.finite_elements import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractFunction, Argument
 from uflx.geometry import (
+    Jacobian,
     JacobianDeterminant,
-    ReferenceToPhysical,
     PhysicalToReference,
+    ReferenceToPhysical,
     SingleSpatialCoordinate,
     expand_geometry,
 )
-from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
+from uflx.graphs import (
+    Graph,
+    GraphNode,
+    RepresentedByGraph,
+    generate_graph,
+    is_dag,
+    reconstruct_node,
+)
 from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
+from uflx.operators import Grad, ReferenceGrad
 from uflx.points import Point, PointComponent
 from uflx.quadrature import (
     QuadratureLoop,
@@ -50,17 +59,35 @@ def pull_back_to_reference(
     graph: Graph,
 ) -> Graph:
     """Pull terms in integrals back to reference values."""
-    to_replace: dict[GraphNode, GraphNode] = {}
+    import networkx as nx
 
-    for node in graph:
-        if isinstance(node, EvaluatedPhysicalBasisFunction):
-            to_replace[node] = PushedForward(
+    node_map: dict[GraphNode, GraphNode] = {}
+    for node in reversed(list(nx.topological_sort(graph))):
+        if isinstance(node, Grad):
+            argument = node_map.get(node.argument, node.argument)
+            point = (
+                node.argument._point.reference_point
+                if isinstance(node.argument._point, ReferenceToPhysical)
+                else PhysicalToReference(node.argument._point)
+            )
+            node_map[node] = Jacobian(node.argument._point.domain, point) * ReferenceGrad(
+                argument.function if isinstance(argument, PushedForward) else PulledBack(argument)
+            )
+        elif isinstance(node, EvaluatedPhysicalBasisFunction):
+            node_map[node] = PushedForward(
                 node._element.map_type,
-                EvaluatedReferenceBasisFunction(node._element, node._basis_index,
-                    node._point.reference_point if isinstance(node._point, ReferenceToPhysical) else PhysicalToReference(node._point)
+                EvaluatedReferenceBasisFunction(
+                    node._element,
+                    node._basis_index,
+                    node._point.reference_point
+                    if isinstance(node._point, ReferenceToPhysical)
+                    else PhysicalToReference(node._point),
                 ),
             )
-    return replace(graph, to_replace)
+        elif any(a in node_map for a in node.successors):
+            node_map[node] = reconstruct_node(node, node_map)
+
+    return generate_graph(node_map.get(graph.root, graph.root))
 
 
 def integrals_to_quadrature(
@@ -126,7 +153,11 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 point = QuadraturePoint(rule, variables[a.component])
-                to_replace[a] = EvaluatedPhysicalBasisFunction(a.function_space.elements[0], qvariable, ReferenceToPhysical(point, a.function_space.domain))
+                to_replace[a] = EvaluatedPhysicalBasisFunction(
+                    a.function_space.elements[0],
+                    qvariable,
+                    ReferenceToPhysical(point, a.function_space.domain),
+                )
 
             domain = arguments[0].function_space.domain
             for a in arguments:

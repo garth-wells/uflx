@@ -40,10 +40,6 @@ class RealScalar(AbstractScalar):
         """The arguments used to initialise this object."""
         return (self.value,)
 
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.value}"
-
 
 class Integer(AbstractInteger):
     """A real scalar."""
@@ -65,7 +61,3 @@ class Integer(AbstractInteger):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (self.value,)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.value}"

@@ -7,6 +7,7 @@ from uflx.expressions import Abs, Add, Mult, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 from uflx.quadrature import QuadratureLoop
+from uflx.scalars import Integer, RealScalar
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.utils import indented
@@ -118,3 +119,12 @@ def cdc_generate_c(self) -> str:
 
 
 setattr(CoordinateDofComponent, "generate_c", cdc_generate_c)
+
+
+def scalar_generate_c(self) -> str:
+    """Generate code for this object."""
+    return f"{self.value}"
+
+
+setattr(RealScalar, "generate_c", scalar_generate_c)
+setattr(Integer, "generate_c", scalar_generate_c)

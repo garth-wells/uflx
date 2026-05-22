@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from networkx import DiGraph
+import networkx as nx
 
 
 def _print_tree(graph: Graph, node: GraphNode, prefix: str, is_last: bool):
@@ -25,7 +25,7 @@ def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
         _print_tree(graph, child, indent, i == len(successors) - 1)
 
 
-class Graph(DiGraph):
+class Graph(nx.DiGraph):
     """An acyclic directed graph."""
 
     _root: GraphNode | None
@@ -34,6 +34,7 @@ class Graph(DiGraph):
         """Initialise."""
         self._root = None
         super().__init__(*args, **kwargs)
+        assert nx.is_directed_acyclic_graph(self)
 
     @property
     def root(self) -> GraphNode:
