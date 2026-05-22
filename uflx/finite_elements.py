@@ -96,6 +96,10 @@ class AbstractFiniteElement(ABC):
     def __hash__(self):
         """Hash."""
 
+    def __repr__(self) -> str:
+        """Representation."""
+        return self.__class__.__name__
+
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     """Abstract base class for a reference-mapped finite element.

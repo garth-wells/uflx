@@ -14,3 +14,4 @@ def test_simple_form():
     form = inner(u, v) * dx
 
     print(form)
+    form.graph.print()

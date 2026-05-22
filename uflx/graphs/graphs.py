@@ -7,11 +7,22 @@ from typing import Any, Protocol, runtime_checkable
 from networkx import DiGraph
 
 
+def _print_tree(graph: Graph, node: GraphNode, prefix: str, is_last: bool):
+    connector = "└── " if is_last else "├── "
+    print(prefix + connector + repr(node))
+    successors = list(graph.successors(node))
+    extension = "    " if is_last else "│   "
+    for i, child in enumerate(successors):
+        _print_tree(graph, child, prefix + extension, i == len(successors) - 1)
+
+
 def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
     """Print a graph using the node as the root node."""
-    print(" " * (2 * indentation) + f"{node!r}")
-    for next in graph.successors(node):
-        print_node(graph, next, indentation + 1)
+    indent = "    " * indentation
+    print(indent + repr(node))
+    successors = list(graph.successors(node))
+    for i, child in enumerate(successors):
+        _print_tree(graph, child, indent, i == len(successors) - 1)
 
 
 class Graph(DiGraph):
