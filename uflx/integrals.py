@@ -70,6 +70,10 @@ class AbstractIntegral(ABC):
         """Hash."""
         return hash((hash(self.integrand), hash(self.measure)))
 
+    def __repr__(self) -> str:
+        """Representation."""
+        return self.__class__.__name__
+
 
 class Integral(AbstractIntegral):
     """An integral."""
@@ -108,6 +112,10 @@ class Measure(AbstractMeasure):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self._dim, self._codim, self._boundary_only
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"{self.__class__.__name__}{self._dim, self._codim}"
 
 
 dx = Measure(codim=0)
