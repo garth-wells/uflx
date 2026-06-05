@@ -95,7 +95,7 @@ class PointComponent(AbstractExpression):
     """A component of a point."""
 
     def __init__(self, point: AbstractPoint, component: int | str):
-        """Initalise."""
+        """Initialise."""
         self._point = point
         self._component = component
 

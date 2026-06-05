@@ -20,7 +20,7 @@ class ExpandableGeometry(Protocol):
 
 
 class SingleSpatialCoordinate(AbstractExpression):
-    """A variable represneting a component of R^d."""
+    """A variable representing a component of R^d."""
 
     def __init__(self, dimension: int, component: int):
         """Initialise."""
@@ -111,7 +111,7 @@ class ReferenceToPhysical(AbstractPoint):
         return self._point, self._domain
 
     def expand_geometry(self) -> GraphNode:
-        """Expand Geometry."""
+        """Expand geometry."""
         if len(self.domain.elements) != 1:
             raise NotImplementedError("Only domains with exactly on element supported for now.")
         (element,) = self.domain.elements
@@ -132,7 +132,7 @@ class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
 
     def __init__(self, domain, point):
-        """Initalise."""
+        """Initialise."""
         self.domain = domain
         self.point = point
 

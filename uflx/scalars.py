@@ -23,7 +23,7 @@ class RealScalar(AbstractScalar):
     """A real scalar."""
 
     def __init__(self, value: float):
-        """Initalise."""
+        """Initialise."""
         self.value = value
 
     def __repr__(self):
@@ -49,7 +49,7 @@ class Integer(AbstractInteger):
     """A real scalar."""
 
     def __init__(self, value: int):
-        """Initalise."""
+        """Initialise."""
         self.value = value
 
     def __repr__(self):
