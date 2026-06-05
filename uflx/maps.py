@@ -24,7 +24,7 @@ class AbstractReferenceMap(ABC):
 
 
 class IdentityReferenceMap(AbstractReferenceMap):
-    """Indentity map."""
+    """Identity map."""
 
     def push_forward_symbolic(self, function: AbstractExpression):
         """Map function values from a reference cell to a physical cell."""
@@ -47,7 +47,7 @@ class PushedForward(AbstractExpression):
     """A function on a reference cell that has been mapped to a physical cell."""
 
     def __init__(self, map: AbstractReferenceMap, function: AbstractExpression):
-        """Initalise."""
+        """Initialise."""
         self.map = map
         self.function = function
 

@@ -28,7 +28,7 @@ class QuadraturePoint(PointInSet):
     """A point in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
-        """Initalise."""
+        """Initialise."""
         self.rule = rule
         self._index = index
 
@@ -61,7 +61,7 @@ class QuadratureWeight(AbstractExpression):
     """A weight in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
-        """Initalise."""
+        """Initialise."""
         self.rule = rule
         self._index = index
 
@@ -94,7 +94,7 @@ class QuadratureLoop:
     """A loop over the points in a quadrature rule."""
 
     def __init__(self, body: GraphNode, rule: QuadratureRule, variable: str):
-        """Initalise."""
+        """Initialise."""
         self.body = body
         self.rule = rule
         self.variable = variable

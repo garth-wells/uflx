@@ -155,7 +155,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     def __init__(
         self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint
     ):
-        """Initalise."""
+        """Initialise."""
         self._element = element
         self._basis_index = basis_index
         self._point = point
@@ -218,7 +218,7 @@ class EvaluatedBasisFunctionDerivative(AbstractEvaluatedBasisFunction):
         point,
         derivative: tuple[int, ...],
     ):
-        """Initalise."""
+        """Initialise."""
         self._element = element
         self._basis_index = basis_index
         self._point = point
