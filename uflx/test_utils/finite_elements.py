@@ -76,7 +76,7 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         raise RuntimeError("Unsupported cell type")
 
     @property
-    def map_type(self) -> AbstractReferenceMap:
+    def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
         return IdentityReferenceMap()
 

@@ -118,7 +118,7 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
 
     @property
     @abstractmethod
-    def map_type(self) -> AbstractReferenceMap:
+    def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
 
 
