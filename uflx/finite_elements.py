@@ -25,28 +25,6 @@ from uflx.points import AbstractPoint, PointInSet
 from uflx.scalars import AbstractInteger
 
 
-class Dimension(AbstractInteger):
-    """The dimension of a finite element."""
-
-    def __init__(self, element: AbstractFiniteElement):
-        """Initialise."""
-        self._e = element
-
-    def element(self) -> AbstractFiniteElement:
-        """The finite element."""
-        return self._e
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return (self._e,)
-
-
 class AbstractFiniteElement(ABC):
     """Abstract base class for a finite element.
 
@@ -88,17 +66,17 @@ class AbstractFiniteElement(ABC):
         """
 
     @property
-    def dim(self) -> int | Dimension:
+    @abstractmethod
+    def dim(self) -> int | AbstractInteger:
         """The dimension of the finite element, ie the number of basis functions."""
-        return Dimension(self)
 
     @abstractmethod
     def __hash__(self):
         """Hash."""
 
+    @abstractmethod
     def __repr__(self) -> str:
         """Representation."""
-        return self.__class__.__name__
 
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):

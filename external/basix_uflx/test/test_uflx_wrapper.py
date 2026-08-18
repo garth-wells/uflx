@@ -197,7 +197,7 @@ def test_mixed_element_eq_hash(e1, e2):
 )
 def test_quadrature_element_eq_hash(cell_type, degree, pullback):
     e1 = basix_uflx.quadrature_element(
-        "triangle", scheme="default", degree=2, pullback=basix_uflx._ufl.identity_pullback
+        "triangle", scheme="default", degree=2, pullback=uflx.maps.IdentityReferenceMap(),
     )
     e2 = basix_uflx.quadrature_element(cell_type, scheme="default", degree=degree, pullback=pullback)
     assert (e1 == e2) == (hash(e1) == hash(e2))

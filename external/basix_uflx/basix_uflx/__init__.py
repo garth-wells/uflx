@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as _npt
 import uflx as _uflx
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement as _ARMFE
-from uflx.finite_elements import Dimension as _Dimension
+from uflx.scalars import AbstractInteger as _AbstractInteger
 
 import basix as _basix
 
@@ -93,54 +93,17 @@ class _ElementBase(_ARMFE):
         """String representation."""
         return self._repr
 
-    @abstractmethod
-    def __eq__(self, other) -> bool:
-        """Check if this element is equal to another element."""
-
     @property
     @abstractmethod
-    def cell(self) -> _uflx.entities.AbstractEntity:
-        """Return the cell that this element is defined on."""
-
-    @abstractmethod
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
-
-    @property
-    @abstractmethod
-    def lagrange_superdegree(self) -> int | None:
-        """Degree of the minimum degree Lagrange space that spans this element.
-
-        This returns the degree of the lowest degree Lagrange space such
-        that the polynomial space of the Lagrange space is a superspace
-        of this element's polynomial space. If this element contains
-        basis functions that are not in any Lagrange space, this
-        function should return None.
-
-        Note that on a simplex cells, the polynomial space of Lagrange
-        space is a complete polynomial space, but on other cells this is
-        not true. For example, on quadrilateral cells, the degree 1
-        Lagrange space includes the degree 2 polynomial xy.
-        """
-
-    @property
-    @abstractmethod
-    def dim(self) -> int | _Dimension:
+    def dim(self) -> int | _AbstractInteger:
         """The dimension of the finite element, ie the number of basis functions."""
-
-    @property
-    @abstractmethod
-    def reference_value_shape(self) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
-
-    @property
-    @abstractmethod
-    def reference_map(self) -> _uflx.maps.AbstractReferenceMap:
-        """Get the push forward and pull back map."""
 
     @abstractmethod
     def tabulate(self, points: np.ndarray, derivative: tuple[int, ...]) -> np.ndarray:
-        """Create table of basis function values."""
+        """Create table of basis function values.
+
+        TODO: document return shape
+        """
 
 
 class _BasixElement(_ElementBase):
