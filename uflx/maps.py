@@ -35,6 +35,28 @@ class IdentityReferenceMap(AbstractReferenceMap):
         return function
 
 
+class SymmetricReferenceMap(AbstractReferenceMap):
+    """Identity map."""
+
+    def __init__(
+        self,
+        component_map: AbstractReferenceMap,
+        shape: tuple[int, ...],
+        symmetry_map: dict[tuple[int, ...], int]
+    ):
+        self._component_map = component_map
+        self.shape = shape
+        self.symmetry_map = symmetry_map
+
+    def push_forward_symbolic(self, function: AbstractExpression):
+        """Map function values from a reference cell to a physical cell."""
+        return function  # TODO
+
+    def pull_back_symbolic(self, function: AbstractExpression):
+        """Map function values from a physical cell to a reference cell."""
+        return function  # TODO
+
+
 @runtime_checkable
 class IsPushedForward(Protocol):
     """An object that has been pushed forward."""

@@ -46,7 +46,7 @@ class AbstractFiniteElement(ABC):
 
     @abstractmethod
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
+        """Return the shape of the value space on a physical cell."""
 
     @property
     @abstractmethod

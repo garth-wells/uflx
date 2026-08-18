@@ -36,7 +36,7 @@ def test_finite_element(inputs):
 def test_vector_element(inputs):
     e = basix_uflx.element(*inputs, shape=(2,))
     table = e.tabulate(0, np.array([[0, 0]]))
-    assert table.shape == (1, 1, e.reference_value_size, e.dim)
+    assert table.shape == (1, 1, e.dim, e.reference_value_size)
 
 
 @pytest.mark.parametrize(
@@ -66,33 +66,9 @@ def test_tensor_element_hash(inputs):
     sym = basix_uflx.blocked_element(e, shape=(2, 2), symmetry=True)
     asym = basix_uflx.blocked_element(e, shape=(2, 2), symmetry=False)
     table = e.tabulate(0, np.array([[0, 0]], dtype=np.float64))
-    assert table.shape == (1, 1, e.dim)
+    assert table.shape == (1, 1, e.dim, 1)
     assert sym != asym
     assert hash(sym) != hash(asym)
-
-
-@pytest.mark.parametrize(
-    "elements",
-    [
-        [basix_uflx.element("Lagrange", "triangle", 1), basix_uflx.element("Bubble", "triangle", 3)],
-        [
-            basix_uflx.element("Lagrange", "quadrilateral", 1),
-            basix_uflx.element("Bubble", "quadrilateral", 2),
-        ],
-#        [
-#            basix_uflx.element("Lagrange", "quadrilateral", 1, shape=(2,)),
-#            basix_uflx.element("Bubble", "quadrilateral", 2, shape=(2,)),
-#        ],
-#        [
-#            basix_uflx.element("Lagrange", "quadrilateral", 1, shape=(2, 2)),
-#            basix_uflx.element("Bubble", "quadrilateral", 2, shape=(2, 2)),
-#        ],
-    ],
-)
-def test_enriched_element(elements):
-    e = basix_uflx.enriched_element(elements)
-    # Check that element is hashable
-    hash(e)
 
 
 @pytest.mark.parametrize(
