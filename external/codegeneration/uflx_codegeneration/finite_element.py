@@ -25,6 +25,9 @@ class FiniteElement(AbstractReferenceMappedFiniteElement):
 
     Note that this class inherits from UFLx's AbstractReferenceMappedFiniteElement,
     and so all the abstract methods from that class must be implemented too.
+    The return type of the property `lagrange_superdegree` that is defined in
+    this class differs from the return type of AbstractReferenceMappedFiniteElement:
+    this property cannot be None in order for code to be successfully generated.
     """
 
     @abstractmethod
@@ -48,4 +51,21 @@ class FiniteElement(AbstractReferenceMappedFiniteElement):
 
     def physical_value_size(self, geometric_dimension: int) -> int:
         """Return the value size of the value space on a physical cell."""
-        return product(self.physical_value_shape, geometric_dimension)
+        return product(self.physical_value_shape(geometric_dimension))
+
+    @property
+    @abstractmethod
+    def lagrange_superdegree(self) -> int:
+        """Degree of the minimum degree Lagrange space that spans this element.
+
+        This returns the degree of the lowest degree Lagrange space such
+        that the polynomial space of the Lagrange space is a superspace
+        of this element's polynomial space. If this element contains
+        basis functions that are not in any Lagrange space, this
+        function should return None.
+
+        Note that on a simplex cells, the polynomial space of Lagrange
+        space is a complete polynomial space, but on other cells this is
+        not true. For example, on quadrilateral cells, the degree 1
+        Lagrange space includes the degree 2 polynomial xy.
+        """

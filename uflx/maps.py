@@ -9,7 +9,6 @@ from typing import Any, Protocol, runtime_checkable
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
-from uflx.scalars import AbstractInteger
 
 
 class AbstractReferenceMap(ABC):
@@ -24,9 +23,7 @@ class AbstractReferenceMap(ABC):
         """Map function values from a physical cell to a reference cell."""
 
     @abstractmethod
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
 
 
@@ -41,9 +38,7 @@ class IdentityReferenceMap(AbstractReferenceMap):
         """Map function values from a physical cell to a reference cell."""
         return function
 
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
         return ()
 
@@ -68,9 +63,7 @@ class BlockedReferenceMap(AbstractReferenceMap):
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
         return self._shape
 
@@ -97,9 +90,7 @@ class SymmetricReferenceMap(AbstractReferenceMap):
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
         return self._shape
 
@@ -124,11 +115,9 @@ class MixedReferenceMap(AbstractReferenceMap):
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
-        shape = ()
+        shape: tuple[int, ...] = ()
         for s in self._shapes:
             shape += s
         return shape

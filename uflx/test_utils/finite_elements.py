@@ -5,7 +5,6 @@ import numpy as np
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
-from uflx.scalars import AbstractScalar
 from uflx.test_utils.domains import (
     Hexahedron,
     Interval,
@@ -54,17 +53,13 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
             return ()
         return self._block_shape
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
-        return ()
-
     @property
     def lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element."""
         return self._degree
 
     @property
-    def dim(self) -> int | AbstractScalar:
+    def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
         if isinstance(self._cell, Point):
             return 1

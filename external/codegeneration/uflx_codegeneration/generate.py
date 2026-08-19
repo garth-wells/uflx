@@ -109,7 +109,7 @@ def integrals_to_quadrature(
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 point = QuadraturePoint(rule, variables[a.component])
                 to_replace[a] = PushedForward(
-                    a.function_space.elements[0].map_type,
+                    a.function_space.elements[0].reference_map,
                     EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
                 )
 

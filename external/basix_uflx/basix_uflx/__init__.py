@@ -10,7 +10,6 @@ import numpy as np
 import numpy.typing as npt
 import uflx
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement as ARMFE
-from uflx.scalars import AbstractInteger
 from uflx_codegeneration import FiniteElement
 
 __all__ = [
@@ -62,7 +61,7 @@ class BasixCell(uflx.entities.AbstractEntity):
         Returns:
             A list of sub-entities of the given dimension.
         """
-        return basix.cell.subentity_types(self._basix_cell)[dim]
+        return [BasixCell(et) for et in basix.cell.subentity_types(self._basix_cell)[dim]]
 
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))
@@ -74,10 +73,10 @@ class BasixCell(uflx.entities.AbstractEntity):
         return f"{self!r}"
 
 
-def hash_data(data: Sequence[np.floating] | np.floating):
+def hash_data(data: Sequence[np.floating] | npt.ArrayLike):
     """Return a hash of an array of floating point numbers."""
 
-    def hash_data_inner(data: Sequence[np.floating] | np.floating):
+    def hash_data_inner(data: Sequence[np.floating] | np.floating | npt.ArrayLike):
         """Represent an array as a string, ready for hashing."""
         try:
             return ",".join(hash_data_inner(i) for i in data)  # type: ignore
@@ -112,8 +111,8 @@ class BasixElement(FiniteElement):
                 f"{self._element.value_shape}, {self._element.map_type.name}, "
                 f"{self._element.discontinuous}, {self._element.embedded_subdegree}, "
                 f"{self._element.embedded_superdegree}, {self._element.dtype}, "
-                f"{self._element.dof_ordering}, {hash_data(self._element.wcoeffs)}, "
-                f"{hash_data(self._element.x)}, {hash_data(self._element.M)}"
+                f"{self._element.dof_ordering}, {hash_data(self._element.wcoeffs)}, "  # type: ignore
+                f"{hash_data(self._element.x)}, {hash_data(self._element.M)}"  # type: ignore
             )
         else:
             return (
@@ -135,12 +134,15 @@ class BasixElement(FiniteElement):
         return BasixCell(self._element.cell_type)
 
     @property
-    def dim(self) -> int | AbstractInteger:
+    def dim(self) -> int:
         return self._element.dim
 
     @property
     def lagrange_superdegree(self) -> int:
-        return self._element.embedded_superdegree
+        d = self._element.embedded_superdegree
+        if d is None:
+            raise ValueError("Element does not have a well-defined Lagrange superdegree")
+        return d
 
     @property
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
@@ -151,7 +153,7 @@ class BasixElement(FiniteElement):
         return tuple(self._element.value_shape)
 
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
-        return self._element.tabulate(derivatives, points)
+        return np.asarray(self._element.tabulate(derivatives, np.asarray(points)))
 
 
 class MixedElement(FiniteElement):
@@ -198,12 +200,12 @@ class MixedElement(FiniteElement):
         return self._sub_elements[0].cell
 
     @property
-    def dim(self) -> int | AbstractInteger:
+    def dim(self) -> int:
         return sum(e.dim for e in self._sub_elements)
 
     @property
     def lagrange_superdegree(self) -> int:
-        return max(e.lagrange_superdegree for e in self._sub_elements)
+        return max([e.lagrange_superdegree for e in self._sub_elements], default=0)
 
     @property
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
@@ -305,12 +307,12 @@ class BlockedElement(FiniteElement):
         return self._sub_element.cell
 
     @property
-    def dim(self) -> int | AbstractInteger:
+    def dim(self) -> int:
         return self._sub_element.dim * self._block_size
 
     @property
     def lagrange_superdegree(self) -> int:
-        return self._sub_element.embedded_superdegree
+        return self._sub_element.lagrange_superdegree
 
     @property
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
@@ -353,9 +355,7 @@ class QuadratureElement(FiniteElement):
         self._weights = weights.astype(dtype)
         self._cell_type = cell
         self._reference_map = reference_map
-
-        if degree is None:
-            degree = len(points)
+        self._degree = len(points) if degree is None else degree
 
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))
@@ -389,7 +389,7 @@ class QuadratureElement(FiniteElement):
 
     @property
     def lagrange_superdegree(self) -> int:
-        return self.degree  # TODO: this is not right
+        return self._degree  # TODO: this is not right
 
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
@@ -399,10 +399,11 @@ class QuadratureElement(FiniteElement):
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
         return self._reference_map
 
-    def tabulate(self, nderivs: int, points: npt.NDArray[np.floating]) -> npt.ArrayLike:
+    def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
         if nderivs > 0:
             raise ValueError("Cannot take derivatives of Quadrature element.")
 
+        points = np.asarray(points)
         if points.shape != self._points.shape or not np.allclose(points, self._points):
             raise ValueError("Mismatch of tabulation points and element points.")
         npts = points.shape[0]
@@ -459,7 +460,7 @@ class RealElement(FiniteElement):
     def reference_value_shape(self) -> tuple[int, ...]:
         return self._value_shape
 
-    def tabulate(self, nderivs: int, points: npt.NDArray[np.floating]) -> npt.ArrayLike:
+    def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
         table = np.zeros([number_of_derivatives(nderivs, self._cell_type)])
         table[0, :, :, :] = 1.0
         return table
@@ -598,9 +599,9 @@ def custom_element(
     e = basix.create_custom_element(
         cell_type,
         tuple(reference_value_shape),
-        np.array(wcoeffs),
-        [[np.array(j) for j in i] for i in x],
-        [[np.array(j) for j in i] for i in M],
+        np.asarray(wcoeffs),
+        [[np.asarray(j) for j in i] for i in x],
+        [[np.asarray(j) for j in i] for i in M],
         interpolation_nderivs,
         map_type,
         sobolev_space,
@@ -630,11 +631,11 @@ def quadrature_element(
     value_shape: Sequence[int] = (),
     scheme: str | None = None,
     degree: int | None = None,
-    points: npt.NDArray[np.floating] | None = None,
-    weights: npt.NDArray[np.floating] | None = None,
+    points: npt.ArrayLike | None = None,
+    weights: npt.ArrayLike | None = None,
     reference_map: uflx.maps.AbstractReferenceMap | None = None,
     symmetry: bool | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: npt.DTypeLike = np.float64,
 ) -> FiniteElement:
     """Create a quadrature element.
 
@@ -660,11 +661,11 @@ def quadrature_element(
         cell = basix.CellType[cell]
 
     if reference_map is None:
-        if value_shape == ():
+        if tuple(value_shape) == ():
             reference_map = uflx.maps.IdentityReferenceMap()
         else:
             reference_map = uflx.maps.BlockedReferenceMap(
-                uflx.maps.IdentityReferenceMap(), value_shape
+                uflx.maps.IdentityReferenceMap(), tuple(value_shape)
             )
 
     if points is None:
@@ -680,7 +681,9 @@ def quadrature_element(
     assert points is not None
     assert weights is not None
 
-    e = QuadratureElement(cell, points, weights, reference_map, degree, dtype=dtype)
+    e = QuadratureElement(
+        cell, np.asarray(points), np.asarray(weights), reference_map, degree, dtype=dtype
+    )
     if tuple(value_shape) == ():
         if symmetry is not None:
             raise ValueError("Cannot pass a symmetry argument to this element.")
@@ -729,7 +732,7 @@ def blocked_element(
     if len(sub_element.reference_value_shape) != 0:
         raise ValueError("Cannot create a blocked element containing a non-scalar element.")
 
-    return BlockedElement(sub_element, shape=shape, symmetry=symmetry)
+    return BlockedElement(sub_element, shape=tuple(shape), symmetry=symmetry)
 
 
 def wrap_element(element: basix.finite_element.FiniteElement) -> FiniteElement:

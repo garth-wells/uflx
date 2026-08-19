@@ -22,7 +22,6 @@ from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
 from uflx.points import AbstractPoint, PointInSet
-from uflx.scalars import AbstractInteger
 
 
 class AbstractFiniteElement(ABC):
@@ -45,9 +44,7 @@ class AbstractFiniteElement(ABC):
         """Return the cell that this element is defined on."""
 
     @abstractmethod
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""
 
     @property
@@ -69,7 +66,7 @@ class AbstractFiniteElement(ABC):
 
     @property
     @abstractmethod
-    def dim(self) -> int | AbstractInteger:
+    def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
 
     @abstractmethod
@@ -101,9 +98,7 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
 
-    def physical_value_shape(
-        self, geometric_dimension: int | AbstractInteger
-    ) -> tuple[int | AbstractInteger, ...]:
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""
         return self.reference_map.physical_value_shape(geometric_dimension)
 
