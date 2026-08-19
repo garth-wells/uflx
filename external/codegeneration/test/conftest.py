@@ -220,7 +220,7 @@ def lagrange_element():
     def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
         match cell_name:
             case "point":
-                cell = Point()
+                cell: AbstractEntity = Point()
             case "interval":
                 cell = Interval()
             case "triangle":
