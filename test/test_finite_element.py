@@ -10,7 +10,7 @@ import pytest
 
 def test_lagrange_element(entity, lagrange_element):
     """Test Lagrange element properties."""
-    element = lagrange_element(entity, 2)
+    element = lagrange_element(entity.name, 2)
 
     assert element.cell == entity
     assert element.reference_value_shape == ()

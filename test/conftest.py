@@ -11,6 +11,11 @@ from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 class Point(AbstractEntity):
     """A point."""
 
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "point"
+
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
         return isinstance(other, Point)
@@ -35,6 +40,11 @@ class Point(AbstractEntity):
 
 class Interval(AbstractEntity):
     """An interval."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "interval"
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
@@ -62,6 +72,11 @@ class Interval(AbstractEntity):
 
 class Triangle(AbstractEntity):
     """A triangle cell."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "triangle"
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
@@ -92,6 +107,11 @@ class Triangle(AbstractEntity):
 class Quadrilateral(AbstractEntity):
     """A quadrilateral."""
 
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "quadrilateral"
+
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
         return isinstance(other, Quadrilateral)
@@ -120,6 +140,11 @@ class Quadrilateral(AbstractEntity):
 
 class Tetrahedron(AbstractEntity):
     """A tetrahedron."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "tetrahedron"
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
@@ -152,6 +177,11 @@ class Tetrahedron(AbstractEntity):
 class Hexahedron(AbstractEntity):
     """A hexahedron."""
 
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "hexahedron"
+
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
         return isinstance(other, Hexahedron)
@@ -178,36 +208,6 @@ class Hexahedron(AbstractEntity):
     def __hash__(self):
         """Hash."""
         return hash("uflx.test.Hexahedron")
-
-
-@pytest.fixture
-def point():
-    return Point()
-
-
-@pytest.fixture
-def interval():
-    return Interval()
-
-
-@pytest.fixture
-def triangle():
-    return Triangle()
-
-
-@pytest.fixture
-def quadrilateral():
-    return Quadrilateral()
-
-
-@pytest.fixture
-def tetrahedron():
-    return Tetrahedron()
-
-
-@pytest.fixture
-def hexahedron():
-    return Hexahedron()
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
@@ -368,7 +368,22 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
 
 @pytest.fixture
 def lagrange_element():
-    def create(cell: AbstractEntity, degree: int, block_shape: tuple[int, ...] | None = None):
+    def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
+        match cell_name:
+            case "point":
+                cell = Point()
+            case "interval":
+                cell = Interval()
+            case "triangle":
+                cell = Triangle()
+            case "quadrilateral":
+                cell = Quadrilateral()
+            case "tetrahedron":
+                cell = Tetrahedron()
+            case "hexahedron":
+                cell = Hexahedron()
+            case _:
+                raise ValueError(f"Invalid cell: {cell_name}")
         return LagrangeElement(cell, degree, block_shape)
     return create
 

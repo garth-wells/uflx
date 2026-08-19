@@ -20,25 +20,24 @@ from uflx import coordinate_element, function_space
         ("tetrahedron", 3),
     ],
 )
-def test_function_space(cell_name, gdim, lagrange_element, triangle, quadrilateral, tetrahedron):
+def test_function_space(cell_name, gdim, lagrange_element):
     """Test function space with single cell."""
-    cell = {"triangle": triangle, "quadrilateral": quadrilateral, "tetrahedron": tetrahedron}[cell_name]
-    domain = coordinate_element(lagrange_element(cell, 1, (3,)))
-    space = function_space(domain, lagrange_element(cell, 1))
+    domain = coordinate_element(lagrange_element(cell_name, 1, (3,)))
+    space = function_space(domain, lagrange_element(cell_name, 1))
     assert len(space.elements) == len(space.domain.cells) == 1
 
 
 @pytest.mark.parametrize("gdim", [2, 3])
-def test_function_space_multiple_cells(gdim, lagrange_element, triangle, quadrilateral):
+def test_function_space_multiple_cells(gdim, lagrange_element):
     """Test function space with multiple cells."""
     domain = coordinate_element(
         [
-            lagrange_element(triangle, 1, (3,)),
-            lagrange_element(quadrilateral, 1, (3,)),
+            lagrange_element("triangle", 1, (3,)),
+            lagrange_element("quadrilateral", 1, (3,)),
         ]
     )
     space = function_space(
         domain,
-        [lagrange_element(triangle, 2), lagrange_element(quadrilateral, 2)],
+        [lagrange_element("triangle", 2), lagrange_element("quadrilateral", 2)],
     )
     assert len(space.elements) == len(space.domain.cells) == 2
