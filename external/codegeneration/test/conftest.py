@@ -1,11 +1,72 @@
 """Implmentations of domains."""
 
-import pytest
 import numpy as np
-
+import pytest
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
+
+
+class Point(AbstractEntity):
+    """A point."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "point"
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Point)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 0
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Point")
+
+
+class Interval(AbstractEntity):
+    """An interval."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "interval"
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Interval)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 1
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(2)]
+            case 1:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Interval")
 
 
 class Triangle(AbstractEntity):
@@ -88,6 +149,10 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
     @property
     def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
+        if isinstance(self._cell, Point):
+            return 1
+        if isinstance(self._cell, Interval):
+            return self._degree + 1
         if isinstance(self._cell, Triangle):
             return (self._degree + 1) * (self._degree + 2) // 2
         raise RuntimeError("Unsupported cell type")
@@ -150,11 +215,18 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
 
 @pytest.fixture
 def lagrange_element():
+    """Create a Lagrange element."""
+
     def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
         match cell_name:
+            case "point":
+                cell = Point()
+            case "interval":
+                cell = Interval()
             case "triangle":
                 cell = Triangle()
             case _:
                 raise ValueError(f"Invalid cell: {cell_name}")
         return LagrangeElement(cell, degree, block_shape)
+
     return create

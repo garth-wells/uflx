@@ -5,8 +5,6 @@
 # SPDX-License-Identifier:    MIT
 """Test finite elements."""
 
-import pytest
-
 
 def test_lagrange_element(entity, lagrange_element):
     """Test Lagrange element properties."""

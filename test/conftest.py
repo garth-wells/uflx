@@ -1,7 +1,6 @@
 """Implmentations of domains."""
 
 import pytest
-import numpy as np
 
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
@@ -282,6 +281,8 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
 
 @pytest.fixture
 def lagrange_element():
+    """Create a Lagrange element."""
+
     def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
         match cell_name:
             case "point":
@@ -299,23 +300,31 @@ def lagrange_element():
             case _:
                 raise ValueError(f"Invalid cell: {cell_name}")
         return LagrangeElement(cell, degree, block_shape)
+
     return create
 
 
 def pytest_generate_tests(metafunc):
+    """Generate tests."""
     if "entity" in metafunc.fixturenames:
-        metafunc.parametrize("entity", [
-            pytest.param(Point(), id="point"),
-            pytest.param(Interval(), id="interval"),
-            pytest.param(Triangle(), id="triangle"),
-            pytest.param(Quadrilateral(), id="quadrilateral"),
-            pytest.param(Tetrahedron(), id="tetrahedron"),
-            pytest.param(Hexahedron(), id="hexahedron"),
-        ])
+        metafunc.parametrize(
+            "entity",
+            [
+                pytest.param(Point(), id="point"),
+                pytest.param(Interval(), id="interval"),
+                pytest.param(Triangle(), id="triangle"),
+                pytest.param(Quadrilateral(), id="quadrilateral"),
+                pytest.param(Tetrahedron(), id="tetrahedron"),
+                pytest.param(Hexahedron(), id="hexahedron"),
+            ],
+        )
     if "simplex" in metafunc.fixturenames:
-        metafunc.parametrize("simplex", [
-            pytest.param(Point(), id="point"),
-            pytest.param(Interval(), id="interval"),
-            pytest.param(Triangle(), id="triangle"),
-            pytest.param(Tetrahedron(), id="tetrahedron"),
-        ])
+        metafunc.parametrize(
+            "simplex",
+            [
+                pytest.param(Point(), id="point"),
+                pytest.param(Interval(), id="interval"),
+                pytest.param(Triangle(), id="triangle"),
+                pytest.param(Tetrahedron(), id="tetrahedron"),
+            ],
+        )
