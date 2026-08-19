@@ -1,18 +1,213 @@
-"""Implmentations of finite elements."""
+"""Implmentations of domains."""
 
+import pytest
 import numpy as np
 
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
-from uflx.test_utils.domains import (
-    Hexahedron,
-    Interval,
-    Point,
-    Quadrilateral,
-    Tetrahedron,
-    Triangle,
-)
+
+
+class Point(AbstractEntity):
+    """A point."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Point)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 0
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Point")
+
+
+class Interval(AbstractEntity):
+    """An interval."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Interval)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 1
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(2)]
+            case 1:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Interval")
+
+
+class Triangle(AbstractEntity):
+    """A triangle cell."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Triangle)
+
+    @property
+    def topological_dimension(self) -> int:
+        """Topological dimension of the cell."""
+        return 2
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(3)]
+            case 1:
+                return [Interval() for _ in range(3)]
+            case 2:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Triangle")
+
+
+class Quadrilateral(AbstractEntity):
+    """A quadrilateral."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Quadrilateral)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 2
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(4)]
+            case 1:
+                return [Interval() for _ in range(4)]
+            case 2:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Quadrilateral")
+
+
+class Tetrahedron(AbstractEntity):
+    """A tetrahedron."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Tetrahedron)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 3
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(4)]
+            case 1:
+                return [Interval() for _ in range(6)]
+            case 2:
+                return [Triangle() for _ in range(4)]
+            case 3:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Tetrahedron")
+
+
+class Hexahedron(AbstractEntity):
+    """A hexahedron."""
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Hexahedron)
+
+    @property
+    def topological_dimension(self) -> int:
+        """Topological dimension of the cell."""
+        return 3
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(8)]
+            case 1:
+                return [Interval() for _ in range(12)]
+            case 2:
+                return [Quadrilateral() for _ in range(6)]
+            case 3:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Hexahedron")
+
+
+@pytest.fixture
+def point():
+    return Point()
+
+
+@pytest.fixture
+def interval():
+    return Interval()
+
+
+@pytest.fixture
+def triangle():
+    return Triangle()
+
+
+@pytest.fixture
+def quadrilateral():
+    return Quadrilateral()
+
+
+@pytest.fixture
+def tetrahedron():
+    return Tetrahedron()
+
+
+@pytest.fixture
+def hexahedron():
+    return Hexahedron()
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
@@ -169,3 +364,29 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
                     return np.array([[x - 1, -x, 1 - x, x] for (x, y) in points])
 
         raise NotImplementedError
+
+
+@pytest.fixture
+def lagrange_element():
+    def create(cell: AbstractEntity, degree: int, block_shape: tuple[int, ...] | None = None):
+        return LagrangeElement(cell, degree, block_shape)
+    return create
+
+
+def pytest_generate_tests(metafunc):
+    if "entity" in metafunc.fixturenames:
+        metafunc.parametrize("entity", [
+            pytest.param(Point(), id="point"),
+            pytest.param(Interval(), id="interval"),
+            pytest.param(Triangle(), id="triangle"),
+            pytest.param(Quadrilateral(), id="quadrilateral"),
+            pytest.param(Tetrahedron(), id="tetrahedron"),
+            pytest.param(Hexahedron(), id="hexahedron"),
+        ])
+    if "simplex" in metafunc.fixturenames:
+        metafunc.parametrize("simplex", [
+            pytest.param(Point(), id="point"),
+            pytest.param(Interval(), id="interval"),
+            pytest.param(Triangle(), id="triangle"),
+            pytest.param(Tetrahedron(), id="tetrahedron"),
+        ])
