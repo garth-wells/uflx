@@ -15,7 +15,6 @@ from uflx import (
     grad,
     inner,
 )
-from uflx.test_utils import LagrangeElement, triangle
 
 import uflx_codegeneration
 
@@ -24,10 +23,10 @@ if not os.path.isdir(code_dir):
     os.mkdir(code_dir)
 
 
-def test_mass_matrix():
+def test_mass_matrix(lagrange_element):
     """Test code generation for a mass matrix."""
-    element = LagrangeElement(triangle, 1)
-    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
+    element = lagrange_element("triangle", 1)
+    space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(u, v) * dx
@@ -99,10 +98,10 @@ def test_mass_matrix():
 
 
 @pytest.mark.xfail
-def test_stiffness_matrix():
+def test_stiffness_matrix(lagrange_element):
     """Test code generation for a stiffness matrix."""
-    element = LagrangeElement(triangle, 1)
-    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
+    element = lagrange_element("triangle", 1)
+    space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
@@ -173,10 +172,10 @@ def test_stiffness_matrix():
         assert np.allclose(mat, expected_mat)
 
 
-def test_linear_form():
+def test_linear_form(lagrange_element):
     """Test code generation for a mass matrix."""
-    element = LagrangeElement(triangle, 1)
-    space = function_space(coordinate_element(LagrangeElement(triangle, 1, (2,))), element)
+    element = lagrange_element("triangle", 1)
+    space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
     v = TestFunction(space)
     x = SpatialCoordinate(2)
     form = x[0] * v * dx
