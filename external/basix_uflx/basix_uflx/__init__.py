@@ -337,6 +337,48 @@ class QuadratureElement(FiniteElement):
     def __str__(self):
         return f"{self!r}"
 
+    def __eq__(self, other) -> bool:
+        return isinstance(other, _QuadratureElement) and (
+            self._cell_type == other._cell_type
+            and self._pullback == other._pullback
+            and self._points.shape == other._points.shape
+            and self._weights.shape == other._weights.shape
+            and np.allclose(self._points, other._points)
+            and np.allclose(self._weights, other._weights)
+        )
+
+    @property
+    def cell(self) -> uflx.entities.AbstractEntity:
+        return BasixCell(self._cell_type)
+
+    @property
+    def dim(self) -> int:
+        return self._points.shape[0]
+
+    @property
+    def lagrange_superdegree(self) -> int:
+        return self.degree  # TODO: this is not right
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        return ()
+
+    @property
+    def reference_value_shape(self) -> tuple[int, ...]:
+        return ()
+
+    @property
+    def reference_map(self) -> uflx.maps.AbstractReferenceMap:
+        return self._reference_map
+
+    def tabulate(self, nderivs: int, points: _npt.NDArray[np.floating]) -> _npt.ArrayLike:
+        if nderivs > 0:
+            raise ValueError("Cannot take derivatives of Quadrature element.")
+
+        if points.shape != self._points.shape or not np.allclose(points, self._points):
+            raise ValueError("Mismatch of tabulation points and element points.")
+        npts = points.shape[0]
+        tables = np.eye(npts, npts).reshape([1, npts, npts, 1])
+        return tables
 
 
 class RealElement(FiniteElement):
