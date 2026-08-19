@@ -58,9 +58,11 @@ A function space defines a finite-dimensional space of functions. There are thre
 
 Examples:
 ```python
-V = FunctionSpace(domain=domain, element=element)                      # standard finite-element space
-C = FunctionSpace(shape=(2,), scalar_type="real")                      # constant function space
-N = FunctionSpace(domain=domain, shape=(2,), scalar_type="real")       # non-finite-element function space
+V = FunctionSpace(domain=domain, element=element)  # standard finite-element space
+C = FunctionSpace(shape=(2,), scalar_type="real")  # constant function space
+N = FunctionSpace(
+    domain=domain, shape=(2,), scalar_type="real"
+)  # non-finite-element function space
 ```
 
 In older UFL examples, `Argument` and `Coefficient` are sometimes created directly from an element. This is not allowed.

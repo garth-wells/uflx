@@ -3,7 +3,7 @@
 import numpy as np
 
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 from uflx.test_utils.domains import (
     Hexahedron,
@@ -25,6 +25,10 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         self._cell = cell
         self._degree = degree
         self._block_shape = block_shape
+
+    def __repr__(self):
+        """Representation."""
+        return f"uflx.test.LagrangeElement({self._cell!r}, {self._degree}, self._block_shape)"
 
     def __eq__(self, other) -> bool:
         """Check if this element is equal to another element."""
@@ -49,17 +53,13 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
             return ()
         return self._block_shape
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
-        return ()
-
     @property
     def lagrange_superdegree(self) -> int | None:
         """Degree of the minimum degree Lagrange space that spans this element."""
         return self._degree
 
     @property
-    def dim(self) -> int | Dimension:
+    def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
         if isinstance(self._cell, Point):
             return 1
@@ -76,7 +76,7 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         raise RuntimeError("Unsupported cell type")
 
     @property
-    def map_type(self) -> AbstractReferenceMap:
+    def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
         return IdentityReferenceMap()
 

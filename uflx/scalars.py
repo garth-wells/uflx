@@ -46,7 +46,7 @@ class RealScalar(AbstractScalar):
 
 
 class Integer(AbstractInteger):
-    """A real scalar."""
+    """An integer."""
 
     def __init__(self, value: int):
         """Initialise."""

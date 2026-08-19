@@ -22,29 +22,6 @@ from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
 from uflx.points import AbstractPoint, PointInSet
-from uflx.scalars import AbstractInteger
-
-
-class Dimension(AbstractInteger):
-    """The dimension of a finite element."""
-
-    def __init__(self, element: AbstractFiniteElement):
-        """Initialise."""
-        self._e = element
-
-    def element(self) -> AbstractFiniteElement:
-        """The finite element."""
-        return self._e
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return (self._e,)
 
 
 class AbstractFiniteElement(ABC):
@@ -68,7 +45,7 @@ class AbstractFiniteElement(ABC):
 
     @abstractmethod
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        """Return the shape of the value space on the reference cell."""
+        """Return the shape of the value space on a physical cell."""
 
     @property
     @abstractmethod
@@ -88,17 +65,17 @@ class AbstractFiniteElement(ABC):
         """
 
     @property
-    def dim(self) -> int | Dimension:
+    @abstractmethod
+    def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
-        return Dimension(self)
 
     @abstractmethod
     def __hash__(self):
         """Hash."""
 
+    @abstractmethod
     def __repr__(self) -> str:
         """Representation."""
-        return self.__class__.__name__
 
 
 class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
@@ -118,8 +95,12 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
 
     @property
     @abstractmethod
-    def map_type(self) -> AbstractReferenceMap:
+    def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Return the shape of the value space on a physical cell."""
+        return self.reference_map.physical_value_shape(geometric_dimension)
 
 
 @runtime_checkable

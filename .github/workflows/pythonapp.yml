@@ -37,7 +37,7 @@ jobs:
       - name: MyPy check
         run: |
           pip install mypy
-          mypy uflx
+          mypy .
 
   build:
     name: Build and test
@@ -63,8 +63,9 @@ jobs:
       - name: Install external libraries
         run: |
           pip -v install external/codegeneration
+          pip -v install external/basix_uflx
       - name: Run units tests
-        run: pytest -n auto --durations 20 external/test/
+        run: pytest -n auto --durations 20 external/*/test/
 
       - name: Build doc
         working-directory: ./doc

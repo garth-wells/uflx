@@ -43,6 +43,17 @@ class AbstractEntity(ABC):
             A list of sub-entities of the given dimension.
         """
 
+    def sub_entity_count(self, dim: int) -> int:
+        """Get the number of sub-entities of a given dimension.
+
+        Args:
+            dim: Dimension of the sub-entities to get.
+
+        Returns:
+            The number of sub-entities of the given dimension.
+        """
+        return len(self.sub_entities(dim))
+
     @abstractmethod
     def __hash__(self):
         """Hash."""
