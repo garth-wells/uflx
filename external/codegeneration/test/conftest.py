@@ -1,18 +1,106 @@
-"""Implmentations of finite elements."""
+"""Implmentations of domains."""
 
 import numpy as np
-
+import pytest
 from uflx.entities import AbstractEntity
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
-from uflx.test_utils.domains import (
-    Hexahedron,
-    Interval,
-    Point,
-    Quadrilateral,
-    Tetrahedron,
-    Triangle,
-)
+
+
+class Point(AbstractEntity):
+    """A point."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "point"
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Point)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 0
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Point")
+
+
+class Interval(AbstractEntity):
+    """An interval."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "interval"
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Interval)
+
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return 1
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(2)]
+            case 1:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Interval")
+
+
+class Triangle(AbstractEntity):
+    """A triangle cell."""
+
+    @property
+    def name(self) -> str:
+        """Name of this entity."""
+        return "triangle"
+
+    def __eq__(self, other) -> bool:
+        """Check if this cell is equal to another cell."""
+        return isinstance(other, Triangle)
+
+    @property
+    def topological_dimension(self) -> int:
+        """Topological dimension of the cell."""
+        return 2
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        match dim:
+            case 0:
+                return [Point() for _ in range(3)]
+            case 1:
+                return [Interval() for _ in range(3)]
+            case 2:
+                return [self]
+            case _:
+                raise ValueError(f"Invalid dimension: {dim}")
+
+    def __hash__(self):
+        """Hash."""
+        return hash("uflx.test.Triangle")
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):
@@ -67,12 +155,6 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
             return self._degree + 1
         if isinstance(self._cell, Triangle):
             return (self._degree + 1) * (self._degree + 2) // 2
-        if isinstance(self._cell, Quadrilateral):
-            return (self._degree + 1) ** 2
-        if isinstance(self._cell, Tetrahedron):
-            return (self._degree + 1) * (self._degree + 2) * (self._degree + 3) // 6
-        if isinstance(self._cell, Hexahedron):
-            return (self._degree + 1) ** 3
         raise RuntimeError("Unsupported cell type")
 
     @property
@@ -86,31 +168,6 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
 
     def tabulate(self, points: np.ndarray, derivative: tuple[int, ...]) -> np.ndarray:
         """Create table of basis function values."""
-        if isinstance(self._cell, Point):
-            return np.array([[1.0] for () in points])
-
-        if isinstance(self._cell, Interval):
-            if self._degree == 0:
-                if derivative == (0,):
-                    return np.array([[1] for (x,) in points])
-                return np.array([[0] for (x,) in points])
-            if self._degree == 1:
-                if derivative == (0,):
-                    return np.array([[1 - x, x] for (x,) in points])
-                if derivative == (1,):
-                    return np.array([[-1, 1] for (x,) in points])
-                return np.array([[0, 0] for (x,) in points])
-            if self._degree == 2:
-                if derivative == (0,):
-                    return np.array(
-                        [
-                            [(2 * x - 1) * (x - 1), x * (2 * x - 1), 4 * x * (1 - x)]
-                            for (x,) in points
-                        ]
-                    )
-                if derivative == (1,):
-                    return np.array([[4 * x - 3, 4 * x - 1, 4 - 8 * x] for (x,) in points])
-
         if isinstance(self._cell, Triangle):
             if self._degree == 0:
                 if derivative == (0, 0):
@@ -153,19 +210,23 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
                         ]
                     )
 
-        if isinstance(self._cell, Quadrilateral):
-            if self._degree == 0:
-                if derivative == (0, 0):
-                    return np.array([[1] for (x, y) in points])
-                return np.array([[0] for (x, y) in points])
-            if self._degree == 1:
-                if derivative == (0, 0):
-                    return np.array(
-                        [[(1 - x) * (1 - y), x * (1 - y), (1 - x) * y, x * y] for (x, y) in points]
-                    )
-                if derivative == (1, 0):
-                    return np.array([[y - 1, 1 - y, -y, y] for (x, y) in points])
-                if derivative == (0, 1):
-                    return np.array([[x - 1, -x, 1 - x, x] for (x, y) in points])
-
         raise NotImplementedError
+
+
+@pytest.fixture
+def lagrange_element():
+    """Create a Lagrange element."""
+
+    def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
+        match cell_name:
+            case "point":
+                cell: AbstractEntity = Point()
+            case "interval":
+                cell = Interval()
+            case "triangle":
+                cell = Triangle()
+            case _:
+                raise ValueError(f"Invalid cell: {cell_name}")
+        return LagrangeElement(cell, degree, block_shape)
+
+    return create

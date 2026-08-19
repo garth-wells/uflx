@@ -5,20 +5,7 @@
 # SPDX-License-Identifier:    MIT
 """Test entities."""
 
-import pytest
 
-from uflx.test_utils import interval, point, tetrahedron, triangle
-
-
-@pytest.mark.parametrize(
-    "entity",
-    [
-        point,
-        interval,
-        triangle,
-        tetrahedron,
-    ],
-)
 def test_euler_characteristic(entity):
     """Test Euler characteristic of entity."""
     match entity.topological_dimension:

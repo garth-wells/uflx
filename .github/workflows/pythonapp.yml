@@ -37,7 +37,9 @@ jobs:
       - name: MyPy check
         run: |
           pip install mypy
-          mypy .
+          mypy . --exclude external
+          mypy external/codegeneration
+          mypy external/basix_uflx
 
   build:
     name: Build and test
