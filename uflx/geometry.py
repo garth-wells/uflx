@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
-from uflx.finite_elements import EvaluatedBasisFunction, EvaluatedBasisFunctionDerivative
+from uflx.finite_elements import EvaluatedBasisFunction
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point
@@ -171,17 +171,17 @@ class JacobianDeterminant(AbstractExpression):
 
             assert isinstance(element.dim, int)
             for i in range(element.dim):
-                j00 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunctionDerivative(
-                    element, i, self.point, (1, 0)
+                j00 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(1, 0)
                 )
-                j01 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunctionDerivative(
-                    element, i, self.point, (0, 1)
+                j01 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(0, 1)
                 )
-                j10 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunctionDerivative(
-                    element, i, self.point, (1, 0)
+                j10 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(1, 0)
                 )
-                j11 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunctionDerivative(
-                    element, i, self.point, (0, 1)
+                j11 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(0, 1)
                 )
 
             return j00 * j11 - j01 * j10

@@ -4,7 +4,7 @@ from abc import abstractmethod
 from collections.abc import Hashable
 from typing import Any
 
-import numpy as np
+import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -62,7 +62,7 @@ class PointInSet(AbstractPoint):
 
     @property
     @abstractmethod
-    def points(self) -> np.ndarray:
+    def points(self) -> npt.NDArray[np.floating]:
         """Get all the points in the set."""
 
     @property

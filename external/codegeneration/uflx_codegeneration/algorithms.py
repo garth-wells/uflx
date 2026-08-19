@@ -1,6 +1,7 @@
 """Algorithms."""
 
 from collections.abc import Hashable
+from types import MethodType
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -10,7 +11,9 @@ from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
+from uflx_codegeneration.indexing import index
 from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
+from uflx_codegeneration.finite_element import FiniteElement
 
 
 @runtime_checkable
@@ -34,6 +37,13 @@ def tabulate_finite_elements(
     tables = {}
     to_replace: dict[GraphNode, GraphNode] = {}
     for node in graph:
+        if isinstance(node, AbstractEvaluatedBasisFunction) and not isinstance(node, CanBeTabulated):
+            def generate_table(self):
+                return self.element.tabulate(self.point.points, self.derivative)
+
+            node.generate_table = MethodType(generate_table, node)
+            node.table_id = (node.element, index(*node.derivative), node.point_index)
+
         if (
             isinstance(node, CanBeTabulated)
             and isinstance(node, GraphNode)

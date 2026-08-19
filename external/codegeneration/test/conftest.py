@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
+from uflx_codegeneration.finite_element import FiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 
 
@@ -103,7 +103,7 @@ class Triangle(AbstractEntity):
         return hash("uflx.test.Triangle")
 
 
-class LagrangeElement(AbstractReferenceMappedFiniteElement):
+class LagrangeElement(FiniteElement):
     """A Lagrange element."""
 
     def __init__(
