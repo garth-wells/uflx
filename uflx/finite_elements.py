@@ -45,7 +45,7 @@ class AbstractFiniteElement(ABC):
         """Return the cell that this element is defined on."""
 
     @abstractmethod
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+    def physical_value_shape(self, geometric_dimension: int | AbstractInteger) -> tuple[int | AbstractInteger, ...]:
         """Return the shape of the value space on a physical cell."""
 
     @property
@@ -98,6 +98,10 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     @abstractmethod
     def reference_map(self) -> AbstractReferenceMap:
         """Get the push forward and pull back map."""
+
+    def physical_value_shape(self, geometric_dimension: int | AbstractInteger) -> tuple[int | AbstractInteger, ...]:
+        """Return the shape of the value space on a physical cell."""
+        return self.reference_map.physical_value_shape(geometric_dimension)
 
 
 @runtime_checkable

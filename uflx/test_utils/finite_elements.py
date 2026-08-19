@@ -3,7 +3,8 @@
 import numpy as np
 
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement, Dimension
+from uflx.scalars import AbstractScalar
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 from uflx.test_utils.domains import (
     Hexahedron,
@@ -25,6 +26,9 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         self._cell = cell
         self._degree = degree
         self._block_shape = block_shape
+
+    def __repr__(self):
+        return f"uflx.test.LagrangeElement({self._cell!r}, {self._degree}, self._block_shape)"
 
     def __eq__(self, other) -> bool:
         """Check if this element is equal to another element."""
@@ -59,7 +63,7 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         return self._degree
 
     @property
-    def dim(self) -> int | Dimension:
+    def dim(self) -> int | AbstractScalar:
         """The dimension of the finite element, ie the number of basis functions."""
         if isinstance(self._cell, Point):
             return 1

@@ -26,6 +26,11 @@ __all__ = [
 ]
 
 
+def number_of_derivatives(nderivs: int, cell: basix.CellType) -> int:
+    """Get the total number of derivatives."""
+    return basix.index(nderivs + 1, *[0 for i in range(1, len(basix.cell.topology(cell)) - 1)])
+
+
 def convert_map(basix_map: basix.MapType) -> uflx.maps.AbstractReferenceMap:
     """Convert a basix map to a UFLx map."""
     match basix_map:
@@ -43,7 +48,7 @@ class BasixCell(uflx.entities.AbstractEntity):
 
     def __eq__(self, other) -> bool:
         """Check if this entity is equal to another entity."""
-        return isinstance(other, BasixCell) and self._basix_cell == other.basix_cell
+        return isinstance(other, BasixCell) and self._basix_cell == other._basix_cell
 
     @property
     def topological_dimension(self) -> int:
@@ -139,9 +144,6 @@ class BasixElement(FiniteElement):
     def lagrange_superdegree(self) -> int:
         return self._element.embedded_superdegree
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        raise NotImplementedError()
-
     @property
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
         return convert_map(self._element.map_type)
@@ -168,11 +170,10 @@ class MixedElement(FiniteElement):
         """Initialise the element."""
         assert len(sub_elements) > 0
         self._sub_elements = sub_elements
-        reference_map = (
-            uflx.identity_pullback
-            if all(isinstance(e.pullback, _IdentityPullback) for e in sub_elements)
-            else _MixedPullback(self)
-        )
+        self._reference_map = uflx.maps.MixedReferenceMap([e.reference_map for e in sub_elements], [e.reference_value_shape for e in sub_elements])
+        for e in sub_elements[1:]:
+            if e.cell != sub_elements[0].cell:
+                raise ValueError("Cannot create mixed element where sub-elements are defined on different cells.")
 
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))
@@ -182,6 +183,34 @@ class MixedElement(FiniteElement):
 
     def __str__(self):
         return f"{self!r}"
+
+    def __eq__(self, other) -> bool:
+        return isinstance(other, MixedElement) and len(self._sub_elements) == len(other._sub_elements) and all(
+            i == j for i, j in zip(self._sub_elements, other._sub_elements)
+        )
+
+    @property
+    def cell(self) -> uflx.entities.AbstractEntity:
+        return self._sub_elements[0].cell
+
+    @property
+    def dim(self) -> int | AbstractInteger:
+        return sum(e.dim for e in self._sub_elements)
+
+    @property
+    def lagrange_superdegree(self) -> int:
+        return max(e.lagrange_superdegree for e in self._sub_elements)
+
+    @property
+    def reference_map(self) -> uflx.maps.AbstractReferenceMap:
+        return self._reference_map
+
+    @property
+    def reference_value_shape(self) -> tuple[int, ...]:
+        raise NotImplementedError()
+
+    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
+        return np.stack([e.tabulate(derivatives, points) for e in self._sub_elements], axis=2)
 
 
 class BlockedElement(FiniteElement):
@@ -267,7 +296,7 @@ class BlockedElement(FiniteElement):
 
     @property
     def cell(self) -> uflx.entities.AbstractEntity:
-        return BasixCell(self._sub_element.cell_type)
+        return self._sub_element.cell
 
     @property
     def dim(self) -> int | AbstractInteger:
@@ -277,12 +306,9 @@ class BlockedElement(FiniteElement):
     def lagrange_superdegree(self) -> int:
         return self._sub_element.embedded_superdegree
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        return self._block_shape
-
     @property
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
-        return convert_map(self._sub_element.map_type)
+        return uflx.maps.BlockedReferenceMap(self._sub_element.reference_map, self._block_shape)
 
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
@@ -319,7 +345,6 @@ class QuadratureElement(FiniteElement):
         self._points = points.astype(dtype)
         self._weights = weights.astype(dtype)
         self._cell_type = cell
-        self._entity_counts = [len(i) for i in basix.topology(cell)]
         self._reference_map = reference_map
 
         if degree is None:
@@ -330,17 +355,17 @@ class QuadratureElement(FiniteElement):
 
     def __repr__(self) -> str:
         return (
-            f"QuadratureElement({cell.name}, {hash_data(points)}, "
-            f"{hash_data(weights)}, {reference_map!r})"
+            f"QuadratureElement({self._cell_type.name}, {hash_data(self._points)}, "
+            f"{hash_data(self._weights)}, {self._reference_map!r})"
         )
 
     def __str__(self):
         return f"{self!r}"
 
     def __eq__(self, other) -> bool:
-        return isinstance(other, _QuadratureElement) and (
+        return isinstance(other, QuadratureElement) and (
             self._cell_type == other._cell_type
-            and self._pullback == other._pullback
+            and self._reference_map == other._reference_map
             and self._points.shape == other._points.shape
             and self._weights.shape == other._weights.shape
             and np.allclose(self._points, other._points)
@@ -359,9 +384,6 @@ class QuadratureElement(FiniteElement):
     def lagrange_superdegree(self) -> int:
         return self.degree  # TODO: this is not right
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
-        return ()
-
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
         return ()
@@ -377,8 +399,8 @@ class QuadratureElement(FiniteElement):
         if points.shape != self._points.shape or not np.allclose(points, self._points):
             raise ValueError("Mismatch of tabulation points and element points.")
         npts = points.shape[0]
-        tables = np.eye(npts, npts).reshape([1, npts, npts, 1])
-        return tables
+        table = np.eye(npts, npts).reshape([1, npts, npts, 1])
+        return table
 
 
 class RealElement(FiniteElement):
@@ -390,15 +412,6 @@ class RealElement(FiniteElement):
         tdim = len(basix.topology(cell)) - 1
         self._value_shape = value_shape
 
-        self._entity_counts = []
-        if tdim >= 1:
-            self._entity_counts.append(self.cell.num_vertices)
-        if tdim >= 2:
-            self._entity_counts.append(self.cell.num_edges)
-        if tdim >= 3:
-            self._entity_counts.append(self.cell.num_facets)
-        self._entity_counts.append(1)
-
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))
 
@@ -407,6 +420,41 @@ class RealElement(FiniteElement):
 
     def __str__(self):
         return f"{self!r}"
+
+    def __eq__(self, other) -> bool:
+        return (
+            isinstance(other, RealElement)
+            and self._cell_type == other._cell_type
+            and self._value_shape == other._value_shape
+        )
+
+    @property
+    def cell(self) -> uflx.entities.AbstractEntity:
+        return BasixCell(self._cell_type)
+
+    @property
+    def dim(self) -> int:
+        return self.reference_value_size
+
+    @property
+    def lagrange_superdegree(self) -> int:
+        return 0
+
+    @property
+    def reference_map(self) -> uflx.maps.AbstractReferenceMap:
+        if self._value_shape == ():
+            return uflx.maps.IdentityReferenceMap()
+        else:
+            return uflx.maps.BlockedReferenceMap(uflx.maps.IdentityReferenceMap(), value_shape)
+
+    @property
+    def reference_value_shape(self) -> tuple[int, ...]:
+        return self._value_shape
+
+    def tabulate(self, nderivs: int, points: _npt.NDArray[np.floating]) -> _npt.ArrayLike:
+        table = np.zeros([number_of_derivatives(nderivs, self._cell_type)])
+        table[0, :, :, :] = 1.0
+        return table
 
 
 def element(
@@ -604,7 +652,10 @@ def quadrature_element(
         cell = basix.CellType[cell]
 
     if reference_map is None:
-        refernece_map = uflx.maps.IdentityReferenceMap()
+        if value_shape == ():
+            reference_map = uflx.maps.IdentityReferenceMap()
+        else:
+            reference_map = uflx.maps.BlockedReferenceMap(uflx.maps.IdentityReferenceMap(), value_shape)
 
     if points is None:
         assert weights is None
