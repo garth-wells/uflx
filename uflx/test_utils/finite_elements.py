@@ -3,9 +3,9 @@
 import numpy as np
 
 from uflx.entities import AbstractEntity
-from uflx.scalars import AbstractScalar
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
+from uflx.scalars import AbstractScalar
 from uflx.test_utils.domains import (
     Hexahedron,
     Interval,
@@ -28,6 +28,7 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         self._block_shape = block_shape
 
     def __repr__(self):
+        """Representation."""
         return f"uflx.test.LagrangeElement({self._cell!r}, {self._degree}, self._block_shape)"
 
     def __eq__(self, other) -> bool:

@@ -43,7 +43,7 @@ class AbstractEntity(ABC):
             A list of sub-entities of the given dimension.
         """
 
-    def sub_entity_count(dim: int) -> int:
+    def sub_entity_count(self, dim: int) -> int:
         """Get the number of sub-entities of a given dimension.
 
         Args:

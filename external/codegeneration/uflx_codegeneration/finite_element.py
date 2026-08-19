@@ -2,6 +2,7 @@
 
 from abc import abstractmethod
 from collections.abc import Sequence
+
 import numpy.typing as npt
 from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 

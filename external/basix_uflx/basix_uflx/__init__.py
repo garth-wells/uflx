@@ -1,11 +1,11 @@
 """Basix UFLx interface."""
 
+import hashlib
 from abc import abstractmethod
 from collections.abc import Sequence
-
-import hashlib
 from warnings import warn
 
+import basix
 import numpy as np
 import numpy.typing as npt
 import uflx
@@ -13,15 +13,13 @@ from uflx.finite_elements import AbstractReferenceMappedFiniteElement as ARMFE
 from uflx.scalars import AbstractInteger
 from uflx_codegeneration import FiniteElement
 
-import basix
-
 __all__ = [
-    "element",
+    "blocked_element",
     "custom_element",
+    "element",
     "mixed_element",
     "quadrature_element",
     "real_element",
-    "blocked_element",
     "wrap_element",
 ]
 
@@ -77,7 +75,7 @@ class BasixCell(uflx.entities.AbstractEntity):
 
 
 def hash_data(data: Sequence[np.floating] | np.floating):
-    """Return a hash of an array of floating point numbers"""
+    """Return a hash of an array of floating point numbers."""
 
     def hash_data_inner(data: Sequence[np.floating] | np.floating):
         """Represent an array as a string, ready for hashing."""
@@ -170,10 +168,14 @@ class MixedElement(FiniteElement):
         """Initialise the element."""
         assert len(sub_elements) > 0
         self._sub_elements = sub_elements
-        self._reference_map = uflx.maps.MixedReferenceMap([e.reference_map for e in sub_elements], [e.reference_value_shape for e in sub_elements])
+        self._reference_map = uflx.maps.MixedReferenceMap(
+            [e.reference_map for e in sub_elements], [e.reference_value_shape for e in sub_elements]
+        )
         for e in sub_elements[1:]:
             if e.cell != sub_elements[0].cell:
-                raise ValueError("Cannot create mixed element where sub-elements are defined on different cells.")
+                raise ValueError(
+                    "Cannot create mixed element where sub-elements are defined on different cells."
+                )
 
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))
@@ -185,8 +187,10 @@ class MixedElement(FiniteElement):
         return f"{self!r}"
 
     def __eq__(self, other) -> bool:
-        return isinstance(other, MixedElement) and len(self._sub_elements) == len(other._sub_elements) and all(
-            i == j for i, j in zip(self._sub_elements, other._sub_elements)
+        return (
+            isinstance(other, MixedElement)
+            and len(self._sub_elements) == len(other._sub_elements)
+            and all(i == j for i, j in zip(self._sub_elements, other._sub_elements))
         )
 
     @property
@@ -269,7 +273,9 @@ class BlockedElement(FiniteElement):
                     n += 1
 
             self._reference_map = uflx.maps.SymmetricReferenceMap(
-                sub_element.reference_map, shape, symmetry_map,
+                sub_element.reference_map,
+                shape,
+                symmetry_map,
             )
         self._symmetry = symmetry
 
@@ -316,17 +322,18 @@ class BlockedElement(FiniteElement):
 
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
         scalar_table = self._sub_element.tabulate(derivatives, points)
-        table = np.zeros((
-            scalar_table.shape[0],
-            scalar_table.shape[1],
-            scalar_table.shape[2] * self._block_size,
-            scalar_table.shape[3] * self._block_size,
-        ))
+        table = np.zeros(
+            (
+                scalar_table.shape[0],
+                scalar_table.shape[1],
+                scalar_table.shape[2] * self._block_size,
+                scalar_table.shape[3] * self._block_size,
+            )
+        )
         d = scalar_table.shape[3]
         for i in range(self._block_size):
-            table[:, :, i::self._block_size, d*i:d*(i+1)] = scalar_table
+            table[:, :, i :: self._block_size, d * i : d * (i + 1)] = scalar_table
         return table
-
 
 
 class QuadratureElement(FiniteElement):
@@ -392,7 +399,7 @@ class QuadratureElement(FiniteElement):
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
         return self._reference_map
 
-    def tabulate(self, nderivs: int, points: _npt.NDArray[np.floating]) -> _npt.ArrayLike:
+    def tabulate(self, nderivs: int, points: npt.NDArray[np.floating]) -> npt.ArrayLike:
         if nderivs > 0:
             raise ValueError("Cannot take derivatives of Quadrature element.")
 
@@ -409,7 +416,6 @@ class RealElement(FiniteElement):
     def __init__(self, cell: basix.CellType, value_shape: tuple[int, ...]):
         """Initialise the element."""
         self._cell_type = cell
-        tdim = len(basix.topology(cell)) - 1
         self._value_shape = value_shape
 
     def __hash__(self):
@@ -445,13 +451,15 @@ class RealElement(FiniteElement):
         if self._value_shape == ():
             return uflx.maps.IdentityReferenceMap()
         else:
-            return uflx.maps.BlockedReferenceMap(uflx.maps.IdentityReferenceMap(), value_shape)
+            return uflx.maps.BlockedReferenceMap(
+                uflx.maps.IdentityReferenceMap(), self._value_shape
+            )
 
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
         return self._value_shape
 
-    def tabulate(self, nderivs: int, points: _npt.NDArray[np.floating]) -> _npt.ArrayLike:
+    def tabulate(self, nderivs: int, points: npt.NDArray[np.floating]) -> npt.ArrayLike:
         table = np.zeros([number_of_derivatives(nderivs, self._cell_type)])
         table[0, :, :, :] = 1.0
         return table
@@ -591,8 +599,8 @@ def custom_element(
         cell_type,
         tuple(reference_value_shape),
         np.array(wcoeffs),
-        [[_np.array(j) for j in i] for i in x],
-        [[_np.array(j) for j in i] for i in M],
+        [[np.array(j) for j in i] for i in x],
+        [[np.array(j) for j in i] for i in M],
         interpolation_nderivs,
         map_type,
         sobolev_space,
@@ -655,7 +663,9 @@ def quadrature_element(
         if value_shape == ():
             reference_map = uflx.maps.IdentityReferenceMap()
         else:
-            reference_map = uflx.maps.BlockedReferenceMap(uflx.maps.IdentityReferenceMap(), value_shape)
+            reference_map = uflx.maps.BlockedReferenceMap(
+                uflx.maps.IdentityReferenceMap(), value_shape
+            )
 
     if points is None:
         assert weights is None
@@ -680,7 +690,8 @@ def quadrature_element(
 
 
 def real_element(
-    cell: basix.CellType | str, value_shape: Sequence[int],
+    cell: basix.CellType | str,
+    value_shape: Sequence[int],
 ) -> FiniteElement:
     """Create a real element.
 

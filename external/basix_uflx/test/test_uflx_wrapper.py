@@ -1,40 +1,37 @@
-# Copyright (c) 2024 Matthew Scroggs
+# Copyright (c) 2024-2027 Matthew Scroggs
 # FEniCS Project
 # SPDX-License-Identifier: MIT
-
-import numpy as np
-import pytest
+"""Tests for Basix's UFLx wrapper."""
 
 import basix
-import basix_uflx
+import numpy as np
+import pytest
 import uflx
 
-
-@pytest.mark.parametrize(
-    "inputs",
-    [
-        ("Lagrange", "triangle", 2),
-        ("Lagrange", basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, "triangle", 2),
-    ],
-)
-def test_finite_element(inputs):
-    basix_uflx.element(*inputs)
+import basix_uflx
 
 
 @pytest.mark.parametrize(
-    "inputs",
+    ("input_args", "input_kwargs"),
     [
-        ("Lagrange", "triangle", 1),
-        ("Lagrange", "triangle", 2),
-        ("Lagrange", basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, "triangle", 2),
+        (("Lagrange", "triangle", 2), {}),
+        (("Lagrange", basix.CellType.triangle, 2), {}),
+        ((basix.ElementFamily.P, basix.CellType.triangle, 2), {}),
+        ((basix.ElementFamily.P, "triangle", 2), {}),
+        (("Lagrange", "triangle", 1), {"shape": (2,)}),
+        (("Lagrange", "triangle", 2), {"shape": (2,)}),
+        (("Lagrange", basix.CellType.triangle, 2), {"shape": (2,)}),
+        ((basix.ElementFamily.P, basix.CellType.triangle, 2), {"shape": (2,)}),
+        ((basix.ElementFamily.P, "triangle", 2), {"shape": (2,)}),
+        (("Lagrange", "triangle", 2), {"shape": (2, 2)}),
+        (("Lagrange", basix.CellType.triangle, 2), {"shape": (2, 2)}),
+        ((basix.ElementFamily.P, basix.CellType.triangle, 2), {"shape": (2, 2)}),
+        ((basix.ElementFamily.P, "triangle", 2), {"shape": (2, 2)}),
     ],
 )
-def test_vector_element(inputs):
-    e = basix_uflx.element(*inputs, shape=(2,))
+def test_element(input_args, input_kwargs):
+    """Test element initialisation and tabulate shape."""
+    e = basix_uflx.element(*input_args, **input_kwargs)
     table = e.tabulate(0, np.array([[0, 0]]))
     assert table.shape == (1, 1, e.dim, e.reference_value_size)
 
@@ -48,20 +45,8 @@ def test_vector_element(inputs):
         (basix.ElementFamily.P, "triangle", 2),
     ],
 )
-def test_element(inputs):
-    basix_uflx.element(*inputs, shape=(2, 2))
-
-
-@pytest.mark.parametrize(
-    "inputs",
-    [
-        ("Lagrange", "triangle", 2),
-        ("Lagrange", basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, basix.CellType.triangle, 2),
-        (basix.ElementFamily.P, "triangle", 2),
-    ],
-)
 def test_tensor_element_hash(inputs):
+    """Test hashing of tensor elements."""
     e = basix_uflx.element(*inputs)
     sym = basix_uflx.blocked_element(e, shape=(2, 2), symmetry=True)
     asym = basix_uflx.blocked_element(e, shape=(2, 2), symmetry=False)
@@ -83,6 +68,7 @@ def test_tensor_element_hash(inputs):
 @pytest.mark.parametrize("degree", [1, 3, 6])
 @pytest.mark.parametrize("shape", [(), (1,), (2,), (3,), (5,), (2, 2), (3, 3), (4, 1), (5, 1, 7)])
 def test_quadrature_element(cell, degree, shape):
+    """Test quadrature elements."""
     scalar_e = basix_uflx.quadrature_element(cell, (), degree=degree)
     e = basix_uflx.quadrature_element(cell, shape, degree=degree)
 
@@ -95,7 +81,7 @@ def test_quadrature_element(cell, degree, shape):
 
 
 @pytest.mark.parametrize(
-    "family,cell,degree,shape",
+    ("family", "cell", "degree", "shape"),
     [
         ("Lagrange", "triangle", 1, None),
         ("Discontinuous Lagrange", "triangle", 1, None),
@@ -106,13 +92,14 @@ def test_quadrature_element(cell, degree, shape):
     ],
 )
 def test_finite_element_eq_hash(family, cell, degree, shape):
+    """Test hashing and equality of finite elements."""
     e1 = basix_uflx.element("Lagrange", "triangle", 1, shape=None)
     e2 = basix_uflx.element(family, cell, degree, shape=shape)
     assert (e1 == e2) == (hash(e1) == hash(e2))
 
 
 @pytest.mark.parametrize(
-    "e1,e2",
+    ("e1", "e2"),
     [
         (
             basix_uflx.element("Lagrange", "triangle", 1),
@@ -129,6 +116,7 @@ def test_finite_element_eq_hash(family, cell, degree, shape):
     ],
 )
 def test_mixed_element_eq_hash(e1, e2):
+    """Test hashing and equality of mixed elements."""
     mixed1 = basix_uflx.mixed_element(
         [
             basix_uflx.element("Lagrange", "triangle", 1),
@@ -145,32 +133,41 @@ def test_mixed_element_eq_hash(e1, e2):
         ("triangle", 2, uflx.maps.IdentityReferenceMap()),
         ("quadrilateral", 2, uflx.maps.IdentityReferenceMap()),
         ("triangle", 3, uflx.maps.IdentityReferenceMap()),
-#        ("triangle", 2, basix_uflx._ufl.covariant_piola),
+        # ("triangle", 2, uflx.maps.CovariantPiolaReferenceMap()),
     ],
 )
 def test_quadrature_element_eq_hash(cell_type, degree, reference_map):
+    """Test hashing and equality of quadrature elements."""
     e1 = basix_uflx.quadrature_element(
-        "triangle", scheme="default", degree=2, reference_map=uflx.maps.IdentityReferenceMap(),
+        "triangle",
+        scheme="default",
+        degree=2,
+        reference_map=uflx.maps.IdentityReferenceMap(),
     )
-    e2 = basix_uflx.quadrature_element(cell_type, scheme="default", degree=degree, reference_map=reference_map)
+    e2 = basix_uflx.quadrature_element(
+        cell_type, scheme="default", degree=degree, reference_map=reference_map
+    )
     assert (e1 == e2) == (hash(e1) == hash(e2))
 
 
 @pytest.mark.parametrize(
-    "cell_type,value_shape", [("triangle", ()), ("quadrilateral", ()), ("triangle", (2,))]
+    ("cell_type", "value_shape"), [("triangle", ()), ("quadrilateral", ()), ("triangle", (2,))]
 )
 def test_real_element_eq_hash(cell_type, value_shape):
+    """Test hashing and equality of real elements."""
     e1 = basix_uflx.real_element("triangle", ())
     e2 = basix_uflx.real_element(cell_type, value_shape)
     assert (e1 == e2) == (hash(e1) == hash(e2))
 
 
 def test_wrap_element():
+    """Test direct wrapping of a Basix element."""
     e = basix.create_element(basix.ElementFamily.P, basix.CellType.triangle, 1)
     basix_uflx.wrap_element(e)
 
 
 def test_dof_ordering():
+    """Test non-standard DOF ordering."""
     e = basix_uflx.element(basix.ElementFamily.P, basix.CellType.triangle, 1)
 
     e_reordered = basix_uflx.element(
