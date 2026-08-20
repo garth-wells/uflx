@@ -1,7 +1,6 @@
 """Finite element."""
 
 from abc import abstractmethod
-from collections.abc import Sequence
 from enum import Enum
 
 import numpy as np
@@ -14,14 +13,6 @@ from uflx.maps import (
     MixedReferenceMap,
     SymmetricReferenceMap,
 )
-
-
-def product(ls: Sequence[int]) -> int:
-    """Return the product of numbers in a list."""
-    result = 1
-    for i in ls:
-        result *= i
-    return result
 
 
 class AbstractFiniteElement(AbstractReferenceMappedFiniteElement):
@@ -52,15 +43,6 @@ class AbstractFiniteElement(AbstractReferenceMappedFiniteElement):
         ``(0,0)``, ``(1,0)``, ``(0,1)``, ``(2,0)``, ``(1,1)``, ``(0,2)``, ``(3,0)``,
         ...
         """
-
-    @property
-    def reference_value_size(self) -> int:
-        """Return the value size of the value space on the reference cell."""
-        return product(self.reference_value_shape)
-
-    def physical_value_size(self, geometric_dimension: int) -> int:
-        """Return the value size of the value space on a physical cell."""
-        return product(self.physical_value_shape(geometric_dimension))
 
     @property
     @abstractmethod

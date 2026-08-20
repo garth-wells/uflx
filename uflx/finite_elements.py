@@ -19,6 +19,7 @@ from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
 from uflx.points import AbstractPoint, PointInSet
+from uflx.utils import product
 
 
 class AbstractFiniteElement(ABC):
@@ -43,6 +44,10 @@ class AbstractFiniteElement(ABC):
     @abstractmethod
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""
+
+    def physical_value_size(self, geometric_dimension: int) -> int:
+        """Return the value size of the value space on a physical cell."""
+        return product(self.physical_value_shape(geometric_dimension))
 
     @property
     @abstractmethod
@@ -89,6 +94,11 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     @abstractmethod
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
+
+    @property
+    def reference_value_size(self) -> int:
+        """Return the value size of the value space on the reference cell."""
+        return product(self.reference_value_shape)
 
     @property
     @abstractmethod
@@ -158,8 +168,8 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
         else:
             self._derivative = derivative
-        if component is None and element.reference_value_size == 1:
-            self._component = 0
+        if component is None and element.physical_value_size == 1:
+            self._component: int | None = 0
         else:
             self._component = component
 
