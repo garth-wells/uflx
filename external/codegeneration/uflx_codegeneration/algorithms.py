@@ -11,21 +11,9 @@ from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.indexing import index
+from uflx_codegeneration.finite_element import BlockedElement
 from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
-from uflx_codegeneration.finite_element import FiniteElement
-
-
-@runtime_checkable
-class CanBeTabulated(Protocol):
-    """A function that can be tabulated."""
-
-    def generate_table(self) -> np.ndarray:
-        """Create table of basis function values."""
-
-    @property
-    def table_id(self) -> Hashable:
-        """Get the id of the table."""
+from uflx_codegeneration.utils import index
 
 
 def tabulate_finite_elements(
@@ -34,28 +22,25 @@ def tabulate_finite_elements(
 ) -> tuple[dict[str, np.ndarray], Graph]:
     """Generate tables of values for finite elements that need to be evaluated."""
     table_map: dict[Hashable, str] = {}
-    tables = {}
     to_replace: dict[GraphNode, GraphNode] = {}
+    table_info = {}
     for node in graph:
-        if isinstance(node, AbstractEvaluatedBasisFunction) and not isinstance(node, CanBeTabulated):
-            def generate_table(self):
-                return self.element.tabulate(self.point.points, self.derivative)
-
-            node.generate_table = MethodType(generate_table, node)
-            node.table_id = (node.element, index(*node.derivative), node.point_index)
-
-        if (
-            isinstance(node, CanBeTabulated)
-            and isinstance(node, GraphNode)
-            and isinstance(node, AbstractEvaluatedBasisFunction)
-        ):
-            id = node.table_id
+        if isinstance(node, GraphNode) and isinstance(node, AbstractEvaluatedBasisFunction):
+            id = (node.element, node.point.points_id)
             if id not in table_map:
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
-                tables[name] = node.generate_table()
-            to_replace[node] = ArrayEntry(table_map[id], (node.point_index, node.basis_index))
+                if name not in table_info or sum(node.derivative) > table_info[name][1]:
+                    #if isinstance(node.element, BlockedElement):
+                    #    table_info[name] = (node.element.sub_element, sum(node.derivative), node.point.points)
+                    #else:
+                        table_info[name] = (node.element, sum(node.derivative), node.point.points)
+            if node.has_component:
+                to_replace[node] = ArrayEntry(table_map[id], (index(*node.derivative), node.point_index, node.basis_index, node.component))
+            else:
+                to_replace[node] = ArrayEntry(table_map[id], (index(*node.derivative), node.point_index, node.basis_index))
 
+    tables = {name: element.tabulate(nderivs, points) for name, (element, nderivs, points) in table_info.items()}
     return tables, replace(graph, to_replace)
 
 

@@ -219,7 +219,6 @@ def generate(
     code = ""
     for fname, (dtype, inputs, fgraph) in geometry_functions.items():
         code += f"{dtype} {fname}("
-        print(inputs)
         code += ", ".join(f"{i._dtype} {i._variable}" for i in inputs)
         code += ") {\n"
         ftables, fgraph = tabulate_finite_elements(fgraph)

@@ -4,6 +4,7 @@ from abc import abstractmethod
 from collections.abc import Hashable
 from typing import Any
 
+import numpy as np
 import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression

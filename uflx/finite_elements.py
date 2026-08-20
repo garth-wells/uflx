@@ -12,7 +12,7 @@ The entity on which the element is defined is called the cell.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
@@ -128,12 +128,27 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
     def derivative(self) -> tuple[int, ...]:
         """The number of derivatives in each coordinate direction."""
 
+    @property
+    @abstractmethod
+    def component(self) -> int:
+        """The (flattened) component number of the basis function."""
+
+    @property
+    @abstractmethod
+    def has_component(self) -> bool:
+        """Check if this is an evaluation of a single component."""
+
 
 class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     """A basis function evaluated at a point."""
 
     def __init__(
-        self, element: AbstractFiniteElement, basis_index: int | str, point: AbstractPoint, derivative: tuple[int, ...] | None = None
+        self,
+        element: AbstractFiniteElement,
+        basis_index: int | str,
+        point: AbstractPoint,
+        derivative: tuple[int, ...] | None = None,
+        component: int | None = None,
     ):
         """Initialise."""
         self._element = element
@@ -143,6 +158,10 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
         else:
             self._derivative = derivative
+        if component is None and element.reference_value_size == 1:
+            self._component = 0
+        else:
+            self._component = component
 
     @property
     def point(self) -> AbstractPoint:
@@ -173,7 +192,13 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
 
     def __repr__(self):
         """Representation."""
-        return f"EvaluatedBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
+        repr = f"EvaluatedBasisFunction({self._element!r}, {self._basis_index}, {self._point!r}"
+        if self._derivative is not None:
+            repr += f", {self._derivative}"
+        if self._component is not None:
+            repr += f", {self._component}"
+        repr += ")"
+        return repr
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -189,3 +214,15 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     def derivative(self) -> tuple[int, ...]:
         """The number of derivatives in each coordinate direction."""
         return self._derivative
+
+    @property
+    def component(self) -> int:
+        """The (flattened) component number of the basis function."""
+        if self._component is None:
+            raise ValueError("EvaluatedBasisFunction is not an evaluation of a single component")
+        return self._component
+
+    @property
+    def has_component(self) -> bool:
+        """Check if this is an evaluation of a single component."""
+        return self._component is not None

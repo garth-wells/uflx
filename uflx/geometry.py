@@ -118,11 +118,10 @@ class ReferenceToPhysical(AbstractPoint):
         (dim,) = element.reference_value_shape
 
         components = [Integer(0) for _ in range(dim)]
-        assert isinstance(element.dim, int)
         for i in range(element.dim):
             for j, c in enumerate(components):
-                components[j] += CoordinateDofComponent(i, j, dim) * EvaluatedBasisFunction(
-                    element, i, self.reference_point
+                components[j] += CoordinateDofComponent(i // dim, i % dim, dim) * EvaluatedBasisFunction(
+                    element, i, self.reference_point, component=j
                 )
 
         return Point(*components)
@@ -171,17 +170,17 @@ class JacobianDeterminant(AbstractExpression):
 
             assert isinstance(element.dim, int)
             for i in range(element.dim):
-                j00 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunction(
-                    element, i, self.point, derivative=(1, 0)
+                j00 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=0
                 )
-                j01 += CoordinateDofComponent(i, 0, tdim) * EvaluatedBasisFunction(
-                    element, i, self.point, derivative=(0, 1)
+                j01 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=0
                 )
-                j10 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunction(
-                    element, i, self.point, derivative=(1, 0)
+                j10 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=1
                 )
-                j11 += CoordinateDofComponent(i, 1, tdim) * EvaluatedBasisFunction(
-                    element, i, self.point, derivative=(0, 1)
+                j11 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=1
                 )
 
             return j00 * j11 - j01 * j10
