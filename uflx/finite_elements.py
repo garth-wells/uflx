@@ -168,7 +168,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
         else:
             self._derivative = derivative
-        if component is None and element.physical_value_size == 1:
+        if component is None and isinstance(element, AbstractReferenceMappedFiniteElement) and element.reference_value_size == 1:
             self._component: int | None = 0
         else:
             self._component = component
