@@ -274,6 +274,7 @@ class RealElement(AbstractFiniteElement):
         return self._value_shape
 
     def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
+        points = np.asarray(points)
         table = np.zeros(
             [
                 number_of_derivatives(nderivs, self.cell),
