@@ -1,10 +1,13 @@
 """Implmentations of domains."""
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
+
+from uflx_codegeneration.finite_element import AbstractFiniteElement, BlockedElement
+from uflx_codegeneration.utils import number_of_derivatives
 
 
 class Point(AbstractEntity):
@@ -103,20 +106,17 @@ class Triangle(AbstractEntity):
         return hash("uflx.test.Triangle")
 
 
-class LagrangeElement(AbstractReferenceMappedFiniteElement):
+class LagrangeElement(AbstractFiniteElement):
     """A Lagrange element."""
 
-    def __init__(
-        self, cell: AbstractEntity, degree: int, block_shape: tuple[int, ...] | None = None
-    ):
+    def __init__(self, cell: AbstractEntity, degree: int):
         """Create a Lagrange element."""
         self._cell = cell
         self._degree = degree
-        self._block_shape = block_shape
 
     def __repr__(self):
         """Representation."""
-        return f"uflx.test.LagrangeElement({self._cell!r}, {self._degree}, self._block_shape)"
+        return f"uflx.test.LagrangeElement({self._cell!r}, {self._degree})"
 
     def __eq__(self, other) -> bool:
         """Check if this element is equal to another element."""
@@ -137,12 +137,10 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
-        if self._block_shape is None:
-            return ()
-        return self._block_shape
+        return ()
 
     @property
-    def lagrange_superdegree(self) -> int | None:
+    def lagrange_superdegree(self) -> int:
         """Degree of the minimum degree Lagrange space that spans this element."""
         return self._degree
 
@@ -166,51 +164,52 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         """Hash."""
         return hash(("uflx_test.LagrangeElement", self._cell, self._degree))
 
-    def tabulate(self, points: np.ndarray, derivative: tuple[int, ...]) -> np.ndarray:
-        """Create table of basis function values."""
+    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
+        """Create table of basis function values and derivatives."""
+        points = np.asarray(points)
+        table = np.zeros(
+            [number_of_derivatives(derivatives, self.cell), points.shape[0], self.dim, 1]
+        )
+
         if isinstance(self._cell, Triangle):
-            if self._degree == 0:
-                if derivative == (0, 0):
-                    return np.array([[1] for (x, y) in points])
-                return np.array([[0] for (x, y) in points])
-            if self._degree == 1:
-                if derivative == (0, 0):
-                    return np.array([[1 - x - y, x, y] for (x, y) in points])
-                if derivative == (1, 0):
-                    return np.array([[-1, 1, 0] for (x, y) in points])
-                if derivative == (0, 1):
-                    return np.array([[-1, 0, 1] for (x, y) in points])
-            if self._degree == 2:
-                if derivative == (0, 0):
-                    return np.array(
+            match self._degree:
+                case 0:
+                    table[0, :, :, :] = 1.0
+                case 1:
+                    table[0, :, :, 0] = [[1 - x - y, x, y] for (x, y) in points]
+                    if derivatives >= 1:
+                        table[1, :, :, 0] = [[-1, 1, 0] for (x, y) in points]
+                        table[2, :, :, 0] = [[-1, 0, 1] for (x, y) in points]
+                case 2:
+                    table[0, :, :, 0] = [
                         [
-                            [
-                                (1 - x - y) * (1 - 2 * x - 2 * y),
-                                x * (2 * x - 1),
-                                y * (2 * y - 1),
-                                4 * x * y,
-                                4 * y * (1 - x - y),
-                                4 * x * (1 - x - y),
-                            ]
-                            for (x, y) in points
+                            (1 - x - y) * (1 - 2 * x - 2 * y),
+                            x * (2 * x - 1),
+                            y * (2 * y - 1),
+                            4 * x * y,
+                            4 * y * (1 - x - y),
+                            4 * x * (1 - x - y),
                         ]
-                    )
-                if derivative == (1, 0):
-                    return np.array(
-                        [
+                        for (x, y) in points
+                    ]
+                    if derivatives >= 1:
+                        table[1, :, :, 0] = [
                             [-3 + 4 * x + 4 * y, 4 * x - 1, 0, 4 * y, -4 * y, 4 - 8 * x - 4 * y]
                             for (x, y) in points
                         ]
-                    )
-                if derivative == (0, 1):
-                    return np.array(
-                        [
+                        table[2, :, :, 0] = [
                             [-3 + 4 * x + 4 * y, 0, 4 * y - 1, 4 * x, 4 - 4 * x - 8 * y, -4 * x]
                             for (x, y) in points
                         ]
-                    )
+                    if derivatives >= 2:
+                        table[3, :, :, 0] = [[4, 4, 0, 0, 0, -8 * x] for (x, y) in points]
+                        table[4, :, :, 0] = [[4, 0, 0, 4, -4, -4] for (x, y) in points]
+                        table[5, :, :, 0] = [[4, 0, 4, 0, -8, 0] for (x, y) in points]
+                case _:
+                    raise NotImplementedError()
+            return table
 
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
 @pytest.fixture
@@ -218,6 +217,8 @@ def lagrange_element():
     """Create a Lagrange element."""
 
     def create(cell_name: str, degree: int, block_shape: tuple[int, ...] | None = None):
+        if block_shape is not None:
+            return BlockedElement(create(cell_name, degree), block_shape)
         match cell_name:
             case "point":
                 cell: AbstractEntity = Point()
@@ -227,6 +228,6 @@ def lagrange_element():
                 cell = Triangle()
             case _:
                 raise ValueError(f"Invalid cell: {cell_name}")
-        return LagrangeElement(cell, degree, block_shape)
+        return LagrangeElement(cell, degree)
 
     return create

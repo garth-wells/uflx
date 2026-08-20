@@ -4,6 +4,7 @@ from collections.abc import Hashable, Sequence
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -13,7 +14,7 @@ from uflx.points import PointInSet
 class QuadratureRule:
     """A quadrature rule."""
 
-    def __init__(self, points: np.ndarray, weights: np.ndarray):
+    def __init__(self, points: npt.NDArray[np.floating], weights: npt.NDArray[np.floating]):
         """Initialise."""
         self.points = points
         self.weights = weights
@@ -38,7 +39,7 @@ class QuadraturePoint(PointInSet):
         return self._index
 
     @property
-    def points(self) -> np.ndarray:
+    def points(self) -> npt.NDArray[np.floating]:
         """Get all the points in the set."""
         return self.rule.points
 

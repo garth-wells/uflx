@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Add, Mult, Subtract
 from uflx.graphs import GraphNode
 
 
@@ -69,3 +69,29 @@ class Integer(AbstractInteger):
     def generate_c(self, bracketed: bool = False) -> str:
         """Generate code for this object."""
         return f"{self.value}"
+
+    def __add__(self, other):
+        """Add."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return other
+            return Add(self, other)
+        return NotImplemented
+
+    def __sub__(self, other):
+        """Subtract."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return -other
+            return Subtract(self, other)
+        return NotImplemented
+
+    def __mul__(self, other):
+        """Multiply."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return self
+            if self.value == 1:
+                return other
+            return Mult(self, other)
+        return NotImplemented

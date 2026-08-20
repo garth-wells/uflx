@@ -9,8 +9,8 @@ import basix
 import numpy as np
 import numpy.typing as npt
 import uflx
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement as ARMFE
-from uflx_codegeneration import FiniteElement
+from uflx_codegeneration.finite_element import AbstractFiniteElement, BlockedElement, MixedElement
+from uflx_codegeneration.utils import number_of_derivatives
 
 __all__ = [
     "blocked_element",
@@ -21,11 +21,6 @@ __all__ = [
     "real_element",
     "wrap_element",
 ]
-
-
-def number_of_derivatives(nderivs: int, cell: basix.CellType) -> int:
-    """Get the total number of derivatives."""
-    return basix.index(nderivs + 1, *[0 for i in range(1, len(basix.cell.topology(cell)) - 1)])
 
 
 def convert_map(basix_map: basix.MapType) -> uflx.maps.AbstractReferenceMap:
@@ -86,7 +81,7 @@ def hash_data(data: Sequence[np.floating] | npt.ArrayLike):
     return hashlib.sha1(hash_data_inner(data).encode("utf-8")).hexdigest()
 
 
-class BasixElement(FiniteElement):
+class BasixElement(AbstractFiniteElement):
     """A wrapper allowing Basix elements to be used directly with UFLx.
 
     This class allows elements created with `basix.create_element` to be
@@ -156,189 +151,7 @@ class BasixElement(FiniteElement):
         return np.asarray(self._element.tabulate(derivatives, np.asarray(points)))
 
 
-class MixedElement(FiniteElement):
-    """A mixed element that combines two or more elements.
-
-    This can be used when multiple different elements appear in a form.
-    Users should not directly call this class's initilizer, but should
-    use the :func:`mixed_element` function instead.
-    """
-
-    _sub_elements: list[FiniteElement]
-
-    def __init__(self, sub_elements: list[FiniteElement]):
-        """Initialise the element."""
-        assert len(sub_elements) > 0
-        self._sub_elements = sub_elements
-        self._reference_map = uflx.maps.MixedReferenceMap(
-            [e.reference_map for e in sub_elements], [e.reference_value_shape for e in sub_elements]
-        )
-        for e in sub_elements[1:]:
-            if e.cell != sub_elements[0].cell:
-                raise ValueError(
-                    "Cannot create mixed element where sub-elements are defined on different cells."
-                )
-
-    def __hash__(self):
-        return hash(("basix.uflx", f"{self!r}"))
-
-    def __repr__(self) -> str:
-        return "MixedElement(" + ", ".join(f"{i!r}" for i in self._sub_elements) + ")"
-
-    def __str__(self):
-        return f"{self!r}"
-
-    def __eq__(self, other) -> bool:
-        return (
-            isinstance(other, MixedElement)
-            and len(self._sub_elements) == len(other._sub_elements)
-            and all(i == j for i, j in zip(self._sub_elements, other._sub_elements))
-        )
-
-    @property
-    def cell(self) -> uflx.entities.AbstractEntity:
-        return self._sub_elements[0].cell
-
-    @property
-    def dim(self) -> int:
-        return sum(e.dim for e in self._sub_elements)
-
-    @property
-    def lagrange_superdegree(self) -> int:
-        return max([e.lagrange_superdegree for e in self._sub_elements], default=0)
-
-    @property
-    def reference_map(self) -> uflx.maps.AbstractReferenceMap:
-        return self._reference_map
-
-    @property
-    def reference_value_shape(self) -> tuple[int, ...]:
-        raise NotImplementedError()
-
-    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
-        return np.stack([e.tabulate(derivatives, points) for e in self._sub_elements], axis=2)
-
-
-class BlockedElement(FiniteElement):
-    """Element with a block size that contains multiple copies of a sub element.
-
-    This can be used to (for example) create vector and tensor Lagrange
-    elements. Users should not directly call this classes initilizer,
-    but should use the `blocked_element` function instead.
-
-    """
-
-    _block_shape: tuple[int, ...]
-    _sub_element: FiniteElement
-    _block_size: int
-    _has_symmetry: bool
-
-    def __init__(
-        self,
-        sub_element: FiniteElement,
-        shape: tuple[int, ...],
-        symmetry: bool | None = None,
-    ):
-        """Initialise the element."""
-        if sub_element.reference_value_shape != ():
-            raise ValueError(
-                "Blocked elements of non-scalar elements are not supported. "
-                "Try using MixedElement instead."
-            )
-        if symmetry is not None:
-            if len(shape) != 2:
-                raise ValueError("symmetry argument can only be passed to elements of rank 2.")
-            if shape[0] != shape[1]:
-                raise ValueError("symmetry argument can only be passed to square shaped elements.")
-
-        if symmetry:
-            block_size = shape[0] * (shape[0] + 1) // 2
-            self._has_symmetry = True
-        else:
-            block_size = 1
-            for i in shape:
-                block_size *= i
-            self._has_symmetry = False
-        assert block_size > 0
-
-        self._sub_element = sub_element
-        self._block_size = block_size
-        self._block_shape = shape
-
-        if symmetry:
-            n = 0
-            symmetry_map: dict[tuple[int, ...], int] = {}
-            for i in range(shape[0]):
-                for j in range(i + 1):
-                    symmetry_map[(i, j)] = n
-                    symmetry_map[(j, i)] = n
-                    n += 1
-
-            self._reference_map = uflx.maps.SymmetricReferenceMap(
-                sub_element.reference_map,
-                shape,
-                symmetry_map,
-            )
-        self._symmetry = symmetry
-
-    def __hash__(self):
-        return hash(("basix.uflx", f"{self!r}"))
-
-    def __repr__(self) -> str:
-        repr = f"BlockedElement({self._sub_element!r}, {self._block_shape}"
-        if self._symmetry is not None:
-            repr += f", symmetry={self._symmetry}"
-        repr += ")"
-        return repr
-
-    def __str__(self):
-        return f"{self!r}"
-
-    def __eq__(self, other) -> bool:
-        return (
-            isinstance(other, BlockedElement)
-            and self._block_size == other._block_size
-            and self._block_shape == other._block_shape
-            and self._sub_element == other._sub_element
-        )
-
-    @property
-    def cell(self) -> uflx.entities.AbstractEntity:
-        return self._sub_element.cell
-
-    @property
-    def dim(self) -> int:
-        return self._sub_element.dim * self._block_size
-
-    @property
-    def lagrange_superdegree(self) -> int:
-        return self._sub_element.lagrange_superdegree
-
-    @property
-    def reference_map(self) -> uflx.maps.AbstractReferenceMap:
-        return uflx.maps.BlockedReferenceMap(self._sub_element.reference_map, self._block_shape)
-
-    @property
-    def reference_value_shape(self) -> tuple[int, ...]:
-        return self._block_shape
-
-    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
-        scalar_table = self._sub_element.tabulate(derivatives, points)
-        table = np.zeros(
-            (
-                scalar_table.shape[0],
-                scalar_table.shape[1],
-                scalar_table.shape[2] * self._block_size,
-                scalar_table.shape[3] * self._block_size,
-            )
-        )
-        d = scalar_table.shape[3]
-        for i in range(self._block_size):
-            table[:, :, i :: self._block_size, d * i : d * (i + 1)] = scalar_table
-        return table
-
-
-class QuadratureElement(FiniteElement):
+class QuadratureElement(AbstractFiniteElement):
     """A quadrature element."""
 
     def __init__(
@@ -411,7 +224,7 @@ class QuadratureElement(FiniteElement):
         return table
 
 
-class RealElement(FiniteElement):
+class RealElement(AbstractFiniteElement):
     """A real element."""
 
     def __init__(self, cell: basix.CellType, value_shape: tuple[int, ...]):
@@ -461,7 +274,15 @@ class RealElement(FiniteElement):
         return self._value_shape
 
     def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
-        table = np.zeros([number_of_derivatives(nderivs, self._cell_type)])
+        points = np.asarray(points)
+        table = np.zeros(
+            [
+                number_of_derivatives(nderivs, self.cell),
+                points.shape[0],
+                self.reference_value_size,
+                self.reference_value_size,
+            ]
+        )
         table[0, :, :, :] = 1.0
         return table
 
@@ -477,7 +298,7 @@ def element(
     symmetry: bool | None = None,
     dof_ordering: list[int] | None = None,
     dtype: npt.DTypeLike | None = None,
-) -> FiniteElement:
+) -> AbstractFiniteElement:
     """Create a UFLx compatible element using Basix.
 
     Args:
@@ -564,7 +385,7 @@ def custom_element(
     embedded_superdegree: int,
     polyset_type: basix.PolysetType = basix.PolysetType.standard,
     dtype: npt.DTypeLike | None = None,
-) -> FiniteElement:
+) -> AbstractFiniteElement:
     """Create a UFLx compatible custom Basix element.
 
     Args:
@@ -614,7 +435,7 @@ def custom_element(
     return BasixElement(e)
 
 
-def mixed_element(elements: Sequence[FiniteElement]) -> FiniteElement:
+def mixed_element(elements: Sequence[AbstractFiniteElement]) -> AbstractFiniteElement:
     """Create a UFLx compatible mixed element from a list of elements.
 
     Args:
@@ -636,7 +457,7 @@ def quadrature_element(
     reference_map: uflx.maps.AbstractReferenceMap | None = None,
     symmetry: bool | None = None,
     dtype: npt.DTypeLike = np.float64,
-) -> FiniteElement:
+) -> AbstractFiniteElement:
     """Create a quadrature element.
 
     When creating this element, either the quadrature scheme and degree
@@ -695,7 +516,7 @@ def quadrature_element(
 def real_element(
     cell: basix.CellType | str,
     value_shape: Sequence[int],
-) -> FiniteElement:
+) -> AbstractFiniteElement:
     """Create a real element.
 
     Args:
@@ -713,10 +534,10 @@ def real_element(
 
 
 def blocked_element(
-    sub_element: FiniteElement,
+    sub_element: AbstractFiniteElement,
     shape: Sequence[int],
     symmetry: bool | None = None,
-) -> FiniteElement:
+) -> AbstractFiniteElement:
     """Create a UFLx compatible blocked element.
 
     Args:
@@ -735,6 +556,6 @@ def blocked_element(
     return BlockedElement(sub_element, shape=tuple(shape), symmetry=symmetry)
 
 
-def wrap_element(element: basix.finite_element.FiniteElement) -> FiniteElement:
+def wrap_element(element: basix.finite_element.FiniteElement) -> AbstractFiniteElement:
     """Wrap a Basix element as a Basix UFLx element."""
     return BasixElement(element)
