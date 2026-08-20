@@ -120,9 +120,9 @@ class ReferenceToPhysical(AbstractPoint):
         components = [Integer(0) for _ in range(dim)]
         for i in range(element.dim):
             for j, c in enumerate(components):
-                components[j] += CoordinateDofComponent(i // dim, i % dim, dim) * EvaluatedBasisFunction(
-                    element, i, self.reference_point, component=j
-                )
+                components[j] += CoordinateDofComponent(
+                    i // dim, i % dim, dim
+                ) * EvaluatedBasisFunction(element, i, self.reference_point, component=j)
 
         return Point(*components)
 

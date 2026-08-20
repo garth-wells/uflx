@@ -167,7 +167,9 @@ class LagrangeElement(AbstractFiniteElement):
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
         """Create table of basis function values and derivatives."""
         points = np.asarray(points)
-        table = np.zeros([number_of_derivatives(derivatives, self.cell), points.shape[0], self.dim, 1])
+        table = np.zeros(
+            [number_of_derivatives(derivatives, self.cell), points.shape[0], self.dim, 1]
+        )
 
         if isinstance(self._cell, Triangle):
             match self._degree:
@@ -200,18 +202,9 @@ class LagrangeElement(AbstractFiniteElement):
                             for (x, y) in points
                         ]
                     if derivatives >= 2:
-                        table[3, :, :, 0] = [
-                            [4, 4, 0, 0, 0, - 8 * x]
-                            for (x, y) in points
-                        ]
-                        table[4, :, :, 0] = [
-                            [4, 0, 0, 4, -4, -4]
-                            for (x, y) in points
-                        ]
-                        table[5, :, :, 0] = [
-                            [4, 0, 4, 0, -8, 0]
-                            for (x, y) in points
-                        ]
+                        table[3, :, :, 0] = [[4, 4, 0, 0, 0, -8 * x] for (x, y) in points]
+                        table[4, :, :, 0] = [[4, 0, 0, 4, -4, -4] for (x, y) in points]
+                        table[5, :, :, 0] = [[4, 0, 4, 0, -8, 0] for (x, y) in points]
                 case _:
                     raise NotImplementedError()
             return table

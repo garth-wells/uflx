@@ -9,7 +9,7 @@ import basix
 import numpy as np
 import numpy.typing as npt
 import uflx
-from uflx_codegeneration.finite_element import AbstractFiniteElement, MixedElement, BlockedElement
+from uflx_codegeneration.finite_element import AbstractFiniteElement, BlockedElement, MixedElement
 from uflx_codegeneration.utils import number_of_derivatives
 
 __all__ = [
@@ -274,7 +274,14 @@ class RealElement(AbstractFiniteElement):
         return self._value_shape
 
     def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
-        table = np.zeros([number_of_derivatives(nderivs, self.cell), points.shape[0], self.reference_value_size, self.reference_value_size])
+        table = np.zeros(
+            [
+                number_of_derivatives(nderivs, self.cell),
+                points.shape[0],
+                self.reference_value_size,
+                self.reference_value_size,
+            ]
+        )
         table[0, :, :, :] = 1.0
         return table
 

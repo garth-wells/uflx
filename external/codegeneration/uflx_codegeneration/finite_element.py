@@ -6,10 +6,14 @@ from enum import Enum
 
 import numpy as np
 import numpy.typing as npt
-
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
-from uflx.maps import MixedReferenceMap, AbstractReferenceMap, SymmetricReferenceMap, BlockedReferenceMap
 from uflx.entities import AbstractEntity
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
+from uflx.maps import (
+    AbstractReferenceMap,
+    BlockedReferenceMap,
+    MixedReferenceMap,
+    SymmetricReferenceMap,
+)
 
 
 def product(ls: Sequence[int]) -> int:
@@ -100,15 +104,19 @@ class MixedElement(AbstractFiniteElement):
                 )
 
     def __hash__(self):
+        """Hash."""
         return hash(("uflx_codegeneration", f"{self!r}"))
 
     def __repr__(self) -> str:
+        """Representation."""
         return "MixedElement(" + ", ".join(f"{i!r}" for i in self._sub_elements) + ")"
 
     def __str__(self):
+        """String."""
         return f"{self!r}"
 
     def __eq__(self, other) -> bool:
+        """Check if this element is equal to another element."""
         return (
             isinstance(other, MixedElement)
             and len(self._sub_elements) == len(other._sub_elements)
@@ -117,30 +125,59 @@ class MixedElement(AbstractFiniteElement):
 
     @property
     def cell(self) -> AbstractEntity:
+        """Return the cell that this element is defined on."""
         return self._sub_elements[0].cell
 
     @property
     def dim(self) -> int:
+        """The dimension of the finite element, ie the number of basis functions."""
         return sum(e.dim for e in self._sub_elements)
 
     @property
     def lagrange_superdegree(self) -> int:
+        """Degree of the minimum degree Lagrange space that spans this element.
+
+        This returns the degree of the lowest degree Lagrange space such
+        that the polynomial space of the Lagrange space is a superspace
+        of this element's polynomial space. If this element contains
+        basis functions that are not in any Lagrange space, this
+        function should return None.
+
+        Note that on a simplex cells, the polynomial space of Lagrange
+        space is a complete polynomial space, but on other cells this is
+        not true. For example, on quadrilateral cells, the degree 1
+        Lagrange space includes the degree 2 polynomial xy.
+        """
         return max([e.lagrange_superdegree for e in self._sub_elements], default=0)
 
     @property
     def reference_map(self) -> AbstractReferenceMap:
+        """Get the push forward and pull back map."""
         return self._reference_map
 
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
+        """Return the shape of the value space on the reference cell."""
         raise NotImplementedError()
 
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
+        """Create table of basis function values and derivatives.
+
+        This function returns a four dimensional array whose shape is (number
+        of derivatives, number of points, number of basis functions, value size).
+        The derivatives are sotred in triangular (2D) or tetrahedral (3D)
+        ordering - for example, in 2D the derivatives are in the following order,
+        where ``(x,y)`` represents ``x`` derivatives in the x-direction and ``y``
+        in the y-direction:
+        ``(0,0)``, ``(1,0)``, ``(0,1)``, ``(2,0)``, ``(1,1)``, ``(0,2)``, ``(3,0)``,
+        ...
+        """
         return np.stack([e.tabulate(derivatives, points) for e in self._sub_elements], axis=2)
 
 
 class BlockedOrdering(Enum):
     """Ordering of components in a blocked element."""
+
     xyzxyz = 1
     xxyyzz = 2
 
@@ -164,7 +201,7 @@ class BlockedElement(AbstractFiniteElement):
         sub_element: AbstractFiniteElement,
         shape: tuple[int, ...],
         symmetry: bool | None = None,
-        ordering: BlockedOrdering = BlockedOrdering.xyzxyz
+        ordering: BlockedOrdering = BlockedOrdering.xyzxyz,
     ):
         """Initialise the element."""
         if sub_element.reference_value_shape != ():
@@ -215,9 +252,11 @@ class BlockedElement(AbstractFiniteElement):
         return self._sub_element
 
     def __hash__(self):
+        """Hash."""
         return hash(("uflx_codegeneration", f"{self!r}"))
 
     def __repr__(self) -> str:
+        """Representation."""
         repr = f"BlockedElement({self._sub_element!r}, {self._block_shape}"
         if self._symmetry is not None:
             repr += f", symmetry={self._symmetry}"
@@ -225,9 +264,11 @@ class BlockedElement(AbstractFiniteElement):
         return repr
 
     def __str__(self):
+        """String."""
         return f"{self!r}"
 
     def __eq__(self, other) -> bool:
+        """Check if this element is equal to another element."""
         return (
             isinstance(other, BlockedElement)
             and self._block_size == other._block_size
@@ -237,25 +278,53 @@ class BlockedElement(AbstractFiniteElement):
 
     @property
     def cell(self) -> AbstractEntity:
+        """Return the cell that this element is defined on."""
         return self._sub_element.cell
 
     @property
     def dim(self) -> int:
+        """The dimension of the finite element, ie the number of basis functions."""
         return self._sub_element.dim * self._block_size
 
     @property
     def lagrange_superdegree(self) -> int:
+        """Degree of the minimum degree Lagrange space that spans this element.
+
+        This returns the degree of the lowest degree Lagrange space such
+        that the polynomial space of the Lagrange space is a superspace
+        of this element's polynomial space. If this element contains
+        basis functions that are not in any Lagrange space, this
+        function should return None.
+
+        Note that on a simplex cells, the polynomial space of Lagrange
+        space is a complete polynomial space, but on other cells this is
+        not true. For example, on quadrilateral cells, the degree 1
+        Lagrange space includes the degree 2 polynomial xy.
+        """
         return self._sub_element.lagrange_superdegree
 
     @property
     def reference_map(self) -> AbstractReferenceMap:
+        """Get the push forward and pull back map."""
         return BlockedReferenceMap(self._sub_element.reference_map, self._block_shape)
 
     @property
     def reference_value_shape(self) -> tuple[int, ...]:
+        """Return the value size of the value space on the reference cell."""
         return self._block_shape
 
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
+        """Create table of basis function values and derivatives.
+
+        This function returns a four dimensional array whose shape is (number
+        of derivatives, number of points, number of basis functions, value size).
+        The derivatives are sotred in triangular (2D) or tetrahedral (3D)
+        ordering - for example, in 2D the derivatives are in the following order,
+        where ``(x,y)`` represents ``x`` derivatives in the x-direction and ``y``
+        in the y-direction:
+        ``(0,0)``, ``(1,0)``, ``(0,1)``, ``(2,0)``, ``(1,1)``, ``(0,2)``, ``(3,0)``,
+        ...
+        """
         scalar_table = self._sub_element.tabulate(derivatives, points)
         table = np.zeros(
             (

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Add, Mult, Subtract
 from uflx.graphs import GraphNode
 
 

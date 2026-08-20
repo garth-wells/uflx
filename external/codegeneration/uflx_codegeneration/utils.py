@@ -22,7 +22,9 @@ def index(*indices: int):
         case 3:
             i, j, k = indices
             return (
-                (i + j + k) * (i + j + k + 1) * (i + j + k + 2) // 6 + (j + k) * (j + k + 1) // 2 + k
+                (i + j + k) * (i + j + k + 1) * (i + j + k + 2) // 6
+                + (j + k) * (j + k + 1) // 2
+                + k
             )
         case _:
             raise ValueError("Invalid number of indices.")

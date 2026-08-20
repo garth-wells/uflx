@@ -1,8 +1,7 @@
 """Algorithms."""
 
 from collections.abc import Hashable
-from types import MethodType
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 import numpy as np
 from uflx.finite_elements import AbstractEvaluatedBasisFunction
@@ -11,7 +10,6 @@ from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.finite_element import BlockedElement
 from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
 from uflx_codegeneration.utils import index
 
@@ -31,16 +29,21 @@ def tabulate_finite_elements(
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
                 if name not in table_info or sum(node.derivative) > table_info[name][1]:
-                    #if isinstance(node.element, BlockedElement):
-                    #    table_info[name] = (node.element.sub_element, sum(node.derivative), node.point.points)
-                    #else:
-                        table_info[name] = (node.element, sum(node.derivative), node.point.points)
+                    table_info[name] = (node.element, sum(node.derivative), node.point.points)
             if node.has_component:
-                to_replace[node] = ArrayEntry(table_map[id], (index(*node.derivative), node.point_index, node.basis_index, node.component))
+                to_replace[node] = ArrayEntry(
+                    table_map[id],
+                    (index(*node.derivative), node.point_index, node.basis_index, node.component),
+                )
             else:
-                to_replace[node] = ArrayEntry(table_map[id], (index(*node.derivative), node.point_index, node.basis_index))
+                to_replace[node] = ArrayEntry(
+                    table_map[id], (index(*node.derivative), node.point_index, node.basis_index)
+                )
 
-    tables = {name: element.tabulate(nderivs, points) for name, (element, nderivs, points) in table_info.items()}
+    tables = {
+        name: element.tabulate(nderivs, points)
+        for name, (element, nderivs, points) in table_info.items()
+    }
     return tables, replace(graph, to_replace)
 
 
