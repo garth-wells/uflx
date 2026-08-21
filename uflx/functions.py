@@ -7,6 +7,7 @@
 
 A function is an item contained in a function space.
 """
+
 from __future__ import annotations
 
 from abc import abstractmethod
@@ -15,7 +16,6 @@ from typing import Any
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.graphs import GraphNode
-from math import prod
 
 
 class AbstractFunction(AbstractExpression):
@@ -91,7 +91,7 @@ class Argument(AbstractPhysicalFunction):
     @property
     def domain_size(self) -> int:
         """The size of the domain (ie the number of inputs to the function)."""
-        return self._space.elements[0].cell.topological_dimension
+        return self._space.domain.cells[0].topological_dimension
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""

@@ -12,13 +12,10 @@ The entity on which the element is defined is called the cell.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from math import prod
 
 from uflx.entities import AbstractEntity
-from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
-from uflx.points import AbstractPoint, AbstractPointInSet
-from math import prod
 
 
 class AbstractFiniteElement(ABC):

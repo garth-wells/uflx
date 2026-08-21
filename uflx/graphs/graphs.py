@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable, Iterable
+from typing import Any, Protocol, runtime_checkable
 
 import networkx as nx
 
 
 class NodeOrder(Enum):
     """A node order."""
+
     roots_first = 0
     leaves_first = 1
 

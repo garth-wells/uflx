@@ -1,20 +1,13 @@
 """Geometry algorithms."""
 
-from collections.abc import Hashable
 from typing import Any
 
-import numpy as np
-import numpy.typing as npt
-from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
 from uflx.geometry import JacobianDeterminant, expand_geometry
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.finite_element import AbstractFiniteElement
-from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
-from uflx_codegeneration.points import AbstractPointInSet
-from uflx_codegeneration.utils import index
+from uflx_codegeneration.nodes import FunctionCall, Variable
 
 
 def insert_geometry_functions(

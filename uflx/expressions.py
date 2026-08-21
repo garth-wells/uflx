@@ -7,10 +7,12 @@
 
 An expression is any algebraic expression that could be used as an integrand.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from uflx.graphs import GraphNode
 
@@ -196,7 +198,11 @@ class MatVec(BinaryOperator):
 
     def __init__(self, first: AbstractExpression, second: AbstractExpression):
         """Initialise."""
-        assert len(first.value_shape) == 2 and len(second.value_shape) == 1 and first.value_shape[0] == second.value_shape[0]
+        assert (
+            len(first.value_shape) == 2
+            and len(second.value_shape) == 1
+            and first.value_shape[0] == second.value_shape[0]
+        )
         super().__init__(first, second)
 
     @property
@@ -209,12 +215,14 @@ class MatVec(BinaryOperator):
         if self.value_shape == ():
             raise ValueError("Cannot get a component of a scalar expression")
         (index,) = indices
-        return expression_sum(self.first.component(index, i) * self.second.component(i) for i in range(self.first.value_shape[1]))
+        return expression_sum(
+            self.first.component(index, i) * self.second.component(i)
+            for i in range(self.first.value_shape[1])
+        )
 
 
 def expression_sum(
-    expressions: Iterable[AbstractExpression],
-    default: AbstractExpression | None = None
+    expressions: Iterable[AbstractExpression], default: AbstractExpression | None = None
 ):
     """Take the sum of a sequence of expressions."""
     result = None

@@ -1,13 +1,13 @@
 """Form algorithms."""
 
-from uflx.graphs import Graph, GraphNode, generate_graph
-from uflx.graphs.algorithms import reconstruct_node
 from uflx.expressions import expression_sum
+from uflx.graphs import Graph, generate_graph
+from uflx.graphs.algorithms import reconstruct_node
 from uflx.operators import Inner
-from uflx.scalars import Integer
 
 
 def expand_inner_products(graph: Graph) -> Graph:
+    """Replace inner products with sums over products of components."""
     new_nodes = {}
     for node in graph.ordered_nodes():
         if isinstance(node, Inner):

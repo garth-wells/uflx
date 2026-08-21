@@ -1,18 +1,16 @@
 """Finite element algorithms."""
 
 from collections.abc import Hashable
-from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
-from uflx.geometry import JacobianDeterminant, expand_geometry
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
-from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
+from uflx_codegeneration.nodes import ArrayEntry
 from uflx_codegeneration.points import AbstractPointInSet
 from uflx_codegeneration.utils import index
 
@@ -26,7 +24,9 @@ def tabulate_finite_elements(
     to_replace: dict[GraphNode, GraphNode] = {}
     table_info: dict[str, tuple[AbstractFiniteElement, int, npt.NDArray[np.floating]]] = {}
     for node in graph:
-        if isinstance(node, GraphNode) and isinstance(node, AbstractEvaluatedReferenceBasisFunction):
+        if isinstance(node, GraphNode) and isinstance(
+            node, AbstractEvaluatedReferenceBasisFunction
+        ):
             assert isinstance(node.point, AbstractPointInSet)
             id = (node.element, node.point.points_id)
             if id in table_map:
@@ -44,7 +44,12 @@ def tabulate_finite_elements(
             else:
                 to_replace[node] = ArrayEntry(
                     table_map[id],
-                    (index(*node.derivative), node.point_index, node.basis_index, node.component_index),
+                    (
+                        index(*node.derivative),
+                        node.point_index,
+                        node.basis_index,
+                        node.component_index,
+                    ),
                 )
 
     tables = {

@@ -7,23 +7,20 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any
 
-from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement, AbstractFiniteElement
+from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
-from uflx.maps import AbstractReferenceMap
 from uflx.points import AbstractPoint, AbstractPointInSet
 from uflx.utils import flatten
-from math import prod
 
 
 class AbstractEvaluatedReferenceBasisFunction(AbstractReferenceFunction):
-    """Abstract base class for a basis function evaluated at a point in a set of points on the reference cell."""
+    """Base class for a basis function evaluated at a point on the reference cell."""
 
     @property
     @abstractmethod
@@ -171,7 +168,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
 
 
 class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
-    """Abstract base class for a basis function evaluated at a point in a set of points on the physical cell."""
+    """Base class for a basis function evaluated at a point on a physical cell."""
 
     @property
     @abstractmethod
@@ -243,7 +240,16 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
 
     def __repr__(self):
         """Representation."""
-        return f"EvaluatedPhysicalBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
+        repr = (
+            "EvaluatedPhysicalBasisFunction("
+            f"{self._element!r}, {self._basis_index}, {self._point!r}"
+        )
+        if self._derivative is not None:
+            repr += f", {self._derivative}"
+        if self._component is not None:
+            repr += f", {self._component}"
+        repr += ")"
+        return repr
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -289,11 +295,10 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
-        return EvaluatedPhysicalBasisFunction(
+        return EvaluatedReferenceBasisFunction(
             self._element,
             self._basis_index,
             self._point,
             self._derivative,
             flatten(indices, self.value_shape),
         )
-

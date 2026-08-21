@@ -3,7 +3,6 @@
 import os
 
 import numpy as np
-import uflx_codegeneration
 from cffi import FFI
 from uflx import (
     SpatialCoordinate,

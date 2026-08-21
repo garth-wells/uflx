@@ -1,7 +1,7 @@
 """Algorithm to replace node with different nodes."""
 
 from uflx.graphs.algorithms.reconstruct import reconstruct_node
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph, NodeOrder
+from uflx.graphs.graphs import Graph, GraphNode, generate_graph
 
 
 def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:

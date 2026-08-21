@@ -1,6 +1,7 @@
 """Tensors."""
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -14,6 +15,7 @@ class Tensor(AbstractExpression):
 
     def __init__(self, entries: NestedSequence):
         """Initalise."""
+
         def to_shape_and_tuple(items) -> tuple[tuple[int, ...], NestedTuple]:
             if isinstance(items, AbstractExpression):
                 return (), items
@@ -26,7 +28,7 @@ class Tensor(AbstractExpression):
                 assert s == sub_s
                 t.append(sub_t)
             assert s is not None
-            return (len(t),) + s, tuple(t)
+            return (len(t), *s), tuple(t)
 
         self._shape, self._entries = to_shape_and_tuple(entries)
 
@@ -37,6 +39,7 @@ class Tensor(AbstractExpression):
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
+
         def extract_successors(items: NestedTuple) -> set[GraphNode]:
             if isinstance(items, GraphNode):
                 return {items}
@@ -56,6 +59,7 @@ class Tensor(AbstractExpression):
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
+
         def extract_component(items: NestedTuple, indices: tuple[int, ...]) -> AbstractExpression:
             if isinstance(items, AbstractExpression):
                 assert len(indices) == 0

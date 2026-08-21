@@ -122,7 +122,11 @@ class Measure(AbstractMeasure):
             kwargs["codim"] = self._codim
         if self._boundary_only:
             kwargs["boundary_only"] = self._boundary_only
-        return f"{self.__class__.__name__}(" + ', '.join(f'{key}={value}' for key, value in kwargs.items()) + ")"
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(f"{key}={value}" for key, value in kwargs.items())
+            + ")"
+        )
 
 
 dx = Measure(codim=0)

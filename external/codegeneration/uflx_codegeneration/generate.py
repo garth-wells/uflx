@@ -1,8 +1,8 @@
 """Code generation."""
 
+from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
-from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction, Argument
 from uflx.geometry import (
@@ -19,14 +19,18 @@ from uflx.graphs import (
     RepresentedByGraph,
     generate_graph,
 )
-from uflx.graphs.algorithms import replace, reconstruct_node
+from uflx.graphs.algorithms import reconstruct_node, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.maps import PushedForward, apply_push_forwards
+from uflx.maps import PulledBack, PushedForward, apply_push_forwards
 from uflx.operators import Grad, ReferenceGrad
 from uflx.points import Point, PointComponent
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.algorithms import insert_geometry_functions, tabulate_finite_elements, expand_inner_products
+from uflx_codegeneration.algorithms import (
+    expand_inner_products,
+    insert_geometry_functions,
+    tabulate_finite_elements,
+)
 from uflx_codegeneration.c import GenerateC, tables_to_c
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import (
@@ -56,7 +60,6 @@ def pull_back_to_reference(
     graph: Graph,
 ) -> Graph:
     """Pull terms in integrals back to reference values."""
-
     node_map: dict[GraphNode, GraphNode] = {}
     for node in graph.ordered_nodes():
         if isinstance(node, Grad):

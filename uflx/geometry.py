@@ -2,13 +2,13 @@
 
 from typing import Any, Protocol, runtime_checkable
 
+from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
-from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point
-from uflx.scalars import Integer, RealScalar
+from uflx.scalars import RealScalar
 from uflx.tensors import Matrix
 
 
@@ -129,7 +129,8 @@ class ReferenceToPhysical(AbstractPoint):
 
         components = [
             expression_sum(
-                CoordinateDofComponent(i // dim, i % dim, dim) * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
+                CoordinateDofComponent(i // dim, i % dim, dim)
+                * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
                 for i in range(element.dim)
             )
             for j in range(dim)
@@ -215,22 +216,34 @@ class JacobianDeterminant(AbstractExpression):
         elif tdim == 2 and gdim == 2:
             assert isinstance(element.dim, int)
 
-            j00 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(1, 0), component=0
+            j00 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=0
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j01 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(0, 1), component=0
+            j01 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=0
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j10 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(1, 0), component=1
+            j10 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=1
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j11 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(0, 1), component=1
+            j11 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=1
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
 
             return j00 * j11 - j01 * j10
         else:
@@ -281,22 +294,34 @@ class Jacobian(AbstractExpression):
         elif tdim == 2 and gdim == 2:
             assert isinstance(element.dim, int)
 
-            j00 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(1, 0), component=0
+            j00 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=0
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j01 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(0, 1), component=0
+            j01 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=0
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j10 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(1, 0), component=1
+            j10 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=1
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
-            j11 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                element, i, self.point, derivative=(0, 1), component=1
+            j11 = expression_sum(
+                CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=1
+                )
+                for i in range(element.dim)
             )
-            for i in range(element.dim))
 
             return Matrix(entries=[[j00, j01], [j10, j11]])
         else:
