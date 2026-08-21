@@ -8,9 +8,10 @@ import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.points import PointInSet
 
-from uflx_codegeneration import GenerateC
+from uflx_codegeneration.c import GenerateC
+from uflx_codegeneration.points import AbstractPointInSet
+from uflx_codegeneration.utils import indented
 
 
 class QuadratureRule:
@@ -27,7 +28,7 @@ class QuadratureRule:
         return len(self.weights)
 
 
-class QuadraturePoint(PointInSet):
+class QuadraturePoint(AbstractPointInSet):
     """A point in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):

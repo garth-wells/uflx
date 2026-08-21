@@ -18,7 +18,7 @@ from uflx.entities import AbstractEntity
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
-from uflx.points import AbstractPoint, PointInSet
+from uflx.points import AbstractPoint, AbstractPointInSet
 from uflx.utils import product
 
 
@@ -195,7 +195,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        if isinstance(self._point, PointInSet):
+        if isinstance(self._point, AbstractPointInSet):
             return self._point.index
         return 0
 
