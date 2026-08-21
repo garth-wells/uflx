@@ -60,9 +60,9 @@ class AbstractExpression(ABC):
 
 
 class UnaryOperator(AbstractExpression):
-    """A binary operator.
+    """A unary operator.
 
-    Binary operators act on two inputs.
+    Unary operators act on a single input.
     """
 
     def __init__(self, argument: AbstractExpression):

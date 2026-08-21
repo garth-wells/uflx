@@ -9,26 +9,28 @@ from uflx.graphs import GraphNode
 class Matrix(AbstractExpression):
     """A matrix."""
 
-    def __init__(self, shape: tuple[int, int], *values: GraphNode):
+    def __init__(self, entries: list[list[GraphNode]]):
         """Initalise."""
-        self.shape = shape
-        self.values = values
+        self._shape = (len(entries), len(entries[0]))
+        for e in entries:
+            assert len(e) == self._shape[1]
+        self._entries = entries
 
     def __repr__(self):
         """Representation."""
-        return f"Matrix({self.shape}, {self.values})"
+        return f"Matrix({self._entries})"
 
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
-        return set(self.values)
+        return set(i for j in self._entries for i in j)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self.shape, *self.values
+        return (self._entries,)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self.shape
+        return self._shape

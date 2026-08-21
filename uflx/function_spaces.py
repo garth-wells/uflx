@@ -84,7 +84,7 @@ def function_space(
 
     Args:
         domain: The domain on which the function space is defined.
-        elements: The elements in the funciton space.
+        elements: The elements in the function space.
     """
     if isinstance(elements, AbstractReferenceMappedFiniteElement):
         elements = (elements,)

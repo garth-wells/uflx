@@ -115,7 +115,14 @@ class Measure(AbstractMeasure):
 
     def __repr__(self) -> str:
         """Representation."""
-        return f"{self.__class__.__name__}{self._dim, self._codim}"
+        kwargs = {}
+        if self._dim is not None:
+            kwargs["codim"] = self._dim
+        if self._codim is not None:
+            kwargs["codim"] = self._codim
+        if self._boundary_only:
+            kwargs["boundary_only"] = self._boundary_only
+        return f"{self.__class__.__name__}(" + ', '.join(f'{key}={value}' for key, value in kwargs.items()) + ")"
 
 
 dx = Measure(codim=0)

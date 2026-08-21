@@ -4,7 +4,6 @@ from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.scalars import AbstractInteger
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.c import GenerateC
@@ -13,7 +12,7 @@ from uflx_codegeneration.utils import indented
 
 def flatten_component(
     indices: tuple[int | str, ...],
-    shape: tuple[int | AbstractInteger, ...],
+    shape: tuple[int, ...],
     bracketed: bool = False,
 ):
     """Flatten the component in an array access."""
@@ -70,7 +69,7 @@ class AddToLocalTensor:
     def __init__(
         self,
         component: tuple[int | str, ...],
-        shape: tuple[int | AbstractInteger, ...],
+        shape: tuple[int, ...],
         body: AbstractExpression,
     ):
         """Initalise."""

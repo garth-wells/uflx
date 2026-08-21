@@ -4,10 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
-from uflx.finite_elements import (
-    EvaluatedReferenceBasisFunction,
-    EvaluatedReferenceBasisFunctionDerivative,
-)
+from uflx.finite_elements import EvaluatedReferenceBasisFunction
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point
@@ -24,7 +21,7 @@ class ExpandableGeometry(Protocol):
 
 
 class SingleSpatialCoordinate(AbstractExpression):
-    """A variable represneting a component of R^d."""
+    """A variable representing a component of R^d."""
 
     def __init__(self, dimension: int, component: int):
         """Initialise."""
@@ -115,19 +112,18 @@ class ReferenceToPhysical(AbstractPoint):
         return self._point, self._domain
 
     def expand_geometry(self) -> GraphNode:
-        """Expand Geometry."""
+        """Expand geometry."""
         if len(self.domain.elements) != 1:
             raise NotImplementedError("Only domains with exactly on element supported for now.")
         (element,) = self.domain.elements
         (dim,) = element.reference_value_shape
 
         components = [Integer(0) for _ in range(dim)]
-        assert isinstance(element.dim, int)
         for i in range(element.dim):
             for j, c in enumerate(components):
                 components[j] += CoordinateDofComponent(
-                    i, j, dim
-                ) * EvaluatedReferenceBasisFunction(element, i, self.reference_point)
+                    i // dim, i % dim, dim
+                ) * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
 
         return Point(*components)
 
@@ -175,7 +171,7 @@ class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
 
     def __init__(self, domain, point):
-        """Initalise."""
+        """Initialise."""
         self.domain = domain
         self.point = point
 
@@ -214,18 +210,18 @@ class JacobianDeterminant(AbstractExpression):
 
             assert isinstance(element.dim, int)
             for i in range(element.dim):
-                j00 += CoordinateDofComponent(
-                    i, 0, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (1, 0))
-                j01 += CoordinateDofComponent(
-                    i, 0, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (0, 1))
-                j10 += CoordinateDofComponent(
-                    i, 1, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (1, 0))
-                j11 += CoordinateDofComponent(
-                    i, 1, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (0, 1))
+                j00 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=0
+                )
+                j01 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=0
+                )
+                j10 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=1
+                )
+                j11 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=1
+                )
 
             return j00 * j11 - j01 * j10
         else:
@@ -277,20 +273,20 @@ class Jacobian(AbstractExpression):
 
             assert isinstance(element.dim, int)
             for i in range(element.dim):
-                j00 += CoordinateDofComponent(
-                    i, 0, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (1, 0))
-                j01 += CoordinateDofComponent(
-                    i, 0, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (0, 1))
-                j10 += CoordinateDofComponent(
-                    i, 1, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (1, 0))
-                j11 += CoordinateDofComponent(
-                    i, 1, tdim
-                ) * EvaluatedReferenceBasisFunctionDerivative(element, i, self.point, (0, 1))
+                j00 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=0
+                )
+                j01 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=0
+                )
+                j10 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(1, 0), component=1
+                )
+                j11 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                    element, i, self.point, derivative=(0, 1), component=1
+                )
 
-            return Matrix((2, 2), j00, j01, j10, j11)
+            return Matrix(entries=[[j00, j01], [j10, j11]])
         else:
             raise NotImplementedError()
 

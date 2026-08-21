@@ -1,0 +1,53 @@
+[project]
+name = "basix-uflx"
+version = "0.0.1"
+description = "UFLx interface for Basix"
+readme = "README.md"
+requires-python = ">=3.11.0"
+license = "MIT"
+authors = [
+    { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
+    { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
+]
+dependencies = ["uflx", "numpy", "cffi", "setuptools", "fenics-basix", "uflx-codegeneration"]
+
+[project.urls]
+homepage = "https://github.com/garth-wells/uflx"
+repository = "https://github.com/garth-wells/uflx"
+
+[project.optional-dependencies]
+docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
+lint = ["ruff", "mypy"]
+ci = ["pytest", "pytest-xdist"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+    # "N", # pep8-naming
+    "E",   # pycodestyle
+    "W",   # pycodestyle
+    "D",   # pydocstyle
+    "F",   # pyflakes
+    "I",   # isort
+    "RUF", # Ruff-specific rules
+    "UP",  # pyupgrade
+    "ICN", # flake8-import-conventions
+    "NPY", # numpy-specific rules
+    "FLY", # use f-string not static joins
+    "LOG", # https://docs.astral.sh/ruff/rules/#flake8-logging-log
+    "ISC", # https://docs.astral.sh/ruff/rules/#flake8-implicit-str-concat-isc
+    # "B", # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    # "A", # https://docs.astral.sh/ruff/rules/#flake8-builtins-a
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+ignore_missing_imports = true

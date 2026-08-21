@@ -22,9 +22,13 @@ class AbstractReferenceMap(ABC):
     def pull_back_symbolic(self, function: AbstractExpression):
         """Map function values from a physical cell to a reference cell."""
 
+    @abstractmethod
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Map function values from a physical cell to a reference cell."""
+
 
 class IdentityReferenceMap(AbstractReferenceMap):
-    """Indentity map."""
+    """Identity map."""
 
     def push_forward_symbolic(self, function: AbstractExpression):
         """Map function values from a reference cell to a physical cell."""
@@ -33,6 +37,90 @@ class IdentityReferenceMap(AbstractReferenceMap):
     def pull_back_symbolic(self, function: AbstractExpression):
         """Map function values from a physical cell to a reference cell."""
         return function
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Map function values from a physical cell to a reference cell."""
+        return ()
+
+
+class BlockedReferenceMap(AbstractReferenceMap):
+    """Map for blocked element."""
+
+    def __init__(
+        self,
+        component_map: AbstractReferenceMap,
+        shape: tuple[int, ...],
+    ):
+        """Initialise."""
+        self._component_map = component_map
+        self._shape = shape
+
+    def push_forward_symbolic(self, function: AbstractExpression):
+        """Map function values from a reference cell to a physical cell."""
+        return function  # TODO
+
+    def pull_back_symbolic(self, function: AbstractExpression):
+        """Map function values from a physical cell to a reference cell."""
+        return function  # TODO
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Map function values from a physical cell to a reference cell."""
+        return self._shape
+
+
+class SymmetricReferenceMap(AbstractReferenceMap):
+    """Symmetric map."""
+
+    def __init__(
+        self,
+        component_map: AbstractReferenceMap,
+        shape: tuple[int, ...],
+        symmetry_map: dict[tuple[int, ...], int],
+    ):
+        """Initialise."""
+        self._component_map = component_map
+        self._shape = shape
+        self._symmetry_map = symmetry_map
+
+    def push_forward_symbolic(self, function: AbstractExpression):
+        """Map function values from a reference cell to a physical cell."""
+        return function  # TODO
+
+    def pull_back_symbolic(self, function: AbstractExpression):
+        """Map function values from a physical cell to a reference cell."""
+        return function  # TODO
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Map function values from a physical cell to a reference cell."""
+        return self._shape
+
+
+class MixedReferenceMap(AbstractReferenceMap):
+    """Map for a mixed element."""
+
+    def __init__(
+        self,
+        sub_maps: list[AbstractReferenceMap],
+        shapes: list[tuple[int, ...]],
+    ):
+        """Initialise."""
+        self._sub_maps = sub_maps
+        self._shapes = shapes
+
+    def push_forward_symbolic(self, function: AbstractExpression):
+        """Map function values from a reference cell to a physical cell."""
+        return function  # TODO
+
+    def pull_back_symbolic(self, function: AbstractExpression):
+        """Map function values from a physical cell to a reference cell."""
+        return function  # TODO
+
+    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+        """Map function values from a physical cell to a reference cell."""
+        shape: tuple[int, ...] = ()
+        for s in self._shapes:
+            shape += s
+        return shape
 
 
 @runtime_checkable
@@ -55,7 +143,7 @@ class PushedForward(AbstractExpression):
     """A function on a reference cell that has been mapped to a physical cell."""
 
     def __init__(self, map: AbstractReferenceMap, function: AbstractExpression):
-        """Initalise."""
+        """Initialise."""
         self.map = map
         self.function = function
 

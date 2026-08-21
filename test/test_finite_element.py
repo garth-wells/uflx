@@ -5,34 +5,11 @@
 # SPDX-License-Identifier:    MIT
 """Test finite elements."""
 
-import pytest
 
-from uflx.test_utils import (
-    LagrangeElement,
-    hexahedron,
-    interval,
-    point,
-    quadrilateral,
-    tetrahedron,
-    triangle,
-)
-
-
-@pytest.mark.parametrize(
-    "cell",
-    [
-        point,
-        interval,
-        triangle,
-        quadrilateral,
-        tetrahedron,
-        hexahedron,
-    ],
-)
-def test_lagrange_element(cell):
+def test_lagrange_element(entity, lagrange_element):
     """Test Lagrange element properties."""
-    element = LagrangeElement(cell, 2)
+    element = lagrange_element(entity.name, 2)
 
-    assert element.cell == cell
+    assert element.cell == entity
     assert element.reference_value_shape == ()
     assert element.lagrange_superdegree == 2

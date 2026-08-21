@@ -4,6 +4,7 @@ from collections.abc import Hashable, Sequence
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -13,7 +14,7 @@ from uflx.points import PointInSet
 class QuadratureRule:
     """A quadrature rule."""
 
-    def __init__(self, points: np.ndarray, weights: np.ndarray):
+    def __init__(self, points: npt.NDArray[np.floating], weights: npt.NDArray[np.floating]):
         """Initialise."""
         self.points = points
         self.weights = weights
@@ -28,7 +29,7 @@ class QuadraturePoint(PointInSet):
     """A point in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
-        """Initalise."""
+        """Initialise."""
         self.rule = rule
         self._index = index
 
@@ -38,7 +39,7 @@ class QuadraturePoint(PointInSet):
         return self._index
 
     @property
-    def points(self) -> np.ndarray:
+    def points(self) -> npt.NDArray[np.floating]:
         """Get all the points in the set."""
         return self.rule.points
 
@@ -61,7 +62,7 @@ class QuadratureWeight(AbstractExpression):
     """A weight in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
-        """Initalise."""
+        """Initialise."""
         self.rule = rule
         self._index = index
 
@@ -94,7 +95,7 @@ class QuadratureLoop:
     """A loop over the points in a quadrature rule."""
 
     def __init__(self, body: GraphNode, rule: QuadratureRule, variable: str):
-        """Initalise."""
+        """Initialise."""
         self.body = body
         self.rule = rule
         self.variable = variable

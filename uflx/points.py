@@ -5,6 +5,7 @@ from collections.abc import Hashable
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
@@ -62,7 +63,7 @@ class PointInSet(AbstractPoint):
 
     @property
     @abstractmethod
-    def points(self) -> np.ndarray:
+    def points(self) -> npt.NDArray[np.floating]:
         """Get all the points in the set."""
 
     @property
@@ -95,7 +96,7 @@ class PointComponent(AbstractExpression):
     """A component of a point."""
 
     def __init__(self, point: AbstractPoint, component: int | str):
-        """Initalise."""
+        """Initialise."""
         self._point = point
         self._component = component
 
