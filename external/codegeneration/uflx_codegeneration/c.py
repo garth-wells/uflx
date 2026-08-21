@@ -8,7 +8,6 @@ from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.utils import indented
 
 
 @runtime_checkable

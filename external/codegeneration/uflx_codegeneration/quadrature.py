@@ -5,7 +5,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 

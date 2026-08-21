@@ -1,4 +1,5 @@
 """Reconstruct."""
+
 from typing import Any
 
 from uflx.graphs.graphs import GraphNode
@@ -19,7 +20,6 @@ def apply_replacements(arg: Any, replacements: dict[GraphNode, GraphNode]) -> An
         }
 
     return arg
-
 
 
 def reconstruct_node(node: GraphNode, replacements: dict[GraphNode, GraphNode]) -> GraphNode:
