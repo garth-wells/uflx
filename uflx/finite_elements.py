@@ -15,11 +15,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from uflx.entities import AbstractEntity
-from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
 from uflx.maps import AbstractReferenceMap
 from uflx.points import AbstractPoint, AbstractPointInSet
-from uflx.utils import product
+from math import prod
 
 
 class AbstractFiniteElement(ABC):
@@ -47,7 +46,7 @@ class AbstractFiniteElement(ABC):
 
     def physical_value_size(self, geometric_dimension: int) -> int:
         """Return the value size of the value space on a physical cell."""
-        return product(self.physical_value_shape(geometric_dimension))
+        return prod(self.physical_value_shape(geometric_dimension))
 
     @property
     @abstractmethod
@@ -98,7 +97,7 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     @property
     def reference_value_size(self) -> int:
         """Return the value size of the value space on the reference cell."""
-        return product(self.reference_value_shape)
+        return prod(self.reference_value_shape)
 
     @property
     @abstractmethod
@@ -108,240 +107,3 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""
         return self.reference_map.physical_value_shape(geometric_dimension)
-
-
-class AbstractEvaluatedReferenceBasisFunction(AbstractExpression):
-    """Abstract base class for a basis function evaluated at a point in a set of points on the reference cell."""
-
-    @property
-    @abstractmethod
-    def element(self) -> AbstractFiniteElement:
-        """The finite element containing this basis function."""
-
-    @property
-    @abstractmethod
-    def basis_index(self) -> int | str:
-        """The index of the basis function."""
-
-    @property
-    @abstractmethod
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-
-    @property
-    @abstractmethod
-    def point(self) -> AbstractPoint:
-        """The point at which the function is evaluated."""
-
-    @property
-    @abstractmethod
-    def derivative(self) -> tuple[int, ...]:
-        """The number of derivatives in each coordinate direction."""
-
-    @property
-    @abstractmethod
-    def component(self) -> int:
-        """The (flattened) component number of the basis function."""
-
-    @property
-    @abstractmethod
-    def has_component(self) -> bool:
-        """Check if this is an evaluation of a single component."""
-
-
-class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
-    """A basis function evaluated at a point on the reference cell."""
-
-    def __init__(
-        self,
-        element: AbstractFiniteElement,
-        basis_index: int | str,
-        point: AbstractPoint,
-        derivative: tuple[int, ...] | None = None,
-        component: int | None = None,
-    ):
-        """Initialise."""
-        self._element = element
-        self._basis_index = basis_index
-        self._point = point
-        if derivative is None:
-            self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
-        else:
-            self._derivative = derivative
-        if (
-            component is None
-            and isinstance(element, AbstractReferenceMappedFiniteElement)
-            and element.reference_value_size == 1
-        ):
-            self._component: int | None = 0
-        else:
-            self._component = component
-
-    @property
-    def point(self) -> AbstractPoint:
-        """The point at which the function is evaluated."""
-        return self._point
-
-    @property
-    def element(self) -> AbstractFiniteElement:
-        """The finite element containing this basis function."""
-        return self._element
-
-    @property
-    def basis_index(self) -> int | str:
-        """The index of the basis function."""
-        return self._basis_index
-
-    @property
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-        if isinstance(self._point, AbstractPointInSet):
-            return self._point.index
-        return 0
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        repr = (
-            "EvaluatedReferenceBasisFunction("
-            f"{self._element!r}, {self._basis_index}, {self._point!r}"
-        )
-        if self._derivative is not None:
-            repr += f", {self._derivative}"
-        if self._component is not None:
-            repr += f", {self._component}"
-        repr += ")"
-        return repr
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._element, self._basis_index, self._point
-
-
-    @property
-    def derivative(self) -> tuple[int, ...]:
-        """The number of derivatives in each coordinate direction."""
-        return self._derivative
-
-    @property
-    def component(self) -> int:
-        """The (flattened) component number of the basis function."""
-        if self._component is None:
-            raise ValueError("EvaluatedBasisFunction is not an evaluation of a single component")
-        return self._component
-
-    @property
-    def has_component(self) -> bool:
-        """Check if this is an evaluation of a single component."""
-        return self._component is not None
-
-
-class AbstractEvaluatedPhysicalBasisFunction(AbstractExpression):
-    """Abstract base class for a basis function evaluated at a point in a set of points on the physical cell."""
-
-    @property
-    @abstractmethod
-    def element(self) -> AbstractFiniteElement:
-        """The finite element containing this basis function."""
-
-    @property
-    @abstractmethod
-    def basis_index(self) -> int | str:
-        """The index of the basis function."""
-
-    @property
-    @abstractmethod
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-
-
-class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
-    """A basis function evaluated at a point on the physical cell."""
-
-    def __init__(
-        self,
-        element: AbstractFiniteElement,
-        basis_index: int | str,
-        point: AbstractPoint,
-        derivative: tuple[int, ...] | None = None,
-        component: int | None = None,
-    ):
-        """Initalise."""
-        self._element = element
-        self._basis_index = basis_index
-        self._point = point
-        if derivative is None:
-            self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
-        else:
-            self._derivative = derivative
-        if (
-            component is None
-            and isinstance(element, AbstractReferenceMappedFiniteElement)
-            and element.reference_value_size == 1
-        ):
-            self._component: int | None = 0
-        else:
-            self._component = component
-
-    @property
-    def element(self) -> AbstractFiniteElement:
-        """The finite element containing this basis function."""
-        return self._element
-
-    @property
-    def basis_index(self) -> int | str:
-        """The index of the basis function."""
-        return self._basis_index
-
-    @property
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-        if isinstance(self._point, PointInSet):
-            return self._point.index
-        return 0
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    def __repr__(self):
-        """Representation."""
-        return f"EvaluatedPhysicalBasisFunction({self._element!r}, {self._basis_index}, {self._point!r})"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._element, self._basis_index, self._point
-
-    @property
-    def derivative(self) -> tuple[int, ...]:
-        """The number of derivatives in each coordinate direction."""
-        return self._derivative
-
-    @property
-    def component(self) -> int:
-        """The (flattened) component number of the basis function."""
-        if self._component is None:
-            raise ValueError("EvaluatedBasisFunction is not an evaluation of a single component")
-        return self._component
-
-    @property
-    def has_component(self) -> bool:
-        """Check if this is an evaluation of a single component."""
-        return self._component is not None

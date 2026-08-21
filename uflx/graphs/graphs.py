@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from enum import Enum
+from typing import Any, Protocol, runtime_checkable, Iterable
 
 import networkx as nx
+
+
+class NodeOrder(Enum):
+    """A node order."""
+    roots_first = 0
+    leaves_first = 1
 
 
 def _print_tree(graph: Graph, node: GraphNode, prefix: str, is_last: bool):
@@ -63,6 +70,24 @@ class Graph(nx.DiGraph):
     def subgraph(self, node: GraphNode) -> Graph:
         """Get the subgraph with the input node as the root node."""
         return generate_graph(node)
+
+    def ordered_nodes(self, order: NodeOrder = NodeOrder.leaves_first) -> Iterable[GraphNode]:
+        """Iterate through the ordered graph nodes."""
+        match order:
+            case NodeOrder.roots_first:
+                return nx.topological_sort(self)
+            case NodeOrder.leaves_first:
+                return reversed(list(nx.topological_sort(self)))
+            case _:
+                raise ValueError("Invalid node order")
+
+    def descendants(self, node: GraphNode) -> set[GraphNode]:
+        """Get all descendants of a node."""
+        return nx.descendants(self, node)
+
+    def is_dag(self) -> bool:
+        """Check if this graph is a directed acyclic graph."""
+        return nx.is_directed_acyclic_graph(self)
 
 
 @runtime_checkable

@@ -14,6 +14,10 @@ class AbstractScalar(AbstractExpression):
         """The value shape of the expression."""
         return ()
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class AbstractInteger(AbstractScalar):
     """Abstract base class for integer values."""

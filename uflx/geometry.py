@@ -3,8 +3,8 @@
 from typing import Any, Protocol, runtime_checkable
 
 from uflx.domains import AbstractCoordinateElement
-from uflx.expressions import AbstractExpression
-from uflx.finite_elements import EvaluatedReferenceBasisFunction
+from uflx.expressions import AbstractExpression, expression_sum
+from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point
@@ -16,7 +16,7 @@ from uflx.tensors import Matrix
 class ExpandableGeometry(Protocol):
     """Geometry that can be expanded into components."""
 
-    def expand_geometry(self) -> GraphNode:
+    def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
 
 
@@ -42,6 +42,10 @@ class SingleSpatialCoordinate(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self._dimension, self._component
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
 
 
 class SpatialCoordinate(AbstractExpression):
@@ -71,6 +75,11 @@ class SpatialCoordinate(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (self._dimension,)
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        (i,) = indices
+        return SingleSpatialCoordinate(self._dimension, i)
 
 
 class ReferenceToPhysical(AbstractPoint):
@@ -111,19 +120,20 @@ class ReferenceToPhysical(AbstractPoint):
         """The arguments used to initialise this object."""
         return self._point, self._domain
 
-    def expand_geometry(self) -> GraphNode:
+    def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         if len(self.domain.elements) != 1:
             raise NotImplementedError("Only domains with exactly on element supported for now.")
         (element,) = self.domain.elements
         (dim,) = element.reference_value_shape
 
-        components = [Integer(0) for _ in range(dim)]
-        for i in range(element.dim):
-            for j, c in enumerate(components):
-                components[j] += CoordinateDofComponent(
-                    i // dim, i % dim, dim
-                ) * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
+        components = [
+            expression_sum(
+                CoordinateDofComponent(i // dim, i % dim, dim) * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
+                for i in range(element.dim)
+            )
+            for j in range(dim)
+        ]
 
         return Point(components)
 
@@ -190,7 +200,7 @@ class JacobianDeterminant(AbstractExpression):
         """The arguments used to initialise this object."""
         return self.domain, self.point
 
-    def expand_geometry(self) -> GraphNode:
+    def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         if not isinstance(self.domain, AbstractCoordinateElement):
             raise NotImplementedError()
@@ -203,33 +213,36 @@ class JacobianDeterminant(AbstractExpression):
         if tdim == 0 and gdim == 0:
             return RealScalar(1.0)
         elif tdim == 2 and gdim == 2:
-            j00: AbstractExpression = Integer(0)
-            j01: AbstractExpression = Integer(0)
-            j10: AbstractExpression = Integer(0)
-            j11: AbstractExpression = Integer(0)
-
             assert isinstance(element.dim, int)
-            for i in range(element.dim):
-                j00 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=0
-                )
-                j01 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=0
-                )
-                j10 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=1
-                )
-                j11 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=1
-                )
+
+            j00 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(1, 0), component=0
+            )
+            for i in range(element.dim))
+            j01 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(0, 1), component=0
+            )
+            for i in range(element.dim))
+            j10 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(1, 0), component=1
+            )
+            for i in range(element.dim))
+            j11 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(0, 1), component=1
+            )
+            for i in range(element.dim))
 
             return j00 * j11 - j01 * j10
         else:
             raise NotImplementedError()
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class Jacobian(AbstractExpression):
-    """The determinant of the Jacobian."""
+    """The Jacobian."""
 
     def __init__(self, domain, point):
         """Initalise."""
@@ -258,7 +271,7 @@ class Jacobian(AbstractExpression):
         """The arguments used to initialise this object."""
         return self.domain, self.point
 
-    def expand_geometry(self) -> GraphNode:
+    def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         gdim, tdim = self.value_shape
         (element,) = self.domain.elements
@@ -266,25 +279,24 @@ class Jacobian(AbstractExpression):
         if tdim == 0 and gdim == 0:
             return RealScalar(1.0)
         elif tdim == 2 and gdim == 2:
-            j00: AbstractExpression = Integer(0)
-            j01: AbstractExpression = Integer(0)
-            j10: AbstractExpression = Integer(0)
-            j11: AbstractExpression = Integer(0)
-
             assert isinstance(element.dim, int)
-            for i in range(element.dim):
-                j00 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=0
-                )
-                j01 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=0
-                )
-                j10 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=1
-                )
-                j11 += CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=1
-                )
+
+            j00 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(1, 0), component=0
+            )
+            for i in range(element.dim))
+            j01 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(0, 1), component=0
+            )
+            for i in range(element.dim))
+            j10 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(1, 0), component=1
+            )
+            for i in range(element.dim))
+            j11 = expression_sum( CoordinateDofComponent(i // tdim, i % tdim, tdim) * EvaluatedReferenceBasisFunction(
+                element, i, self.point, derivative=(0, 1), component=1
+            )
+            for i in range(element.dim))
 
             return Matrix(entries=[[j00, j01], [j10, j11]])
         else:
@@ -293,6 +305,10 @@ class Jacobian(AbstractExpression):
     def __repr__(self) -> str:
         """Representation."""
         return f"Jacobian({self.domain!r}, {self.point!r})"
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        return self.expand_geometry().component(*indices)
 
 
 class CoordinateDofComponent(AbstractExpression):
@@ -318,6 +334,10 @@ class CoordinateDofComponent(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self._point, self._component, self._tdim
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
 
 
 def expand_geometry(

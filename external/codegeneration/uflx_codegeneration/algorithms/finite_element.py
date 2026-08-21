@@ -1,11 +1,11 @@
-"""Algorithms."""
+"""Finite element algorithms."""
 
 from collections.abc import Hashable
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from uflx.finite_elements import AbstractEvaluatedReferenceBasisFunction
+from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
 from uflx.geometry import JacobianDeterminant, expand_geometry
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
@@ -37,14 +37,14 @@ def tabulate_finite_elements(
             if name not in table_info or sum(node.derivative) > table_info[name][1]:
                 assert isinstance(node.element, AbstractFiniteElement)
                 table_info[name] = (node.element, sum(node.derivative), node.point.points)
-            if node.has_component:
+            if node.component_index is None:
                 to_replace[node] = ArrayEntry(
-                    table_map[id],
-                    (index(*node.derivative), node.point_index, node.basis_index, node.component),
+                    table_map[id], (index(*node.derivative), node.point_index, node.basis_index)
                 )
             else:
                 to_replace[node] = ArrayEntry(
-                    table_map[id], (index(*node.derivative), node.point_index, node.basis_index)
+                    table_map[id],
+                    (index(*node.derivative), node.point_index, node.basis_index, node.component_index),
                 )
 
     tables = {
@@ -52,25 +52,3 @@ def tabulate_finite_elements(
         for name, (element, nderivs, points) in table_info.items()
     }
     return tables, replace(graph, to_replace)
-
-
-def insert_geometry_functions(
-    graph: Graph,
-    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, tuple[str, list[Variable], Graph]], Graph]:
-    """Replace geometry nodes with calls to functions that compute geometry."""
-    functions = {}
-    to_replace: dict[GraphNode, GraphNode] = {}
-    coordinate_dofs = Variable("const double*", symbols.coordinate_dofs)
-    for node in graph:
-        if isinstance(node, JacobianDeterminant):
-            f = variable_namer.geometry_function_name()
-            f_args: list[Any] = [coordinate_dofs]
-            inputs = [coordinate_dofs]
-            if isinstance(node.point.index, str):
-                inputs.append(Variable("int", node.point.index))
-                f_args.append(node.point.index)
-            to_replace[node] = FunctionCall(f, *f_args)
-            functions[f] = ("double", inputs, expand_geometry(graph.subgraph(node)))
-
-    return functions, replace(graph, to_replace)

@@ -86,7 +86,7 @@ setattr(Abs, "generate_c", abs_generate_c)
 
 def pc_generate_c(self) -> str:
     """Generate code for this object."""
-    c = self.point.get_component(self.component)
+    c = self.point.component(self.component_index)
     if isinstance(c, PointComponent):
         raise NotImplementedError(f"GenerateC is not implemented for {self.__class__}")
     if not isinstance(c, GenerateC):

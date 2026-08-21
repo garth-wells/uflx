@@ -170,6 +170,10 @@ class PushedForward(AbstractExpression):
         """Apply the push forward."""
         return self.map.push_forward_symbolic(self.function)
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError("Cannot take a 'component' of a PushedForward object")
+
 
 class PulledBack(AbstractExpression):
     """A function on a physical cell that has been mapped to a reference cell."""
@@ -201,6 +205,10 @@ class PulledBack(AbstractExpression):
     def apply_pull_back(self) -> AbstractExpression:
         """Apply the pull back."""
         return self.map.pull_back_symbolic(self.function)
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError("Cannot take a 'component' of a PulledBack object")
 
 
 def apply_push_forwards(

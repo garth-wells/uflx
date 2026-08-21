@@ -1,0 +1,29 @@
+"""Form algorithms."""
+
+from uflx.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs.algorithms import reconstruct_node
+from uflx.expressions import expression_sum
+from uflx.operators import Inner
+from uflx.scalars import Integer
+
+
+def expand_inner_products(graph: Graph) -> Graph:
+    new_nodes = {}
+    for node in graph.ordered_nodes():
+        if isinstance(node, Inner):
+            assert node.first.value_shape == node.second.value_shape
+            first = new_nodes[node.first]
+            second = new_nodes[node.second]
+            match len(node.first.value_shape):
+                case 0:
+                    new_nodes[node] = first * second
+                case 1:
+                    new_nodes[node] = expression_sum(
+                        first.component(i) * second.component(i)
+                        for i in range(first.value_shape[0])
+                    )
+                case _:
+                    raise NotImplementedError()
+        else:
+            new_nodes[node] = reconstruct_node(node, new_nodes)
+    return generate_graph(new_nodes[graph.root])
