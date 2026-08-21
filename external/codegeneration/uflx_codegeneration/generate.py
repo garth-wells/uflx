@@ -206,11 +206,45 @@ def generate(
         dx: quadrature_rule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
     }
 
+    graph.print()
+    print()
+    print("----")
+    print()
+
     graph = integrals_to_quadrature(graph, rules)
+
+    graph.print()
+    print()
+    print("----")
+    print()
+
     graph = apply_push_forwards(graph)
+
+    graph.print()
+    print()
+    print("----")
+    print()
+
     geometry_functions, graph = insert_geometry_functions(graph)
+
+    graph.print()
+    print()
+    print("----")
+    print()
+
     graph = expand_geometry(graph)
+
+    graph.print()
+    print()
+    print("----")
+    print()
+
     graph = take_real_part(graph)
+
+    graph.print()
+    print()
+    print("----")
+    print()
 
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)
