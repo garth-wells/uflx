@@ -124,7 +124,7 @@ class ReferenceToPhysical(AbstractPoint):
                     i // dim, i % dim, dim
                 ) * EvaluatedBasisFunction(element, i, self.reference_point, component=j)
 
-        return Point(*components)
+        return Point(components)
 
 
 class JacobianDeterminant(AbstractExpression):

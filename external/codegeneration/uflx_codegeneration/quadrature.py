@@ -5,10 +5,12 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.points import PointInSet
+
+from uflx_codegeneration.c import GenerateC
+from uflx_codegeneration.points import AbstractPointInSet
+from uflx_codegeneration.utils import indented
 
 
 class QuadratureRule:
@@ -25,7 +27,7 @@ class QuadratureRule:
         return len(self.weights)
 
 
-class QuadraturePoint(PointInSet):
+class QuadraturePoint(AbstractPointInSet):
     """A point in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
@@ -114,10 +116,20 @@ class QuadratureLoop:
         """The arguments used to initialise this object."""
         return self.body, self.rule, self.variable
 
+    def generate_c(self) -> str:
+        """Generate code for this object."""
+        if not isinstance(self.body, GenerateC):
+            raise NotImplementedError(f"GenerateC is not implemented for {self.body.__class__}")
+        return (
+            f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
+            f"++{self.variable})\n"
+            "{\n" + indented(self.body.generate_c(), 2) + "\n}"
+        )
+
 
 def quadrature_rule(
-    points: Sequence[Sequence[float]],
-    weights: Sequence[float],
+    points: Sequence[Sequence[float]] | npt.ArrayLike,
+    weights: Sequence[float] | npt.ArrayLike,
 ) -> QuadratureRule:
     """Create a quadrature rule."""
     return QuadratureRule(np.array(points), np.array(weights))

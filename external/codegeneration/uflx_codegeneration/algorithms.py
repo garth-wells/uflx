@@ -9,11 +9,11 @@ from uflx.finite_elements import AbstractEvaluatedBasisFunction
 from uflx.geometry import JacobianDeterminant, expand_geometry
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
-from uflx.points import PointInSet
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
 from uflx_codegeneration.nodes import ArrayEntry, FunctionCall, Variable
+from uflx_codegeneration.points import AbstractPointInSet
 from uflx_codegeneration.utils import index
 
 
@@ -27,7 +27,7 @@ def tabulate_finite_elements(
     table_info: dict[str, tuple[AbstractFiniteElement, int, npt.NDArray[np.floating]]] = {}
     for node in graph:
         if isinstance(node, GraphNode) and isinstance(node, AbstractEvaluatedBasisFunction):
-            assert isinstance(node.point, PointInSet)
+            assert isinstance(node.point, AbstractPointInSet)
             id = (node.element, node.point.points_id)
             if id in table_map:
                 name = table_map[id]
