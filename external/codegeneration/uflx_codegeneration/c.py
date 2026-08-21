@@ -6,7 +6,6 @@ import numpy as np
 from uflx.expressions import Abs, Add, Mult, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
-from uflx.quadrature import QuadratureLoop
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.utils import indented
@@ -83,20 +82,6 @@ def abs_generate_c(self) -> str:
 
 
 setattr(Abs, "generate_c", abs_generate_c)
-
-
-def ql_generate_c(self) -> str:
-    """Generate code for this object."""
-    if not isinstance(self.body, GenerateC):
-        raise NotImplementedError(f"GenerateC is not implemented for {self.body.__class__}")
-    return (
-        f"for (int {self.variable}=0; {self.variable}!={self.rule.npoints}; "
-        f"++{self.variable})\n"
-        "{\n" + indented(self.body.generate_c(), 2) + "\n}"
-    )
-
-
-setattr(QuadratureLoop, "generate_c", ql_generate_c)
 
 
 def pc_generate_c(self) -> str:
