@@ -14,3 +14,8 @@ class AbstractPointInSet(UFLxAbstractPointInSet):
     @abstractmethod
     def points(self) -> npt.NDArray[np.floating]:
         """Get all the points in the set."""
+
+    @property
+    def dim(self) -> int:
+        """The dimension of the point."""
+        return self.points.shape[1]

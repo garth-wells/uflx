@@ -1,7 +1,7 @@
 """Sets of points."""
 
 from abc import abstractmethod
-from collections.abc import Hashable
+from collections.abc import Hashable, Sequence
 from typing import Any
 
 from uflx.expressions import AbstractExpression
@@ -29,9 +29,9 @@ class AbstractPoint(AbstractExpression):
 class Point(AbstractPoint):
     """A single point in R^d."""
 
-    def __init__(self, components: AbstractExpression):
+    def __init__(self, components: Sequence[AbstractExpression]):
         """Initialise."""
-        self._components = components
+        self._components = tuple(components)
 
     @property
     def dim(self) -> int:
@@ -59,9 +59,9 @@ class AbstractPointInSet(AbstractPoint):
     """Base class for a point in a set of points."""
 
     @property
+    @abstractmethod
     def dim(self) -> int:
         """The dimension of the point."""
-        return self.points.shape[1]
 
     @property
     @abstractmethod
