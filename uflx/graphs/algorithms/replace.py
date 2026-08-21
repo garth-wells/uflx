@@ -2,7 +2,8 @@
 
 import networkx as nx
 
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph, reconstruct_node
+from uflx.graphs.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs.algorithms.reconstruct import reconstruct_node
 
 
 def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
