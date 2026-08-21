@@ -243,6 +243,7 @@ def generate(
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
     assert isinstance(graph.root, GenerateC)
+    graph.print()
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
