@@ -100,9 +100,3 @@ def generate_graph(node: GraphNode) -> Graph:
         added_nodes = set().union(*[n.successors for n in added_nodes])
 
     return graph
-
-
-def reconstruct_node(node: GraphNode, replacements: dict[GraphNode, GraphNode]) -> GraphNode:
-    """Reconstruct a node with replacements made."""
-    args = [replacements.get(i, i) if isinstance(i, GraphNode) else i for i in node.init_args]
-    return node.__class__(*args)

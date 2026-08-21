@@ -9,5 +9,4 @@ from uflx.graphs.graphs import (
     GraphNode,
     RepresentedByGraph,
     generate_graph,
-    reconstruct_node,
 )

@@ -20,25 +20,24 @@ from uflx.graphs import (
     RepresentedByGraph,
     generate_graph,
     is_dag,
-    reconstruct_node,
 )
-from uflx.graphs.algorithms import replace
+from uflx.graphs.algorithms import replace, reconstruct_node
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
 from uflx.operators import Grad, ReferenceGrad
 from uflx.points import Point, PointComponent
-from uflx.quadrature import (
+
+from uflx_codegeneration import symbols
+from uflx_codegeneration.algorithms import insert_geometry_functions, tabulate_finite_elements
+from uflx_codegeneration.c import GenerateC, tables_to_c
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration.quadrature import (
     QuadratureLoop,
     QuadraturePoint,
     QuadratureRule,
     QuadratureWeight,
     quadrature_rule,
 )
-
-from uflx_codegeneration import symbols
-from uflx_codegeneration.algorithms import insert_geometry_functions, tabulate_finite_elements
-from uflx_codegeneration.c import GenerateC, tables_to_c
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.utils import indented
 
 

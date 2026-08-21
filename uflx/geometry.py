@@ -125,7 +125,7 @@ class ReferenceToPhysical(AbstractPoint):
                     i // dim, i % dim, dim
                 ) * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
 
-        return Point(*components)
+        return Point(components)
 
 
 class PhysicalToReference(AbstractPoint):
