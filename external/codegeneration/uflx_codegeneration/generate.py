@@ -7,6 +7,7 @@ from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction, Argument
 from uflx.geometry import (
     Jacobian,
+    JacobianInverse,
     JacobianDeterminant,
     PhysicalToReference,
     ReferenceToPhysical,
@@ -69,7 +70,7 @@ def pull_back_to_reference(
                 if isinstance(node.argument._point, ReferenceToPhysical)
                 else PhysicalToReference(node.argument._point)
             )
-            node_map[node] = Jacobian(node.argument._point.domain, point) * ReferenceGrad(
+            node_map[node] = JacobianInverse(node.argument._point.domain, point) * ReferenceGrad(
                 argument.function if isinstance(argument, PushedForward) else PulledBack(argument)
             )
         elif isinstance(node, EvaluatedPhysicalBasisFunction):
@@ -275,8 +276,7 @@ def generate(
         code += "\n\n"
         assert isinstance(fgraph.root, GenerateC)
         code += f"  return {fgraph.root.generate_c()};\n"
-        code += "}"
-    code += "\n\n"
+        code += "}\n\n"
     code += (
         "void tabulate_tensor_f64(\n"
         f"    double* restrict {symbols.local_tensor},\n"

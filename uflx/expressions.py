@@ -49,6 +49,12 @@ class AbstractExpression(ABC):
             case _:
                 return NotImplemented
 
+    def __truediv__(self, other):
+        """Division."""
+        if not isinstance(other, AbstractExpression):
+            return NotImplemented
+        return Div(self, other)
+
     def __add__(self, other):
         """Add."""
         if isinstance(other, AbstractExpression):
@@ -60,6 +66,10 @@ class AbstractExpression(ABC):
         if isinstance(other, AbstractExpression):
             return Subtract(self, other)
         return NotImplemented
+
+    def __neg__(self):
+        """Negate."""
+        return Neg(self)
 
     def __abs__(self):
         """Absolute value."""
@@ -138,6 +148,25 @@ class Mult(BinaryOperator):
         raise ValueError("Cannot get a component of a scalar expression")
 
 
+class Div(BinaryOperator):
+    """Scalar multiplication operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        if second == 0:
+            raise ZeroDivisionError()
+        super().__init__(first, second)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
+
 class Add(BinaryOperator):
     """Addition operator."""
 
@@ -191,6 +220,21 @@ class Abs(UnaryOperator):
         if self.value_shape == ():
             raise ValueError("Cannot get a component of a scalar expression")
         return Abs(self.argument.component(*indices))
+
+
+class Neg(UnaryOperator):
+    """Negation operator."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        return Neg(self.argument.component(*indices))
 
 
 class MatVec(BinaryOperator):

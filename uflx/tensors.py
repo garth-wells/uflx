@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, expression_sum
 from uflx.graphs import GraphNode
 
 NestedSequence = AbstractExpression | Sequence["NestedSequence"]
@@ -69,6 +69,14 @@ class Tensor(AbstractExpression):
 
         return extract_component(self._entries, indices)
 
+    def compute_inverse(self) -> Tensor:
+        """Compute the inverse of the tensor."""
+        raise NotImplementedError(f"Computing the inverse not implemented for abitrary rank tensors.")
+
+    def transpose(self) -> Tensor:
+        """Get the transpose of the tensor."""
+        raise NotImplementedError(f"Transpose not implemented for abitrary rank tensors.")
+
 
 class Vector(Tensor):
     """A vector."""
@@ -94,3 +102,34 @@ class Matrix(Tensor):
     def __repr__(self):
         """Representation."""
         return f"Matrix({self._entries})"
+
+    def transpose(self) -> Matrix:
+        """Get the transpose of the matrix."""
+        return Matrix([[self._entries[i][j] for i in len(self._shape[0])] for j in len(self._shape[1])])
+
+    def matmat(self, other: Matrix) -> Matrix:
+        """Compute a matrix-matrix product."""
+        assert self._shape[1] == other._shape[0]
+        return Matrix([
+            [expression_sum(self._entry[i, k] * other.entry[k, j] for k in range(self._shape[1])) for j in range(other._shape[1])]
+            for i in range(self._shape[0])
+        ])
+
+    def compute_inverse(self) -> Tensor:
+        """Compute the inverse of the matrix."""
+        rows, cols = self._shape
+        if rows > cols:
+            return self.transpose.matmat(self).inverse.matmat(self.transpose)
+        elif rows < cols:
+            return self.transpose.matmat(self.matmat(self.transpose).inverse())
+        else:
+            match rows:
+                case 1:
+                    [[a]] = self_entries
+                    return Matrix([[1 / a]])
+                case 2:
+                    [[a, b], [c, d]] = self._entries
+                    det = a * d - b * c
+                    return Matrix([[d / det, -b / det], [-c/det, a/det]])
+                case _:
+                    raise NotImplementedError("Inverting of {rows}x{rows} not implemented.")
