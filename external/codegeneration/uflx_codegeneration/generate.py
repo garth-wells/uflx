@@ -47,7 +47,7 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
     """Extract the domain associated with a node."""
     domain: AbstractDomain | None = None
     for i in graph.descendants(node):
-        if isinstance(i, AbstractPhysicalFunction | AbstractReferenceFunction):
+        if isinstance(i, AbstractPhysicalFunction):
             if domain is None:
                 domain = i.function_space.domain
             else:
@@ -256,11 +256,9 @@ def generate(
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
     geometry_functions, graph = insert_geometry_functions(graph)
+    graph.print()
     graph = expand_geometry(graph)
-    graph.print()
-    print("\n---\n")
     graph = expand_inner_products(graph)
-    graph.print()
     graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
@@ -296,6 +294,8 @@ def generate(
     assert isinstance(graph.root, GenerateC)
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
+
+    print(code)
 
     signatures = {
         form: (

@@ -150,13 +150,14 @@ def test_stiffness_matrix(lagrange_element):
     lib = ffi.dlopen(so)
 
     mat = np.zeros((3, 3))
-    coords = np.zeros((3, 3))
+    coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
     for cell, expected_mat in zip(cells, expected_local_matrices):
         for i, j in enumerate(cell):
             for k, p in enumerate(pts[j]):
                 coords[i, k] = p
+        print(coords)
         mat[:] = 0.0
         lib.tabulate_tensor_f64(
             ffi.cast("double*", mat.ctypes.data),
