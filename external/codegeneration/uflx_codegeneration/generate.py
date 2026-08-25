@@ -21,7 +21,7 @@ from uflx.graphs import (
 )
 from uflx.graphs.algorithms import reconstruct_node, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.maps import PulledBack, PushedForward, apply_push_forwards
+from uflx.maps import PushedForward, apply_push_forwards
 from uflx.operators import Grad, ReferenceGrad
 from uflx.points import Point, PointComponent
 
@@ -32,6 +32,7 @@ from uflx_codegeneration.algorithms import (
     tabulate_finite_elements,
 )
 from uflx_codegeneration.c import GenerateC, tables_to_c
+from uflx_codegeneration.finite_element import AbstractReferenceMappedFiniteElement
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import (
     QuadratureLoop,
@@ -65,26 +66,26 @@ def pull_back_to_reference(
         if isinstance(node, Grad):
             argument = node_map.get(node.argument, node.argument)
             point = (
-                node.argument._point.reference_point
-                if isinstance(node.argument._point, ReferenceToPhysical)
-                else PhysicalToReference(node.argument._point)
+                node.argument._point.reference_point  # type: ignore
+                if isinstance(node.argument._point, ReferenceToPhysical)  # type: ignore
+                else PhysicalToReference(node.argument._point)  # type: ignore
             )
-            node_map[node] = JacobianInverseTranspose(
-                node.argument._point.domain, point
-            ) * ReferenceGrad(
-                argument.function if isinstance(argument, PushedForward) else PulledBack(argument)
-            )
+            if isinstance(argument, PushedForward):
+                node_map[node] = JacobianInverseTranspose(
+                    node.argument._point.domain,
+                    point,  # type: ignore
+                ) * ReferenceGrad(argument.function)
         elif isinstance(node, EvaluatedPhysicalBasisFunction):
-            node_map[node] = PushedForward(
-                node._element.reference_map,
-                EvaluatedReferenceBasisFunction(
-                    node._element,
-                    node._basis_index,
-                    node._point.reference_point
-                    if isinstance(node._point, ReferenceToPhysical)
-                    else PhysicalToReference(node._point),
-                ),
-            )
+            assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
+            if isinstance(node._point, ReferenceToPhysical):
+                node_map[node] = PushedForward(
+                    node._element.reference_map,
+                    EvaluatedReferenceBasisFunction(
+                        node._element,
+                        node._basis_index,
+                        node._point.reference_point,
+                    ),
+                )
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
@@ -153,6 +154,7 @@ def integrals_to_quadrature(
 
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
+                assert isinstance(a.function_space.domain, AbstractCoordinateElement)
                 point = QuadraturePoint(rule, qvariable)
                 to_replace[a] = EvaluatedPhysicalBasisFunction(
                     a.function_space,
@@ -165,6 +167,7 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert a.function_space.domain == domain
 
+            assert isinstance(domain, AbstractCoordinateElement)
             integrand = (
                 QuadratureWeight(rules[node.measure], variables[a.component_index])
                 * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
