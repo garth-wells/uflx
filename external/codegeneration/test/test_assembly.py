@@ -84,7 +84,7 @@ def test_mass_matrix(lagrange_element, cell, expected_mat):
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
 
-    filename = f"test_mass_matrix_{hash(cell)}"
+    filename = f"test_mass_matrix_{hash(tuple(cell))}"
 
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
@@ -174,7 +174,7 @@ def test_stiffness_matrix(lagrange_element, cell, expected_mat):
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
 
-    filename = f"test_stiffness_matrix_{hash(cell)}"
+    filename = f"test_stiffness_matrix_{hash(tuple(cell))}"
 
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
@@ -240,7 +240,7 @@ def test_linear_form(lagrange_element, cell, expected_vec):
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
 
-    filename = f"test_linear_form_{hash(cell)}"
+    filename = f"test_linear_form_{hash(tuple(cell))}"
 
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
