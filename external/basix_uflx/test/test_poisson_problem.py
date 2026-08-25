@@ -1,3 +1,4 @@
+import os
 import random
 import pytest
 
@@ -14,13 +15,20 @@ from uflx import (
     inner,
 )
 import uflx_codegeneration
+import hashlib
 
 from basix_uflx import element
 
 
-def assemble_code(form, filename, code_dir):
+def assemble_code(form, code_dir, filename=None):
     ffi = FFI()
     code, signatures = uflx_codegeneration.generate(form)
+
+    if filename is None:
+        h = hashlib.sha1(code.encode("utf-8"))
+        filename = f"basix_uflx_test_{h.hexdigest()}"
+        while os.path.isfile(os.path.join(code_dir, f"{filename}.c")):
+            filename += "_"
 
     ffi.cdef("\n".join(signatures.values()))
     ffi.set_source(filename, code)
@@ -92,8 +100,8 @@ def test_poisson_problem_square(n, code_dir):
     form = inner(grad(u), grad(v)) * dx
     rhs = 0 * v * dx
 
-    mat_tabulate = assemble_code(form, f"test_poisson_problem_square_{n}_mat", code_dir)
-    vec_tabulate = assemble_code(rhs, f"test_poisson_problem_square_{n}_vec", code_dir)
+    mat_tabulate = assemble_code(form, code_dir)
+    vec_tabulate = assemble_code(rhs, code_dir)
 
 
     local_mat = np.zeros((3, 3))

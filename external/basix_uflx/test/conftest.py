@@ -14,5 +14,10 @@ def code_dir():
 
 def pytest_generate_tests(metafunc):
     """Generate tests."""
-    if not os.path.isdir(CODE_DIRECTORY):
+    if os.path.isdir(CODE_DIRECTORY):
+        os.system(f"rm {CODE_DIRECTORY}/*.c")
+        os.system(f"rm {CODE_DIRECTORY}/*.o")
+        os.system(f"rm {CODE_DIRECTORY}/*.so")
+    else:
         os.mkdir(CODE_DIRECTORY)
+
