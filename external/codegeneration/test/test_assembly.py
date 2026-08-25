@@ -1,7 +1,5 @@
 """Test code generation."""
 
-import os
-
 import numpy as np
 from cffi import FFI
 from uflx import (
@@ -17,12 +15,8 @@ from uflx import (
 
 import uflx_codegeneration
 
-code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
-if not os.path.isdir(code_dir):
-    os.mkdir(code_dir)
 
-
-def test_mass_matrix(lagrange_element):
+def test_mass_matrix(lagrange_element, code_dir):
     """Test code generation for a mass matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
@@ -96,7 +90,7 @@ def test_mass_matrix(lagrange_element):
         assert np.allclose(mat, expected_mat)
 
 
-def test_stiffness_matrix(lagrange_element):
+def test_stiffness_matrix(lagrange_element, code_dir):
     """Test code generation for a stiffness matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
@@ -169,7 +163,7 @@ def test_stiffness_matrix(lagrange_element):
         assert np.allclose(mat, expected_mat)
 
 
-def test_linear_form(lagrange_element):
+def test_linear_form(lagrange_element, code_dir):
     """Test code generation for a mass matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
