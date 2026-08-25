@@ -166,9 +166,6 @@ def test_stiffness_matrix(lagrange_element, cell, expected_mat):
 
     filename = "test_stiffness_matrix"
 
-    #with open("manual_test_stiffness_matrix.c") as f:
-    #    code = f.read()
-
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
     ffi.set_source(f"{filename}", code)

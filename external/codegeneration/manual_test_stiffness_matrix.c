@@ -69,18 +69,14 @@ void tabulate_tensor_f64(
     for (int k=0; k!=3; ++k)
     {
       printf("%d %d\n", j, k);
+        printf("  ( %f %f )\n  ( %f %f )\n",
+            geo0_0_0(coordinate_dofs, k), geo0_0_1(coordinate_dofs, k),
+            geo0_1_0(coordinate_dofs, k), geo0_1_1(coordinate_dofs, k)
+        );
       for (int i=0; i!=3; ++i)
       {
-        A[j * 3 + k] += ((QW0[j] * fabs(geo2(coordinate_dofs, i))) * ((((geo1_0_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_0_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_0_1(coordinate_dofs, j) * FE0[2][i][j][0]))) + (((geo1_1_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_1_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_1(coordinate_dofs, j) * FE0[2][i][j][0])))));
-        printf("  ( %f %f ) ( %f )\n  ( %f %f ) ( %f )\n",
-            geo0_0_0(coordinate_dofs, k), geo0_0_1(coordinate_dofs, k), FE0[1][i][k][0],
-            geo0_1_0(coordinate_dofs, k), geo0_1_1(coordinate_dofs, k), FE0[2][i][k][0]
-        );
-        printf("  ( %f %f ) ( %f )\n  ( %f %f ) ( %f )\n",
-            geo1_0_0(coordinate_dofs, k), geo1_0_1(coordinate_dofs, k), FE0[1][i][j][0],
-            geo1_1_0(coordinate_dofs, k), geo1_1_1(coordinate_dofs, k), FE0[2][i][j][0]
-        );
-        printf("  %f %f %f\n", QW0[j], fabs(geo2(coordinate_dofs, i)), ((((geo1_0_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_0_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_0_1(coordinate_dofs, j) * FE0[2][i][j][0]))) + (((geo1_1_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_1_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_1(coordinate_dofs, j) * FE0[2][i][j][0])))));
+        A[j * 3 + k] += ((QW0[j] * fabs(geo2(coordinate_dofs, i))) * ((((geo1_0_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_0(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_0(coordinate_dofs, j) * FE0[2][i][j][0]))) + (((geo1_0_1(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_1(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_1(coordinate_dofs, j) * FE0[2][i][j][0])))));
+        printf("  %f %f %f\n", QW0[j], fabs(geo2(coordinate_dofs, i)), ((((geo1_0_0(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_0(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_0(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_0(coordinate_dofs, j) * FE0[2][i][j][0]))) + (((geo1_0_1(coordinate_dofs, k) * FE0[1][i][k][0]) + (geo1_1_1(coordinate_dofs, k) * FE0[2][i][k][0])) * ((geo0_0_1(coordinate_dofs, j) * FE0[1][i][j][0]) + (geo0_1_1(coordinate_dofs, j) * FE0[2][i][j][0])))));
       }
       printf("%f\n\n", A[j*3+k]);
     }

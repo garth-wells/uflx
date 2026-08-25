@@ -107,7 +107,7 @@ class Matrix(Tensor):
 
     def transpose(self) -> Matrix:
         """Get the transpose of the matrix."""
-        return Matrix([[self._entries[i][j] for i in len(self._shape[0])] for j in len(self._shape[1])])
+        return Matrix([[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])])
 
     def matmat(self, other: Matrix) -> Matrix:
         """Compute a matrix-matrix product."""
