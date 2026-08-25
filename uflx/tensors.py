@@ -7,6 +7,7 @@ from typing import Any
 
 from uflx.expressions import AbstractExpression, expression_sum
 from uflx.graphs import GraphNode
+from uflx.scalars import RealScalar
 
 NestedSequence = AbstractExpression | Sequence["NestedSequence"]
 NestedTuple = AbstractExpression | tuple["NestedTuple", ...]
@@ -121,17 +122,40 @@ class Matrix(Tensor):
         """Compute the inverse of the matrix."""
         rows, cols = self._shape
         if rows > cols:
-            return self.transpose.matmat(self).inverse.matmat(self.transpose)
+            return self.transpose.matmat(self).compute_inverse().matmat(self.transpose)
         elif rows < cols:
-            return self.transpose.matmat(self.matmat(self.transpose).inverse())
+            return self.transpose.matmat(self.matmat(self.transpose).compute_inverse())
         else:
             match rows:
+                case 0:
+                    return Matrix([[]])
                 case 1:
                     [[a]] = self_entries
                     return Matrix([[1 / a]])
                 case 2:
                     [[a, b], [c, d]] = self._entries
                     det = a * d - b * c
-                    return Matrix([[d / det, -b / det], [-c/det, a/det]])
+                    return Matrix([[d / det, -b / det], [-c / det, a / det]])
                 case _:
                     raise NotImplementedError("Inverting of {rows}x{rows} not implemented.")
+
+    def compute_determinant(self) -> AbstractExpression:
+        """Compute the inverse of the matrix."""
+        rows, cols = self._shape
+        if rows > cols:
+            return self.transpose.matmat(self).compute_determinant()
+        elif rows < cols:
+            return self.matmat(self.transpose).compute_determinant()
+        else:
+            match rows:
+                case 0:
+                    return RealScalar(1.0)
+                case 1:
+                    [[a]] = self_entries
+                    return a
+                case 2:
+                    [[a, b], [c, d]] = self._entries
+                    return a * d - b * c
+                case _:
+                    [[a, b, c], [d, e, f], [g, h, i]] = self._entries
+                    return a * (e*i - f*h) + b * (f*g-d*i) + c * (d*h-e*g)

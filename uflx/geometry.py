@@ -178,86 +178,10 @@ class PhysicalToReference(AbstractPoint):
         return self._point, self._domain
 
 
-class JacobianDeterminant(AbstractExpression):
-    """The determinant of the Jacobian."""
-
-    def __init__(self, domain, point):
-        """Initialise."""
-        self.domain = domain
-        self.point = point
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return ()
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self.domain, self.point
-
-    def expand_geometry(self) -> AbstractExpression:
-        """Expand geometry."""
-        if not isinstance(self.domain, AbstractCoordinateElement):
-            raise NotImplementedError()
-        if len(self.domain.elements) > 1:
-            raise NotImplementedError()
-        (element,) = self.domain.elements
-        tdim = element.cell.topological_dimension
-        gdim = self.domain.geometric_dimension
-
-        if tdim == 0 and gdim == 0:
-            return RealScalar(1.0)
-        elif tdim == 2 and gdim == 2:
-            assert isinstance(element.dim, int)
-
-            j00 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=0
-                )
-                for i in range(element.dim)
-            )
-            j01 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=0
-                )
-                for i in range(element.dim)
-            )
-            j10 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=1
-                )
-                for i in range(element.dim)
-            )
-            j11 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=1
-                )
-                for i in range(element.dim)
-            )
-
-            return j00 * j11 - j01 * j10
-        else:
-            raise NotImplementedError()
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        raise ValueError("Cannot get a component of a scalar expression")
-
-
 class Jacobian(AbstractExpression):
     """The Jacobian."""
 
-    def __init__(self, domain, point):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
         """Initalise."""
         self.domain = domain
         self.point = point
@@ -349,10 +273,43 @@ class Jacobian(AbstractExpression):
         return self.expand_geometry().component(*indices)
 
 
+class JacobianDeterminant(AbstractExpression):
+    """The determinant of the Jacobian."""
+
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+        """Initialise."""
+        self._jacobian = Jacobian(domain, point)
+        self.domain = domain
+        self.point = point
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self.domain, self.point
+
+    def expand_geometry(self) -> AbstractExpression:
+        """Expand geometry."""
+        return abs(self._jacobian.expand_geometry().compute_determinant())
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
+
 class JacobianInverse(AbstractExpression):
     """The inverse of the Jacobian."""
 
-    def __init__(self, domain, point):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -389,7 +346,7 @@ class JacobianInverse(AbstractExpression):
 class JacobianTranspose(AbstractExpression):
     """The transpose of the Jacobian."""
 
-    def __init__(self, domain, point):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -426,7 +383,7 @@ class JacobianTranspose(AbstractExpression):
 class JacobianInverseTranspose(AbstractExpression):
     """The inverse transpose of the Jacobian."""
 
-    def __init__(self, domain, point):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
