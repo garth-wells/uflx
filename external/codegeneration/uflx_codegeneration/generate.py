@@ -72,8 +72,8 @@ def pull_back_to_reference(
             )
             if isinstance(argument, PushedForward):
                 node_map[node] = JacobianInverseTranspose(
-                    node.argument._point.domain,
-                    point,  # type: ignore
+                    node.argument._point.domain,  # type: ignore
+                    point,
                 ) * ReferenceGrad(argument.function)
         elif isinstance(node, EvaluatedPhysicalBasisFunction):
             assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
