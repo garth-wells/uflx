@@ -3,7 +3,6 @@
 import os
 
 import numpy as np
-import pytest
 import uflx_codegeneration
 from cffi import FFI
 from uflx import (
@@ -98,7 +97,6 @@ def test_mass_matrix():
         assert np.allclose(mat, expected_mat)
 
 
-@pytest.mark.xfail
 def test_stiffness_matrix():
     """Test code generation for a stiffness matrix."""
     e = element("Lagrange", "triangle", 1)
@@ -153,7 +151,7 @@ def test_stiffness_matrix():
     lib = ffi.dlopen(so)
 
     mat = np.zeros((3, 3))
-    coords = np.zeros((3, 3))
+    coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
     for cell, expected_mat in zip(cells, expected_local_matrices):
