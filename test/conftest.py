@@ -7,17 +7,33 @@ from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 from uflx.maps import AbstractReferenceMap, IdentityReferenceMap
 
 
-class Point(AbstractEntity):
-    """A point."""
+class Entity(AbstractEntity):
+    """An entity."""
+
+    def __repr__(self):
+        """Representation."""
+        return self.__class__.__name__
+
+    def __str__(self):
+        """String."""
+        return f"{self!r}"
+
+    def __hash__(self):
+        """Hash."""
+        return hash(("uflx.test", self.__class__.__name__))
 
     @property
     def name(self) -> str:
         """Name of this entity."""
-        return "point"
+        return self.__class__.__name__.lower()
 
     def __eq__(self, other) -> bool:
         """Check if this cell is equal to another cell."""
-        return isinstance(other, Point)
+        return isinstance(other, Entity) and f"{self!r}" == f"{other!r}"
+
+
+class Point(Entity):
+    """A point."""
 
     @property
     def topological_dimension(self) -> int:
@@ -32,22 +48,9 @@ class Point(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Point")
 
-
-class Interval(AbstractEntity):
+class Interval(Entity):
     """An interval."""
-
-    @property
-    def name(self) -> str:
-        """Name of this entity."""
-        return "interval"
-
-    def __eq__(self, other) -> bool:
-        """Check if this cell is equal to another cell."""
-        return isinstance(other, Interval)
 
     @property
     def topological_dimension(self) -> int:
@@ -64,22 +67,9 @@ class Interval(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Interval")
 
-
-class Triangle(AbstractEntity):
+class Triangle(Entity):
     """A triangle cell."""
-
-    @property
-    def name(self) -> str:
-        """Name of this entity."""
-        return "triangle"
-
-    def __eq__(self, other) -> bool:
-        """Check if this cell is equal to another cell."""
-        return isinstance(other, Triangle)
 
     @property
     def topological_dimension(self) -> int:
@@ -98,22 +88,9 @@ class Triangle(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Triangle")
 
-
-class Quadrilateral(AbstractEntity):
+class Quadrilateral(Entity):
     """A quadrilateral."""
-
-    @property
-    def name(self) -> str:
-        """Name of this entity."""
-        return "quadrilateral"
-
-    def __eq__(self, other) -> bool:
-        """Check if this cell is equal to another cell."""
-        return isinstance(other, Quadrilateral)
 
     @property
     def topological_dimension(self) -> int:
@@ -132,22 +109,9 @@ class Quadrilateral(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Quadrilateral")
 
-
-class Tetrahedron(AbstractEntity):
+class Tetrahedron(Entity):
     """A tetrahedron."""
-
-    @property
-    def name(self) -> str:
-        """Name of this entity."""
-        return "tetrahedron"
-
-    def __eq__(self, other) -> bool:
-        """Check if this cell is equal to another cell."""
-        return isinstance(other, Tetrahedron)
 
     @property
     def topological_dimension(self) -> int:
@@ -168,22 +132,9 @@ class Tetrahedron(AbstractEntity):
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
 
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Tetrahedron")
 
-
-class Hexahedron(AbstractEntity):
+class Hexahedron(Entity):
     """A hexahedron."""
-
-    @property
-    def name(self) -> str:
-        """Name of this entity."""
-        return "hexahedron"
-
-    def __eq__(self, other) -> bool:
-        """Check if this cell is equal to another cell."""
-        return isinstance(other, Hexahedron)
 
     @property
     def topological_dimension(self) -> int:
@@ -203,10 +154,6 @@ class Hexahedron(AbstractEntity):
                 return [self]
             case _:
                 raise ValueError(f"Invalid dimension: {dim}")
-
-    def __hash__(self):
-        """Hash."""
-        return hash("uflx.test.Hexahedron")
 
 
 class LagrangeElement(AbstractReferenceMappedFiniteElement):

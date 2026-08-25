@@ -1,9 +1,6 @@
 """Test code generation."""
 
-import os
-
 import numpy as np
-import pytest
 from cffi import FFI
 from uflx import (
     SpatialCoordinate,
@@ -18,12 +15,8 @@ from uflx import (
 
 import uflx_codegeneration
 
-code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
-if not os.path.isdir(code_dir):
-    os.mkdir(code_dir)
 
-
-def test_mass_matrix(lagrange_element):
+def test_mass_matrix(lagrange_element, code_dir):
     """Test code generation for a mass matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
@@ -34,9 +27,9 @@ def test_mass_matrix(lagrange_element):
     code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
-    cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
 
-    expected_local_matrices = [
+    cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
+    expected_matrices = [
         np.array(
             [
                 [0.025, 0.0125, 0.0125],
@@ -80,7 +73,7 @@ def test_mass_matrix(lagrange_element):
     coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
-    for cell, expected_mat in zip(cells, expected_local_matrices):
+    for cell, expected_mat in zip(cells, expected_matrices):
         for i, j in enumerate(cell):
             for k, p in enumerate(pts[j]):
                 coords[i, k] = p
@@ -97,8 +90,7 @@ def test_mass_matrix(lagrange_element):
         assert np.allclose(mat, expected_mat)
 
 
-@pytest.mark.xfail
-def test_stiffness_matrix(lagrange_element):
+def test_stiffness_matrix(lagrange_element, code_dir):
     """Test code generation for a stiffness matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
@@ -109,9 +101,8 @@ def test_stiffness_matrix(lagrange_element):
     code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
-    cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
-
-    expected_local_matrices = [
+    cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
+    expected_matrices = [
         np.array(
             [
                 [1.81666666666667, -1.66666666666667, -0.15],
@@ -152,10 +143,10 @@ def test_stiffness_matrix(lagrange_element):
     lib = ffi.dlopen(so)
 
     mat = np.zeros((3, 3))
-    coords = np.zeros((3, 3))
+    coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
-    for cell, expected_mat in zip(cells, expected_local_matrices):
+    for cell, expected_mat in zip(cells, expected_matrices):
         for i, j in enumerate(cell):
             for k, p in enumerate(pts[j]):
                 coords[i, k] = p
@@ -172,7 +163,7 @@ def test_stiffness_matrix(lagrange_element):
         assert np.allclose(mat, expected_mat)
 
 
-def test_linear_form(lagrange_element):
+def test_linear_form(lagrange_element, code_dir):
     """Test code generation for a mass matrix."""
     element = lagrange_element("triangle", 1)
     space = function_space(coordinate_element(lagrange_element("triangle", 1, (2,))), element)
@@ -183,9 +174,9 @@ def test_linear_form(lagrange_element):
     code, signatures = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
-    cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
+    cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
 
-    expected_local_vectors = [
+    expected_vectors = [
         np.array([0.0037500000000000033, 0.0075, 0.0037500000000000033]),
         np.array([0.011249999999999982, 0.01125, 0.0075]),
         np.array([0.05541666666666667, 0.07583333333333332, 0.05541666666666664]),
@@ -205,7 +196,7 @@ def test_linear_form(lagrange_element):
     coords = np.zeros((3, 2))
     empty = np.zeros(0)
 
-    for cell, expected_vec in zip(cells, expected_local_vectors):
+    for cell, expected_vec in zip(cells, expected_vectors):
         for i, j in enumerate(cell):
             for k, p in enumerate(pts[j]):
                 coords[i, k] = p

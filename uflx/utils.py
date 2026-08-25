@@ -1,11 +1,14 @@
 """Utility functions."""
 
-from collections.abc import Sequence
 
+def flatten(indices: tuple[int, ...], sizes: tuple[int, ...], reverse: bool = True):
+    """Flatten a list of indices."""
+    assert len(indices) == len(sizes)
+    assert len(indices) > 0
+    if len(indices) == 1:
+        return indices[0]
 
-def product(ls: Sequence[int]) -> int:
-    """Return the product of numbers in a list."""
-    result = 1
-    for i in ls:
-        result *= i
-    return result
+    if reverse:
+        return indices[-1] + sizes[-1] * flatten(indices[:-1], sizes[:-1])
+    else:
+        return indices[0] + sizes[0] * flatten(indices[1:], sizes[1:])

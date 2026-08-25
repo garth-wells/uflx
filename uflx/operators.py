@@ -6,6 +6,9 @@
 """Operators."""
 
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
+from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
+from uflx.graphs import GraphNode
+from uflx.tensors import Vector
 
 
 class Inner(BinaryOperator):
@@ -19,14 +22,53 @@ class Inner(BinaryOperator):
         """The value shape of the expression."""
         return ()
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class Grad(UnaryOperator):
     """Gradient operator."""
+
+    def __init__(self, argument: GraphNode):
+        """Initialise."""
+        assert isinstance(argument, AbstractPhysicalFunction)
+        super().__init__(argument)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError("Cannot get a 'component' of a Grad")
+
+
+class ReferenceGrad(UnaryOperator):
+    """Gradient operator."""
+
+    argument: AbstractReferenceFunction
+
+    def __init__(self, argument: GraphNode):
+        """Initialise."""
+        assert isinstance(argument, AbstractReferenceFunction)
+        super().__init__(argument)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return (self.argument.domain_size,)
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError(
+            "Cannot get a 'component' of a ReferenceGrad. Try calling expand_geometry first"
+        )
+
+    def expand_geometry(self) -> GraphNode:
+        """Expand geometry."""
+        return Vector([self.argument.diff(i) for i in range(self.argument.domain_size)])
 
 
 class Conj(UnaryOperator):
@@ -44,6 +86,12 @@ class Conj(UnaryOperator):
     def im(self) -> AbstractExpression:
         """Get imaginary part."""
         raise NotImplementedError()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise NotImplementedError("Cannot get a 'component' of a Grad")
+        return Conj(self.argument.component(*indices))
 
 
 def grad(a: AbstractExpression) -> Grad:

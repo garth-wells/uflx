@@ -134,6 +134,10 @@ class ArrayEntry(AbstractExpression):
         """Generate code for this object."""
         return f"{self.array}[" + "][".join(f"{i}" for i in self.index) + "]"
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class FunctionCall(AbstractExpression):
     """A call to a function."""
@@ -170,6 +174,10 @@ class FunctionCall(AbstractExpression):
             + ")"
         )
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class Variable(AbstractExpression):
     """A variable."""
@@ -201,3 +209,7 @@ class Variable(AbstractExpression):
     def generate_c(self) -> str:
         """Generate code for this object."""
         return self._variable
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")

@@ -92,6 +92,10 @@ class QuadratureWeight(AbstractExpression):
         """The arguments used to initialise this object."""
         return self.rule, self._index
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class QuadratureLoop:
     """A loop over the points in a quadrature rule."""

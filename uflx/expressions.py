@@ -8,7 +8,10 @@
 An expression is any algebraic expression that could be used as an integrand.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import Any
 
 from uflx.graphs import GraphNode
@@ -34,9 +37,23 @@ class AbstractExpression(ABC):
 
     def __mul__(self, other):
         """Multiply."""
-        if isinstance(other, AbstractExpression):
-            return Mult(self, other)
-        return NotImplemented
+        if not isinstance(other, AbstractExpression):
+            return NotImplemented
+        match len(self.value_shape), len(other.value_shape):
+            case (0, _):
+                return Mult(self, other)
+            case (_, 0):
+                return Mult(other, self)
+            case (2, 1):
+                return MatVec(self, other)
+            case _:
+                return NotImplemented
+
+    def __truediv__(self, other):
+        """Division."""
+        if not isinstance(other, AbstractExpression):
+            return NotImplemented
+        return Div(self, other)
 
     def __add__(self, other):
         """Add."""
@@ -50,6 +67,10 @@ class AbstractExpression(ABC):
             return Subtract(self, other)
         return NotImplemented
 
+    def __neg__(self):
+        """Negate."""
+        return Neg(self)
+
     def __abs__(self):
         """Absolute value."""
         return Abs(self)
@@ -57,6 +78,10 @@ class AbstractExpression(ABC):
     def __repr__(self) -> str:
         """Representation."""
         return self.__class__.__name__
+
+    @abstractmethod
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
 
 
 class UnaryOperator(AbstractExpression):
@@ -118,23 +143,68 @@ class Mult(BinaryOperator):
         """The value shape of the expression."""
         return ()
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
 
-class Add(BinaryOperator):
-    """Addition operator."""
+
+class Div(BinaryOperator):
+    """Scalar multiplication operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        if second == 0:
+            raise ZeroDivisionError()
+        super().__init__(first, second)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return ()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
+
+class Add(BinaryOperator):
+    """Addition operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape == second.value_shape
+        super().__init__(first, second)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.first.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        return self.first.component(*indices) + self.second.component(*indices)
 
 
 class Subtract(BinaryOperator):
     """Subtraction operator."""
 
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape == second.value_shape
+        super().__init__(first, second)
+
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        return self.first.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        return self.first.component(*indices) - self.second.component(*indices)
 
 
 class Abs(UnaryOperator):
@@ -144,3 +214,69 @@ class Abs(UnaryOperator):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return self.argument.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        return Abs(self.argument.component(*indices))
+
+
+class Neg(UnaryOperator):
+    """Negation operator."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        return Neg(self.argument.component(*indices))
+
+
+class MatVec(BinaryOperator):
+    """Matrix-vector multiplication operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert (
+            len(first.value_shape) == 2
+            and len(second.value_shape) == 1
+            and first.value_shape[0] == second.value_shape[0]
+        )
+        super().__init__(first, second)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.second.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise ValueError("Cannot get a component of a scalar expression")
+        (index,) = indices
+        return expression_sum(
+            self.first.component(index, i) * self.second.component(i)
+            for i in range(self.first.value_shape[1])
+        )
+
+
+def expression_sum(
+    expressions: Iterable[AbstractExpression], default: AbstractExpression | None = None
+):
+    """Take the sum of a sequence of expressions."""
+    result = None
+    for e in expressions:
+        if result is None:
+            result = e
+        else:
+            result += e
+    if result is None:
+        if default is None:
+            raise ValueError("Cannot sum an empty sequence without a default return value")
+        return default
+    return result

@@ -3,9 +3,10 @@
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from uflx.expressions import Abs, Add, Mult, Subtract
+from uflx.expressions import Abs, Add, Div, Mult, Neg, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
+from uflx.scalars import Integer, RealScalar
 
 from uflx_codegeneration import symbols
 
@@ -49,6 +50,18 @@ def mult_generate_c(self) -> str:
 setattr(Mult, "generate_c", mult_generate_c)
 
 
+def div_generate_c(self) -> str:
+    """Generate code for this object."""
+    if not isinstance(self.first, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
+    if not isinstance(self.second, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
+    return f"({self.first.generate_c()} / {self.second.generate_c()})"
+
+
+setattr(Div, "generate_c", div_generate_c)
+
+
 def add_generate_c(self) -> str:
     """Generate code for this object."""
     if not isinstance(self.first, GenerateC):
@@ -83,9 +96,19 @@ def abs_generate_c(self) -> str:
 setattr(Abs, "generate_c", abs_generate_c)
 
 
+def neg_generate_c(self) -> str:
+    """Generate code for this object."""
+    if not isinstance(self.argument, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.argument.__class__}")
+    return f"-{self.argument.generate_c()}"
+
+
+setattr(Neg, "generate_c", neg_generate_c)
+
+
 def pc_generate_c(self) -> str:
     """Generate code for this object."""
-    c = self.point.get_component(self.component)
+    c = self.point.component(self.component_index)
     if isinstance(c, PointComponent):
         raise NotImplementedError(f"GenerateC is not implemented for {self.__class__}")
     if not isinstance(c, GenerateC):
@@ -102,3 +125,12 @@ def cdc_generate_c(self) -> str:
 
 
 setattr(CoordinateDofComponent, "generate_c", cdc_generate_c)
+
+
+def scalar_generate_c(self) -> str:
+    """Generate code for this object."""
+    return f"{self.value}"
+
+
+setattr(RealScalar, "generate_c", scalar_generate_c)
+setattr(Integer, "generate_c", scalar_generate_c)

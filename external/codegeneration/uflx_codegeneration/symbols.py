@@ -6,6 +6,10 @@ class VariableNamer:
 
     def __init__(self):
         """Initalise."""
+        self.reset()
+
+    def reset(self):
+        """Reset variable counters."""
         self.i = -1
         self.n = -1
         self.geo_i = -1

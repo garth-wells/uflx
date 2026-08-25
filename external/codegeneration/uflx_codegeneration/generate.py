@@ -1,26 +1,38 @@
 """Code generation."""
 
-import networkx as nx
+from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
-from uflx.finite_elements import EvaluatedBasisFunction
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractFunction, Argument
+from uflx.functions import AbstractPhysicalFunction, Argument
 from uflx.geometry import (
     JacobianDeterminant,
+    JacobianInverseTranspose,
+    PhysicalToReference,
     ReferenceToPhysical,
     SingleSpatialCoordinate,
     expand_geometry,
 )
-from uflx.graphs import Graph, GraphNode, RepresentedByGraph, generate_graph, is_dag
-from uflx.graphs.algorithms import replace
+from uflx.graphs import (
+    Graph,
+    GraphNode,
+    RepresentedByGraph,
+    generate_graph,
+)
+from uflx.graphs.algorithms import reconstruct_node, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
+from uflx.operators import Grad, ReferenceGrad
 from uflx.points import Point, PointComponent
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.algorithms import insert_geometry_functions, tabulate_finite_elements
+from uflx_codegeneration.algorithms import (
+    expand_inner_products,
+    insert_geometry_functions,
+    tabulate_finite_elements,
+)
 from uflx_codegeneration.c import GenerateC, tables_to_c
+from uflx_codegeneration.finite_element import AbstractReferenceMappedFiniteElement
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import (
     QuadratureLoop,
@@ -35,14 +47,49 @@ from uflx_codegeneration.utils import indented
 def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
     """Extract the domain associated with a node."""
     domain: AbstractDomain | None = None
-    for i in nx.descendants(graph, node):
-        if isinstance(i, AbstractFunction):
+    for i in graph.descendants(node):
+        if isinstance(i, AbstractPhysicalFunction):
             if domain is None:
                 domain = i.function_space.domain
             else:
-                domain = i.function_space.domain
+                assert domain == i.function_space.domain
     assert domain is not None
     return domain
+
+
+def pull_back_to_reference(
+    graph: Graph,
+) -> Graph:
+    """Pull terms in integrals back to reference values."""
+    node_map: dict[GraphNode, GraphNode] = {}
+    for node in graph.ordered_nodes():
+        if isinstance(node, Grad):
+            argument = node_map.get(node.argument, node.argument)
+            point = (
+                node.argument._point.reference_point  # type: ignore
+                if isinstance(node.argument._point, ReferenceToPhysical)  # type: ignore
+                else PhysicalToReference(node.argument._point)  # type: ignore
+            )
+            if isinstance(argument, PushedForward):
+                node_map[node] = JacobianInverseTranspose(
+                    node.argument._point.domain,  # type: ignore
+                    point,
+                ) * ReferenceGrad(argument.function)
+        elif isinstance(node, EvaluatedPhysicalBasisFunction):
+            assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
+            if isinstance(node._point, ReferenceToPhysical):
+                node_map[node] = PushedForward(
+                    node._element.reference_map,
+                    EvaluatedReferenceBasisFunction(
+                        node._element,
+                        node._basis_index,
+                        node._point.reference_point,
+                    ),
+                )
+        elif any(a in node_map for a in node.successors):
+            node_map[node] = reconstruct_node(node, node_map)
+
+    return generate_graph(node_map.get(graph.root, graph.root))
 
 
 def integrals_to_quadrature(
@@ -54,7 +101,7 @@ def integrals_to_quadrature(
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
 
-    for node in reversed(list(nx.topological_sort(graph))):
+    for node in graph.ordered_nodes():
         if isinstance(node, AbstractIntegral):
             rule = rules[node.measure]
             qvariable = variable_namer.variable()
@@ -67,7 +114,7 @@ def integrals_to_quadrature(
                 raise NotImplementedError("Only codim 0 integrals supported for now")
 
             arguments = []
-            for i in nx.descendants(graph, node):
+            for i in graph.descendants(node):
                 if isinstance(i, Argument):
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
@@ -94,7 +141,7 @@ def integrals_to_quadrature(
                         "Code generation currently only implemented for spaces with "
                         "exactly one element"
                     )
-                tensor_shape_components[i.component] = i_space.elements[0].dim
+                tensor_shape_components[i.component_index] = i_space.elements[0].dim
             tensor_shape = tuple(
                 tensor_shape_components.get(i, 1)
                 for i in range(
@@ -107,18 +154,22 @@ def integrals_to_quadrature(
 
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
-                point = QuadraturePoint(rule, variables[a.component])
-                to_replace[a] = PushedForward(
-                    a.function_space.elements[0].reference_map,
-                    EvaluatedBasisFunction(a.function_space.elements[0], qvariable, point),
+                assert isinstance(a.function_space.domain, AbstractCoordinateElement)
+                point = QuadraturePoint(rule, qvariable)
+                to_replace[a] = EvaluatedPhysicalBasisFunction(
+                    a.function_space,
+                    a.function_space.elements[0],
+                    variables[a.component_index],
+                    ReferenceToPhysical(point, a.function_space.domain),
                 )
 
             domain = arguments[0].function_space.domain
             for a in arguments:
                 assert a.function_space.domain == domain
 
+            assert isinstance(domain, AbstractCoordinateElement)
             integrand = (
-                QuadratureWeight(rules[node.measure], variables[a.component])
+                QuadratureWeight(rules[node.measure], variables[a.component_index])
                 * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
                 * node.integrand
             )
@@ -199,7 +250,7 @@ def generate(
 
     graph = form.graph
 
-    assert is_dag(graph)
+    assert graph.is_dag()
 
     # TODO: get this from somewhere
     rules: dict[AbstractMeasure, QuadratureRule] = {
@@ -207,9 +258,11 @@ def generate(
     }
 
     graph = integrals_to_quadrature(graph, rules)
+    graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
+    graph = expand_inner_products(graph)
     graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
@@ -226,8 +279,7 @@ def generate(
         code += "\n\n"
         assert isinstance(fgraph.root, GenerateC)
         code += f"  return {fgraph.root.generate_c()};\n"
-        code += "}"
-    code += "\n\n"
+        code += "}\n\n"
     code += (
         "void tabulate_tensor_f64(\n"
         f"    double* restrict {symbols.local_tensor},\n"

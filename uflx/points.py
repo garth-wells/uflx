@@ -16,9 +16,10 @@ class AbstractPoint(AbstractExpression):
     def dim(self) -> int:
         """The dimension of the point."""
 
-    def get_component(self, component: int | str) -> AbstractExpression:
-        """Get a component of the point."""
-        return PointComponent(self, component)
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        (i,) = indices
+        return PointComponent(self, i)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -38,11 +39,12 @@ class Point(AbstractPoint):
         """The dimension of the point."""
         return len(self._components)
 
-    def get_component(self, component: int | str) -> AbstractExpression:
-        """Get a component of the point."""
-        if isinstance(component, int):
-            return self._components[component]
-        return super().get_component(component)
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        (i,) = indices
+        if isinstance(i, int):
+            return self._components[i]
+        return super().component(i)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -92,8 +94,12 @@ class PointComponent(AbstractExpression):
         self._point = point
         self._component = component
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
     @property
-    def component(self) -> int | str:
+    def component_index(self) -> int | str:
         """Get the component of the point."""
         return self._component
 

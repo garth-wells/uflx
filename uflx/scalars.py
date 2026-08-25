@@ -14,6 +14,10 @@ class AbstractScalar(AbstractExpression):
         """The value shape of the expression."""
         return ()
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
 
 class AbstractInteger(AbstractScalar):
     """Abstract base class for integer values."""
@@ -40,10 +44,6 @@ class RealScalar(AbstractScalar):
         """The arguments used to initialise this object."""
         return (self.value,)
 
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.value}"
-
 
 class Integer(AbstractInteger):
     """An integer."""
@@ -65,10 +65,6 @@ class Integer(AbstractInteger):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (self.value,)
-
-    def generate_c(self, bracketed: bool = False) -> str:
-        """Generate code for this object."""
-        return f"{self.value}"
 
     def __add__(self, other):
         """Add."""
