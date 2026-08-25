@@ -36,7 +36,7 @@ def insert_geometry_functions(
                 for i in range(node.value_shape[0])
             ]
             inputs = [coordinate_dofs]
-            f_args: list[Any] = [coordinate_dofs]
+            f_args = [coordinate_dofs]
             if isinstance(node.point.index, str):
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
@@ -55,7 +55,7 @@ def insert_geometry_functions(
                 for i in range(node.value_shape[0])
             ]
             inputs = [coordinate_dofs]
-            f_args: list[Any] = [coordinate_dofs]
+            f_args = [coordinate_dofs]
             if isinstance(node.point.index, str):
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)

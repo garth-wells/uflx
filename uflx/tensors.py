@@ -86,7 +86,7 @@ class Tensor(AbstractExpression):
 class Vector(Tensor):
     """A vector."""
 
-    def __init__(self, entries: list[AbstractExpression]):
+    def __init__(self, entries: Sequence[AbstractExpression]):
         """Initalise."""
         super().__init__(entries)
         assert self._shape == (len(entries),)
@@ -99,7 +99,7 @@ class Vector(Tensor):
 class Matrix(Tensor):
     """A matrix."""
 
-    def __init__(self, entries: list[list[AbstractExpression]]):
+    def __init__(self, entries: Sequence[Sequence[AbstractExpression]]):
         """Initalise."""
         super().__init__(entries)
         assert self._shape == (len(entries), len(entries[0]))
@@ -111,7 +111,7 @@ class Matrix(Tensor):
     def transpose(self) -> Matrix:
         """Get the transpose of the matrix."""
         return Matrix(
-            [[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])]
+            [[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])]  # type: ignore
         )
 
     def matmat(self, other: Matrix) -> Matrix:
@@ -121,7 +121,7 @@ class Matrix(Tensor):
             [
                 [
                     expression_sum(
-                        self._entry[i, k] * other.entry[k, j] for k in range(self._shape[1])
+                        self.component(i, k) * other.component(k, j) for k in range(self._shape[1])
                     )
                     for j in range(other._shape[1])
                 ]
@@ -129,22 +129,27 @@ class Matrix(Tensor):
             ]
         )
 
-    def compute_inverse(self) -> Tensor:
+    def compute_inverse(self) -> Matrix:
         """Compute the inverse of the matrix."""
         rows, cols = self._shape
         if rows > cols:
-            return self.transpose.matmat(self).compute_inverse().matmat(self.transpose)
+            return self.transpose().matmat(self).compute_inverse().matmat(self.transpose())
         elif rows < cols:
-            return self.transpose.matmat(self.matmat(self.transpose).compute_inverse())
+            return self.transpose().matmat(self.matmat(self.transpose()).compute_inverse())
         else:
             match rows:
                 case 0:
                     return Matrix([[]])
                 case 1:
-                    [[a]] = self._entries
-                    return Matrix([[1 / a]])
+                    [[a]] = self._entries  # type: ignore
+                    assert isinstance(a, AbstractExpression)
+                    return Matrix([[RealScalar(1.0) / a]])
                 case 2:
-                    [[a, b], [c, d]] = self._entries
+                    [[a, b], [c, d]] = self._entries  # type: ignore
+                    assert isinstance(a, AbstractExpression)
+                    assert isinstance(b, AbstractExpression)
+                    assert isinstance(c, AbstractExpression)
+                    assert isinstance(d, AbstractExpression)
                     det = a * d - b * c
                     return Matrix([[d / det, -b / det], [-c / det, a / det]])
                 case _:
@@ -154,19 +159,33 @@ class Matrix(Tensor):
         """Compute the inverse of the matrix."""
         rows, cols = self._shape
         if rows > cols:
-            return self.transpose.matmat(self).compute_determinant()
+            return self.transpose().matmat(self).compute_determinant()
         elif rows < cols:
-            return self.matmat(self.transpose).compute_determinant()
+            return self.matmat(self.transpose()).compute_determinant()
         else:
             match rows:
                 case 0:
                     return RealScalar(1.0)
                 case 1:
-                    [[a]] = self._entries
+                    [[a]] = self._entries  # type: ignore
+                    assert isinstance(a, AbstractExpression)
                     return a
                 case 2:
-                    [[a, b], [c, d]] = self._entries
+                    [[a, b], [c, d]] = self._entries  # type: ignore
+                    assert isinstance(a, AbstractExpression)
+                    assert isinstance(b, AbstractExpression)
+                    assert isinstance(c, AbstractExpression)
+                    assert isinstance(d, AbstractExpression)
                     return a * d - b * c
                 case _:
-                    [[a, b, c], [d, e, f], [g, h, i]] = self._entries
+                    [[a, b, c], [d, e, f], [g, h, i]] = self._entries  # type: ignore
+                    assert isinstance(a, AbstractExpression)
+                    assert isinstance(b, AbstractExpression)
+                    assert isinstance(c, AbstractExpression)
+                    assert isinstance(d, AbstractExpression)
+                    assert isinstance(e, AbstractExpression)
+                    assert isinstance(f, AbstractExpression)
+                    assert isinstance(g, AbstractExpression)
+                    assert isinstance(h, AbstractExpression)
+                    assert isinstance(i, AbstractExpression)
                     return a * (e * i - f * h) + b * (f * g - d * i) + c * (d * h - e * g)

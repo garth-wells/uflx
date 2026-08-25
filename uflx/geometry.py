@@ -306,7 +306,9 @@ class JacobianDeterminant(AbstractExpression):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        return abs(self._jacobian.expand_geometry().compute_determinant())
+        j = self._jacobian.expand_geometry()
+        assert isinstance(j, Matrix)
+        return abs(j.compute_determinant())
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -339,7 +341,9 @@ class JacobianInverse(AbstractExpression):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        return self._jacobian.expand_geometry().compute_inverse()
+        j = self._jacobian.expand_geometry()
+        assert isinstance(j, Matrix)
+        return j.compute_inverse()
 
     def __repr__(self) -> str:
         """Representation."""
@@ -376,7 +380,9 @@ class JacobianTranspose(AbstractExpression):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        return self._jacobian.expand_geometry().transpose()
+        j = self._jacobian.expand_geometry()
+        assert isinstance(j, Matrix)
+        return j.transpose()
 
     def __repr__(self) -> str:
         """Representation."""
@@ -413,7 +419,9 @@ class JacobianInverseTranspose(AbstractExpression):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        return self._jacobian.expand_geometry().compute_inverse().transpose()
+        j = self._jacobian.expand_geometry()
+        assert isinstance(j, Matrix)
+        return j.compute_inverse().transpose()
 
     def __repr__(self) -> str:
         """Representation."""
