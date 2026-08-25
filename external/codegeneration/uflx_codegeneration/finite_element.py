@@ -36,7 +36,7 @@ class AbstractFiniteElement(AbstractReferenceMappedFiniteElement):
 
         This function returns a four dimensional array whose shape is (number
         of derivatives, number of points, number of basis functions, value size).
-        The derivatives are sotred in triangular (2D) or tetrahedral (3D)
+        The derivatives are sorted in triangular (2D) or tetrahedral (3D)
         ordering - for example, in 2D the derivatives are in the following order,
         where ``(x,y)`` represents ``x`` derivatives in the x-direction and ``y``
         in the y-direction:

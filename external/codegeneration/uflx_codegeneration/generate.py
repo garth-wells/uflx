@@ -152,11 +152,11 @@ def integrals_to_quadrature(
 
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
-                point = QuadraturePoint(rule, variables[a.component_index])
+                point = QuadraturePoint(rule, qvariable)
                 to_replace[a] = EvaluatedPhysicalBasisFunction(
                     a.function_space,
                     a.function_space.elements[0],
-                    qvariable,
+                    variables[a.component_index],
                     ReferenceToPhysical(point, a.function_space.domain),
                 )
 
@@ -257,7 +257,6 @@ def generate(
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
     geometry_functions, graph = insert_geometry_functions(graph)
-    graph.print()
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
     graph = take_real_part(graph)
@@ -295,7 +294,7 @@ def generate(
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
-    print(code)
+    # print(code)
 
     signatures = {
         form: (
