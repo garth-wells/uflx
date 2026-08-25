@@ -74,11 +74,13 @@ class Tensor(AbstractExpression):
 
     def compute_inverse(self) -> Tensor:
         """Compute the inverse of the tensor."""
-        raise NotImplementedError(f"Computing the inverse not implemented for abitrary rank tensors.")
+        raise NotImplementedError(
+            "Computing the inverse not implemented for abitrary rank tensors."
+        )
 
     def transpose(self) -> Tensor:
         """Get the transpose of the tensor."""
-        raise NotImplementedError(f"Transpose not implemented for abitrary rank tensors.")
+        raise NotImplementedError("Transpose not implemented for abitrary rank tensors.")
 
 
 class Vector(Tensor):
@@ -108,15 +110,24 @@ class Matrix(Tensor):
 
     def transpose(self) -> Matrix:
         """Get the transpose of the matrix."""
-        return Matrix([[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])])
+        return Matrix(
+            [[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])]
+        )
 
     def matmat(self, other: Matrix) -> Matrix:
         """Compute a matrix-matrix product."""
         assert self._shape[1] == other._shape[0]
-        return Matrix([
-            [expression_sum(self._entry[i, k] * other.entry[k, j] for k in range(self._shape[1])) for j in range(other._shape[1])]
-            for i in range(self._shape[0])
-        ])
+        return Matrix(
+            [
+                [
+                    expression_sum(
+                        self._entry[i, k] * other.entry[k, j] for k in range(self._shape[1])
+                    )
+                    for j in range(other._shape[1])
+                ]
+                for i in range(self._shape[0])
+            ]
+        )
 
     def compute_inverse(self) -> Tensor:
         """Compute the inverse of the matrix."""
@@ -130,7 +141,7 @@ class Matrix(Tensor):
                 case 0:
                     return Matrix([[]])
                 case 1:
-                    [[a]] = self_entries
+                    [[a]] = self._entries
                     return Matrix([[1 / a]])
                 case 2:
                     [[a, b], [c, d]] = self._entries
@@ -151,11 +162,11 @@ class Matrix(Tensor):
                 case 0:
                     return RealScalar(1.0)
                 case 1:
-                    [[a]] = self_entries
+                    [[a]] = self._entries
                     return a
                 case 2:
                     [[a, b], [c, d]] = self._entries
                     return a * d - b * c
                 case _:
                     [[a, b, c], [d, e, f], [g, h, i]] = self._entries
-                    return a * (e*i - f*h) + b * (f*g-d*i) + c * (d*h-e*g)
+                    return a * (e * i - f * h) + b * (f * g - d * i) + c * (d * h - e * g)

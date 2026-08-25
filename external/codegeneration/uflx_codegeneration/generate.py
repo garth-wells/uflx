@@ -4,11 +4,10 @@ from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedRefere
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction, Argument
+from uflx.functions import AbstractPhysicalFunction, Argument
 from uflx.geometry import (
-    Jacobian,
-    JacobianInverseTranspose,
     JacobianDeterminant,
+    JacobianInverseTranspose,
     PhysicalToReference,
     ReferenceToPhysical,
     SingleSpatialCoordinate,
@@ -70,7 +69,9 @@ def pull_back_to_reference(
                 if isinstance(node.argument._point, ReferenceToPhysical)
                 else PhysicalToReference(node.argument._point)
             )
-            node_map[node] = JacobianInverseTranspose(node.argument._point.domain, point) * ReferenceGrad(
+            node_map[node] = JacobianInverseTranspose(
+                node.argument._point.domain, point
+            ) * ReferenceGrad(
                 argument.function if isinstance(argument, PushedForward) else PulledBack(argument)
             )
         elif isinstance(node, EvaluatedPhysicalBasisFunction):

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from uflx.geometry import JacobianDeterminant, expand_geometry, Jacobian, JacobianInverse
+from uflx.geometry import Jacobian, JacobianDeterminant, JacobianInverse, expand_geometry
 from uflx.graphs import Graph, GraphNode, generate_graph
 from uflx.graphs.algorithms import replace
 from uflx.tensors import Matrix
@@ -31,7 +31,10 @@ def insert_geometry_functions(
             functions[f] = ("double", inputs, expand_geometry(graph.subgraph(node)))
         elif isinstance(node, Jacobian):
             f = variable_namer.geometry_function_name()
-            fs = [[f"{f}_{i}_{j}" for j in range(node.value_shape[1])] for i in range(node.value_shape[0])]
+            fs = [
+                [f"{f}_{i}_{j}" for j in range(node.value_shape[1])]
+                for i in range(node.value_shape[0])
+            ]
             inputs = [coordinate_dofs]
             f_args: list[Any] = [coordinate_dofs]
             if isinstance(node.point.index, str):
@@ -40,10 +43,17 @@ def insert_geometry_functions(
             to_replace[node] = Matrix([[FunctionCall(f, *f_args) for f in row] for row in fs])
             for i, row in enumerate(fs):
                 for j, f in enumerate(row):
-                    functions[f] = ("double", inputs, expand_geometry(generate_graph(node.component(i, j))))
+                    functions[f] = (
+                        "double",
+                        inputs,
+                        expand_geometry(generate_graph(node.component(i, j))),
+                    )
         elif isinstance(node, JacobianInverse):
             f = variable_namer.geometry_function_name()
-            fs = [[f"{f}_{i}_{j}" for j in range(node.value_shape[1])] for i in range(node.value_shape[0])]
+            fs = [
+                [f"{f}_{i}_{j}" for j in range(node.value_shape[1])]
+                for i in range(node.value_shape[0])
+            ]
             inputs = [coordinate_dofs]
             f_args: list[Any] = [coordinate_dofs]
             if isinstance(node.point.index, str):
@@ -52,6 +62,10 @@ def insert_geometry_functions(
             to_replace[node] = Matrix([[FunctionCall(f, *f_args) for f in row] for row in fs])
             for i, row in enumerate(fs):
                 for j, f in enumerate(row):
-                    functions[f] = ("double", inputs, expand_geometry(generate_graph(node.component(i, j))))
+                    functions[f] = (
+                        "double",
+                        inputs,
+                        expand_geometry(generate_graph(node.component(i, j))),
+                    )
 
     return functions, replace(graph, to_replace)

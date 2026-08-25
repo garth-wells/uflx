@@ -1,7 +1,7 @@
 """Form algorithms."""
 
-from uflx.expressions import expression_sum, AbstractExpression
-from uflx.graphs import Graph, generate_graph, GraphNode
+from uflx.expressions import AbstractExpression, expression_sum
+from uflx.graphs import Graph, GraphNode, generate_graph
 from uflx.graphs.algorithms import reconstruct_node
 from uflx.operators import Inner
 

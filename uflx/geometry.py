@@ -213,18 +213,25 @@ class Jacobian(AbstractExpression):
         gdim, tdim = self.value_shape
         (element,) = self.domain.elements
 
-        return Matrix([
+        return Matrix(
             [
-                expression_sum(
-                    CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                    * EvaluatedReferenceBasisFunction(
-                        element, i, self.point, derivative=tuple(1 if d == col else 0 for d in range(gdim)), component=row
+                [
+                    expression_sum(
+                        CoordinateDofComponent(i // tdim, i % tdim, tdim)
+                        * EvaluatedReferenceBasisFunction(
+                            element,
+                            i,
+                            self.point,
+                            derivative=tuple(1 if d == col else 0 for d in range(gdim)),
+                            component=row,
+                        )
+                        for i in range(element.dim)
                     )
-                    for i in range(element.dim)
-                )
-                for col in range(tdim)
-            ] for row in range(gdim)
-        ])
+                    for col in range(tdim)
+                ]
+                for row in range(gdim)
+            ]
+        )
 
         if tdim == gdim == 0:
             return RealScalar(1.0)
