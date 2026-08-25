@@ -295,8 +295,6 @@ def generate(
     code += indented(graph.root.generate_c(), 2)
     code += "\n}\n"
 
-    # print(code)
-
     signatures = {
         form: (
             "void tabulate_tensor_f64(double* restrict, const double* restrict, "

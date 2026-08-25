@@ -9,7 +9,6 @@ mesh_triangles = [
     [1, 2, 4],
     [2, 5, 4],
 ]
-mesh_triangles = [mesh_triangles[3]]
 
 """
 import matplotlib.pyplot as plt
@@ -30,7 +29,6 @@ print("    expected_local_matrices = [")
 
 for t in mesh_triangles:
     triangle = symfem.create_reference("triangle", [mesh_points[i] for i in t])
-    print(triangle.vertices)
     functions = e.map_to_cell(triangle.vertices)
     print("        np.array(")
     print("            [")
@@ -38,8 +36,6 @@ for t in mesh_triangles:
         row = []
         for v_dof, v in zip(t, functions):
             entry = u.grad(2).dot(v.grad(2)).integral(triangle)
-            print("u", "->", u.grad(2))
-            print("v", "->", v.grad(2))
             row.append(entry)
             matrix[v_dof][u_dof] += entry
         print("                [" + ", ".join(f"{i}" for i in row) + "],")

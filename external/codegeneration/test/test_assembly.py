@@ -190,8 +190,6 @@ def test_stiffness_matrix(lagrange_element, cell, expected_mat):
     for i, j in enumerate(cell):
         for k, p in enumerate(pts[j]):
             coords[i, k] = p
-    print(cell)
-    print(coords)
     mat[:] = 0.0
     lib.tabulate_tensor_f64(
         ffi.cast("double*", mat.ctypes.data),
@@ -202,8 +200,6 @@ def test_stiffness_matrix(lagrange_element, cell, expected_mat):
         ffi.NULL,
         ffi.NULL,
     )
-    print(mat)
-    print(expected_mat)
     assert np.allclose(mat, expected_mat)
 
 
