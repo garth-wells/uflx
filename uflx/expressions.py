@@ -35,8 +35,21 @@ class AbstractExpression(ABC):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
 
+    def __rmul__(self, other):
+        """Multiply."""
+        if isinstance(other, int):
+            return Mult(Integer(other), self)
+        if isinstance(other, float):
+            return Mult(RealScalar(other), self)
+        return NotImplemented
+
+
     def __mul__(self, other):
         """Multiply."""
+        if isinstance(other, int):
+            return Mult(self, Integer(other))
+        if isinstance(other, float):
+            return Mult(self, RealScalar(other))
         if not isinstance(other, AbstractExpression):
             return NotImplemented
         match len(self.value_shape), len(other.value_shape):
@@ -82,6 +95,92 @@ class AbstractExpression(ABC):
     @abstractmethod
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
+
+class AbstractScalar(AbstractExpression):
+    """Abstract base class for scalars."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
+
+class AbstractInteger(AbstractScalar):
+    """Abstract base class for integer values."""
+
+
+class RealScalar(AbstractScalar):
+    """A real scalar."""
+
+    def __init__(self, value: float):
+        """Initialise."""
+        self.value = value
+
+    def __repr__(self):
+        """Representation."""
+        return f"{self.value}"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.value,)
+
+
+class Integer(AbstractInteger):
+    """An integer."""
+
+    def __init__(self, value: int):
+        """Initialise."""
+        self.value = value
+
+    def __repr__(self):
+        """Representation."""
+        return f"{self.value}"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.value,)
+
+    def __add__(self, other):
+        """Add."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return other
+            return Add(self, other)
+        return NotImplemented
+
+    def __sub__(self, other):
+        """Subtract."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return -other
+            return Subtract(self, other)
+        return NotImplemented
+
+    def __mul__(self, other):
+        """Multiply."""
+        if isinstance(other, AbstractExpression):
+            if self.value == 0:
+                return self
+            if self.value == 1:
+                return other
+            return Mult(self, other)
+        return NotImplemented
 
 
 class UnaryOperator(AbstractExpression):

@@ -60,11 +60,9 @@ def test_mass_matrix(lagrange_element, code_dir):
         ),
     ]
 
-    filename = "test_mass_matrix"
-
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
-    ffi.set_source(f"{filename}", code)
+    ffi.set_source("test_mass_matrix", code)
     so = ffi.compile(code_dir)
 
     lib = ffi.dlopen(so)
@@ -133,11 +131,9 @@ def test_stiffness_matrix(lagrange_element, code_dir):
         ),
     ]
 
-    filename = "test_stiffness_matrix"
-
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
-    ffi.set_source(f"{filename}", code)
+    ffi.set_source("test_stiffness_matrix", code)
     so = ffi.compile(code_dir)
 
     lib = ffi.dlopen(so)
@@ -183,11 +179,9 @@ def test_linear_form(lagrange_element, code_dir):
         np.array([0.09625000000000011, 0.09624999999999997, 0.07583333333333334]),
     ]
 
-    filename = "test_linear_form"
-
     ffi = FFI()
     ffi.cdef("\n".join(signatures.values()))
-    ffi.set_source(f"{filename}", code)
+    ffi.set_source("test_linear_form", code)
     so = ffi.compile(code_dir)
 
     lib = ffi.dlopen(so)
