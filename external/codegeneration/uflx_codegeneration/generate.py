@@ -261,7 +261,7 @@ def generate(
         quadraturerules.Domain.Triangle,
         10,
     )
-    rules[dx] = quadrature_rule([p[1:] for p in points], weights)
+    rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
     graph = integrals_to_quadrature(graph, rules)
     graph = pull_back_to_reference(graph)
