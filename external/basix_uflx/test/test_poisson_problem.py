@@ -1,10 +1,13 @@
+"""Test solving a full Poisson problem."""
+
+import hashlib
 import os
-import random
-import pytest
 from typing import NamedTuple
 
 import numpy as np
 import numpy.typing as npt
+import pytest
+import uflx_codegeneration
 from cffi import FFI
 from uflx import (
     SpatialCoordinate,
@@ -16,32 +19,31 @@ from uflx import (
     grad,
     inner,
 )
-from uflx.entities import AbstractEntity
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
+from uflx.domains import AbstractCoordinateElement
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.integrals import AbstractIntegral
-from uflx.domains import AbstractCoordinateElement
-import uflx_codegeneration
-import hashlib
 
 from basix_uflx import element
 
 
 class Mesh(NamedTuple):
     """A mesh."""
-    points: npt.NDArray[float]
+
+    points: npt.NDArray[np.float64]
     cells: list[list[int]]
     domain: AbstractCoordinateElement
 
 
 class FunctionSpace(NamedTuple):
     """A function space."""
+
     mesh: Mesh
     space: AbstractReferenceMappedFunctionSpace
     dofmap: dict[str, dict[tuple[int, ...], list[int]]]
 
 
 def assemble_code(form, code_dir, filename=None):
+    """Assemble a code kernel."""
     ffi = FFI()
     code, signatures = uflx_codegeneration.generate(form)
 
@@ -73,7 +75,9 @@ def assemble_code(form, code_dir, filename=None):
     return tabulate
 
 
-def get_entity_dofs(dofmap: dict[str, dict[tuple[int, ...], list[int]]], entity_name: str, vertices: tuple[int, ...]) -> list[int]:
+def get_entity_dofs(
+    dofmap: dict[str, dict[tuple[int, ...], list[int]]], entity_name: str, vertices: tuple[int, ...]
+) -> list[int]:
     """Get dofs associated with an entity."""
     dofs = dofmap.get(entity_name, {})
     if vertices in dofs:
@@ -94,7 +98,8 @@ def assemble_matrix(
     test_function_space: FunctionSpace,
     trial_function_space: FunctionSpace,
     code_dir: str,
-) -> npt.NDArray[float]:
+) -> npt.NDArray[np.float64]:
+    """Assemble a matrix."""
     tabulate = assemble_code(form, code_dir)
 
     mesh = test_function_space.mesh
@@ -108,13 +113,21 @@ def assemble_matrix(
     mesh_cell = mesh.domain.cells[0]
     tdim = mesh_cell.topological_dimension
 
-    test_ndofs = sum(len(entity_dofs) for dofs in test_function_space.dofmap.values() for entity_dofs in dofs.values())
-    trial_ndofs = sum(len(entity_dofs) for dofs in trial_function_space.dofmap.values() for entity_dofs in dofs.values())
+    test_ndofs = sum(
+        len(entity_dofs)
+        for dofs in test_function_space.dofmap.values()
+        for entity_dofs in dofs.values()
+    )
+    trial_ndofs = sum(
+        len(entity_dofs)
+        for dofs in trial_function_space.dofmap.values()
+        for entity_dofs in dofs.values()
+    )
 
     npoints = mesh.domain.cells[0].sub_entity_count(0)
 
     local_mat = np.zeros((test_dim, trial_dim))
-    coords = np.zeros((npoints, tdim))
+    coords = np.zeros((npoints, gdim))
 
     matrix = np.zeros((test_ndofs, trial_ndofs))
 
@@ -142,7 +155,8 @@ def assemble_vector(
     form: AbstractIntegral,
     test_function_space: FunctionSpace,
     code_dir: str,
-) -> npt.NDArray[float]:
+) -> npt.NDArray[np.float64]:
+    """Assemble a vector."""
     tabulate = assemble_code(form, code_dir)
 
     mesh = test_function_space.mesh
@@ -154,12 +168,16 @@ def assemble_vector(
     mesh_cell = mesh.domain.cells[0]
     tdim = mesh_cell.topological_dimension
 
-    test_ndofs = sum(len(entity_dofs) for dofs in test_function_space.dofmap.values() for entity_dofs in dofs.values())
+    test_ndofs = sum(
+        len(entity_dofs)
+        for dofs in test_function_space.dofmap.values()
+        for entity_dofs in dofs.values()
+    )
 
     npoints = mesh.domain.cells[0].sub_entity_count(0)
 
     local_vec = np.zeros(test_dim)
-    coords = np.zeros((npoints, tdim))
+    coords = np.zeros((npoints, gdim))
 
     vector = np.zeros(test_ndofs)
 
@@ -181,6 +199,7 @@ def assemble_vector(
 
 
 def apply_bcs(matrix, vector, bcs):
+    """Apply boundary conditions."""
     ndofs = matrix.shape[0]
     for i in range(ndofs):
         if i in bcs:
@@ -203,8 +222,9 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     For this problem, Δu = 2 * degree * (degree - 1) * (x - y) ** (degree - 2) and
     we use Dirichlet BCs on all four sides of a unit square.
     """
-
-    points = np.array([[i / npoints, j / npoints] for j in range(npoints+1) for i in range(npoints+1)])
+    points = np.array(
+        [[i / npoints, j / npoints] for j in range(npoints + 1) for i in range(npoints + 1)]
+    )
 
     cells = []
     for j in range(npoints):
@@ -212,11 +232,6 @@ def test_poisson_problem_square(npoints, degree, code_dir):
             origin = j * (npoints + 1) + i
             cells.append([origin, origin + 1, origin + npoints + 2])
             cells.append([origin, origin + npoints + 2, origin + npoints + 1])
-    boundary_points = [
-        j * (npoints + 1) + i
-        for j in range(npoints + 1)
-        for i in (range(npoints+1) if j in [0, npoints] else [0, npoints])
-    ]
 
     e = element("Lagrange", "triangle", degree)
     domain = coordinate_element(element("Lagrange", "triangle", 1, shape=(2,)))
@@ -227,7 +242,7 @@ def test_poisson_problem_square(npoints, degree, code_dir):
         domain=domain,
     )
 
-    dofmap = {"point": {(i, ): [i] for i, _ in enumerate(points)}}
+    dofmap = {"point": {(i,): [i] for i, _ in enumerate(points)}}
     dof_locations = {i: p for i, p in enumerate(points)}
     dof_n = points.shape[0]
     if degree > 1:
@@ -269,11 +284,18 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     matrix = assemble_matrix(form, wrapped_space, wrapped_space, code_dir)
     vector = assemble_vector(rhs, wrapped_space, code_dir)
 
-    matrix, vector = apply_bcs(matrix, vector, {
-        d: (p[0] - p[1]) ** degree
-        for d, p in dof_locations.items()
-        if np.isclose(p[0], 0.0) or np.isclose(p[0], 1.0) or np.isclose(p[1], 0.0) or np.isclose(p[1], 1.0)
-    })
+    matrix, vector = apply_bcs(
+        matrix,
+        vector,
+        {
+            d: (p[0] - p[1]) ** degree
+            for d, p in dof_locations.items()
+            if np.isclose(p[0], 0.0)
+            or np.isclose(p[0], 1.0)
+            or np.isclose(p[1], 0.0)
+            or np.isclose(p[1], 1.0)
+        },
+    )
 
     solution = np.linalg.inv(matrix) @ vector
 

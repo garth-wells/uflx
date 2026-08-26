@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from uflx.expressions import Abs, Add, Div, Mult, Neg, Subtract, Integer, RealScalar
+from uflx.expressions import Abs, Add, Div, Integer, Mult, Neg, RealScalar, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 

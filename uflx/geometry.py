@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement
-from uflx.expressions import AbstractExpression, expression_sum, RealScalar
+from uflx.expressions import AbstractExpression, RealScalar, expression_sum
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 from uflx.points import AbstractPoint, Point

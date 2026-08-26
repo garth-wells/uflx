@@ -1,7 +1,8 @@
 """Fixtures, etc."""
 
-import pytest
 import os
+
+import pytest
 
 CODE_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
 
@@ -20,4 +21,3 @@ def pytest_generate_tests(metafunc):
         os.system(f"rm {CODE_DIRECTORY}/*.so")
     else:
         os.mkdir(CODE_DIRECTORY)
-

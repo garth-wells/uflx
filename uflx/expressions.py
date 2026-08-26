@@ -43,7 +43,6 @@ class AbstractExpression(ABC):
             return Mult(RealScalar(other), self)
         return NotImplemented
 
-
     def __mul__(self, other):
         """Multiply."""
         if isinstance(other, int):
@@ -96,7 +95,7 @@ class AbstractExpression(ABC):
         """Raise to a power."""
         if isinstance(power, int):
             if power < 0:
-                return RealScalar(1) / self ** -power
+                return RealScalar(1) / self**-power
             if power == 0:
                 return RealScalar(1)
             return self * self ** (power - 1)
@@ -105,6 +104,7 @@ class AbstractExpression(ABC):
     @abstractmethod
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
+
 
 class AbstractScalar(AbstractExpression):
     """Abstract base class for scalars."""
