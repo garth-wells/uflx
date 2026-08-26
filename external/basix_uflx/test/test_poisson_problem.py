@@ -222,9 +222,6 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     For this problem, Δu = 2 * degree * (degree - 1) * (x - y) ** (degree - 2) and
     we use Dirichlet BCs on all four sides of a unit square.
     """
-    if degree > 1:
-        pytest.xfail()
-
     points = np.array(
         [[i / npoints, j / npoints] for j in range(npoints + 1) for i in range(npoints + 1)]
     )
@@ -302,9 +299,5 @@ def test_poisson_problem_square(npoints, degree, code_dir):
 
     solution = np.linalg.inv(matrix) @ vector
 
-    for i in range(1, npoints):
-        for j in range(1, npoints):
-            index = (npoints + 1) * j + i
-            x, y = points[index]
-            for d in dofmap["point"][(index,)]:
-                assert np.isclose(solution[d], (x - y) ** degree)
+    for d, (x, y) in dof_locations.items():
+        assert np.isclose(solution[d], (x - y) ** degree)
