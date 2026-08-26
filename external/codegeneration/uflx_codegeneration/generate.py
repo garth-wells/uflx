@@ -1,5 +1,6 @@
 """Code generation."""
 
+import quadraturerules
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
@@ -253,39 +254,14 @@ def generate(
     assert graph.is_dag()
 
     # TODO: get this from somewhere
-    rules: dict[AbstractMeasure, QuadratureRule] = {
-        dx: quadrature_rule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
-    }
-    # For now, use a degree 10 rule
-    rules[dx] = quadrature_rule([[0.33333333, 0.33333333],
-        [0.49517346, 0.49517346],
-        [0.01913942, 0.01913942],
-        [0.18448501, 0.18448501],
-        [0.42823482, 0.42823482],
-        [0.49517346, 0.00965308],
-        [0.01913942, 0.96172117],
-        [0.18448501, 0.63102997],
-        [0.42823482, 0.14353036],
-        [0.00965308, 0.49517346],
-        [0.96172117, 0.01913942],
-        [0.63102997, 0.18448501],
-        [0.14353036, 0.42823482],
-        [0.03472362, 0.13373476],
-        [0.03758273, 0.32669314],
-        [0.83154162, 0.03472362],
-        [0.63572414, 0.03758273],
-        [0.13373476, 0.83154162],
-        [0.32669314, 0.63572414],
-        [0.13373476, 0.03472362],
-        [0.32669314, 0.03758273],
-        [0.83154162, 0.13373476],
-        [0.63572414, 0.32669314],
-        [0.03472362, 0.83154162],
-        [0.03758273, 0.63572414]], [0.04180744, 0.0048963 , 0.00319268, 0.03931688, 0.03762366,
-        0.0048963 , 0.00319268, 0.03931688, 0.03762366, 0.0048963 ,
-        0.00319268, 0.03931688, 0.03762366, 0.01448114, 0.01936952,
-        0.01448114, 0.01936952, 0.01448114, 0.01936952, 0.01448114,
-        0.01936952, 0.01448114, 0.01936952, 0.01448114, 0.01936952])
+    rules: dict[AbstractMeasure, QuadratureRule] = {}
+    # For now, use a degree 10 rule:
+    points, weights = quadraturerules.single_integral_quadrature(
+        quadraturerules.QuadratureRule.XiaoGimbutas,
+        quadraturerules.Domain.Triangle,
+        10,
+    )
+    rules[dx] = quadrature_rule([p[1:] for p in points], weights)
 
     graph = integrals_to_quadrature(graph, rules)
     graph = pull_back_to_reference(graph)

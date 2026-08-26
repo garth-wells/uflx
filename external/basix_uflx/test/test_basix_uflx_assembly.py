@@ -1,9 +1,9 @@
 """Test code generation."""
 
 import os
-import pytest
 
 import numpy as np
+import pytest
 import uflx_codegeneration
 from cffi import FFI
 from uflx import (
