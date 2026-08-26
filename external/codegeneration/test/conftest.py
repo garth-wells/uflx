@@ -15,6 +15,10 @@ from uflx_codegeneration.utils import number_of_derivatives
 class Entity(AbstractEntity):
     """An entity."""
 
+    def __init__(self, sub_entities: list[list[tuple[AbstractEntity, tuple[int, ...]]]]):
+        """Initalise."""
+        self._sub_entities = sub_entities
+
     def __repr__(self):
         """Representation."""
         return self.__class__.__name__
@@ -36,62 +40,55 @@ class Entity(AbstractEntity):
         """Check if this cell is equal to another cell."""
         return isinstance(other, Entity) and f"{self!r}" == f"{other!r}"
 
+    @property
+    def topological_dimension(self) -> int:
+        """The topological dimension of the cell."""
+        return len(self._sub_entities) - 1
+
+    def sub_entities(self, dim: int) -> list[AbstractEntity]:
+        """Get a list of sub-entities of a given dimension."""
+        return [i[0] for i in self._sub_entities[dim]]
+
+    def sub_entity_vertices(self, dim: int) -> list[list[int]]:
+        """Get lists of the vertices of sub-entities of a given dimension.
+
+        Args:
+            dim: Dimension of the sub-entities to get.
+
+        Returns:
+            A list of lists of vertices of sub-entities of the given dimension.
+        """
+        return [list(i[1]) for i in self._sub_entities[dim]]
+
 
 class Point(Entity):
     """A point."""
 
-    @property
-    def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
-        return 0
-
-    def sub_entities(self, dim: int) -> list[AbstractEntity]:
-        """Get a list of sub-entities of a given dimension."""
-        match dim:
-            case 0:
-                return [self]
-            case _:
-                raise ValueError(f"Invalid dimension: {dim}")
+    def __init__(self):
+        """Initalise."""
+        super().__init__([[(self, (0,))]])
 
 
 class Interval(Entity):
     """An interval."""
 
-    @property
-    def topological_dimension(self) -> int:
-        """The topological dimension of the cell."""
-        return 1
-
-    def sub_entities(self, dim: int) -> list[AbstractEntity]:
-        """Get a list of sub-entities of a given dimension."""
-        match dim:
-            case 0:
-                return [Point() for _ in range(2)]
-            case 1:
-                return [self]
-            case _:
-                raise ValueError(f"Invalid dimension: {dim}")
+    def __init__(self):
+        """Initalise."""
+        super().__init__([[(Point(), (i,)) for i in range(2)], [(self, (0,))]])
 
 
 class Triangle(Entity):
     """A triangle cell."""
 
-    @property
-    def topological_dimension(self) -> int:
-        """Topological dimension of the cell."""
-        return 2
-
-    def sub_entities(self, dim: int) -> list[AbstractEntity]:
-        """Get a list of sub-entities of a given dimension."""
-        match dim:
-            case 0:
-                return [Point() for _ in range(3)]
-            case 1:
-                return [Interval() for _ in range(3)]
-            case 2:
-                return [self]
-            case _:
-                raise ValueError(f"Invalid dimension: {dim}")
+    def __init__(self):
+        """Initalise."""
+        super().__init__(
+            [
+                [(Point(), (i,)) for i in range(3)],
+                [(Interval(), vs) for vs in [(0, 1), (0, 2), (1, 2)]],
+                [(self, (0,))],
+            ]
+        )
 
 
 class LagrangeElement(AbstractFiniteElement):

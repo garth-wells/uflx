@@ -5,9 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from uflx.expressions import AbstractExpression, expression_sum
+from uflx.expressions import AbstractExpression, RealScalar, expression_sum
 from uflx.graphs import GraphNode
-from uflx.scalars import RealScalar
 
 NestedSequence = AbstractExpression | Sequence["NestedSequence"]
 NestedTuple = AbstractExpression | tuple["NestedTuple", ...]
