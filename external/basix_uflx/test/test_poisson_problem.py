@@ -73,6 +73,22 @@ def assemble_code(form, code_dir, filename=None):
     return tabulate
 
 
+def get_entity_dofs(dofmap: dict[str, dict[tuple[int, ...], list[int]]], entity_name: str, vertices: tuple[int, ...]) -> list[int]:
+    """Get dofs associated with an entity."""
+    dofs = dofmap.get(entity_name, {})
+    if vertices in dofs:
+        return dofs[vertices]
+
+    for key, value in dofs.items():
+        if set(key) == set(vertices):
+            if len(value) > 1:
+                if entity_name == "interval":
+                    return value[::-1]
+                raise NotImplementedError()
+            return value
+    return []
+
+
 def assemble_matrix(
     form: AbstractIntegral,
     test_function_space: FunctionSpace,
@@ -111,8 +127,8 @@ def assemble_matrix(
         for d in range(tdim + 1):
             for et, vs in zip(mesh_cell.sub_entities(d), mesh_cell.sub_entity_vertices(d)):
                 cell_vs = tuple(cell[i] for i in vs)
-                test_dofs += test_function_space.dofmap.get(et.name, {}).get(cell_vs, [])
-                trial_dofs += trial_function_space.dofmap.get(et.name, {}).get(cell_vs, [])
+                test_dofs += get_entity_dofs(test_function_space.dofmap, et.name, cell_vs)
+                trial_dofs += get_entity_dofs(trial_function_space.dofmap, et.name, cell_vs)
 
         tabulate(local_mat, coords)
         for test_dof, row in zip(test_dofs, local_mat):
@@ -155,7 +171,7 @@ def assemble_vector(
         for d in range(tdim + 1):
             for et, vs in zip(mesh_cell.sub_entities(d), mesh_cell.sub_entity_vertices(d)):
                 cell_vs = tuple(cell[i] for i in vs)
-                test_dofs += test_function_space.dofmap.get(et.name, {}).get(cell_vs, [])
+                test_dofs += get_entity_dofs(test_function_space.dofmap, et.name, cell_vs)
 
         tabulate(local_vec, coords)
         for test_dof, entry in zip(test_dofs, local_vec):
@@ -211,17 +227,34 @@ def test_poisson_problem_square(npoints, degree, code_dir):
         domain=domain,
     )
 
-    dofmap = {"point": {(i, ): [i] for i in range(ndofs)}}
-    dof_n = (npoints + 1) ** 2
+    dofmap = {"point": {(i, ): [i] for i, _ in enumerate(points)}}
+    dof_locations = {i: p for i, p in enumerate(points)}
+    dof_n = points.shape[0]
     if degree > 1:
+        ndofs_interval = degree - 1
         dofmap["interval"] = {}
         for cell in cells:
             for edge in [(cell[0], cell[1]), (cell[0], cell[2]), (cell[1], cell[2])]:
                 if edge not in dofmap["interval"] and edge[::-1] not in dofmap["interval"]:
-                    dof_n +++++
+                    dofmap["interval"][edge] = [dof_n + i for i in range(ndofs_interval)]
+                    a = points[edge[0]]
+                    b = points[edge[1]]
+                    for i in range(ndofs_interval):
+                        dof_locations[dof_n + i] = a + (i + 1) * (a - b) / (ndofs_interval + 1)
+                    dof_n += ndofs_interval
+    if degree > 2:
+        ndofs_triangle = (degree - 2) * (degree - 1) // 2
+        dofmap["triangle"] = {}
+        for cell in cells:
+            dofmap["interval"][edge] = [dof_n + i for i in range(ndofs_triangle)]
+            if degree == 3:
+                dof_locations[dof_n] = (points[cell[0]] + points[cell[1]] + points[cell[2]]) / 3
+            else:
+                raise NotImplementedError()
+            dof_n += ndofs_triangle
 
-    ndofs = (npoints + 1) ** 2
-
+    ndofs = (npoints * degree + 1) ** 2
+    assert dof_n == ndofs
 
     space = function_space(domain, e)
 
@@ -237,9 +270,9 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     vector = assemble_vector(rhs, wrapped_space, code_dir)
 
     matrix, vector = apply_bcs(matrix, vector, {
-        d: (points[i][0] - points[i][1]) ** degree
-        for i in boundary_points
-        for d in dofmap["point"][(i,)]
+        d: (p[0] - p[1]) ** degree
+        for d, p in dof_locations.items()
+        if np.isclose(p[0], 0.0) or np.isclose(p[0], 1.0) or np.isclose(p[1], 0.0) or np.isclose(p[1], 1.0)
     })
 
     solution = np.linalg.inv(matrix) @ vector
