@@ -92,6 +92,16 @@ class AbstractExpression(ABC):
         """Representation."""
         return self.__class__.__name__
 
+    def __pow__(self, power):
+        """Raise to a power."""
+        if isinstance(power, int):
+            if power < 0:
+                return RealScalar(1) / self ** -power
+            if power == 0:
+                return RealScalar(1)
+            return self * self ** (power - 1)
+        return NotImplemented
+
     @abstractmethod
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""

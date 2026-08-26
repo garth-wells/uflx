@@ -47,6 +47,11 @@ class BasixCell(uflx.entities.AbstractEntity):
         """Topological dimension of the entity."""
         return len(basix.cell.topology(self._basix_cell)) - 1
 
+    @property
+    def name(self) -> str:
+        """Name of the entity type."""
+        return self._basix_cell.name
+
     def sub_entities(self, dim: int) -> list[uflx.entities.AbstractEntity]:
         """Get a list of sub-entities of a given dimension.
 
@@ -57,6 +62,17 @@ class BasixCell(uflx.entities.AbstractEntity):
             A list of sub-entities of the given dimension.
         """
         return [BasixCell(et) for et in basix.cell.subentity_types(self._basix_cell)[dim]]
+
+    def sub_entity_vertices(self, dim: int) -> list[list[int]]:
+        """Get lists of the vertices of sub-entities of a given dimension.
+
+        Args:
+            dim: Dimension of the sub-entities to get.
+
+        Returns:
+            A list of lists of vertices of sub-entities of the given dimension.
+        """
+        return [c[0] for c in basix.cell.sub_entity_connectivity(self._basix_cell)[dim]]
 
     def __hash__(self):
         return hash(("basix.uflx", f"{self!r}"))

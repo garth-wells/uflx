@@ -32,6 +32,11 @@ class AbstractEntity(ABC):
     def topological_dimension(self) -> int:
         """Topological dimension of the entity."""
 
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Name of the entity type."""
+
     @abstractmethod
     def sub_entities(self, dim: int) -> list[AbstractEntity]:
         """Get a list of sub-entities of a given dimension.
@@ -41,6 +46,17 @@ class AbstractEntity(ABC):
 
         Returns:
             A list of sub-entities of the given dimension.
+        """
+
+    @abstractmethod
+    def sub_entity_vertices(self, dim: int) -> list[list[int]]:
+        """Get lists of the vertices of sub-entities of a given dimension.
+
+        Args:
+            dim: Dimension of the sub-entities to get.
+
+        Returns:
+            A list of lists of vertices of sub-entities of the given dimension.
         """
 
     def sub_entity_count(self, dim: int) -> int:
