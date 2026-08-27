@@ -31,16 +31,15 @@ jobs:
           pip install ruff
           ruff check .
           ruff format --check .
+      - name: Install UFLx
+        run: pip install .[lint]
       - name: MyPy check
         run: |
-          pip install mypy
           mypy . --exclude external
           mypy external/codegeneration
           mypy external/basix_uflx
       - name: Pyrefly check
-        run: |
-          pip install pyrefly
-          pyrefly check
+        run: pyrefly check
 
   build:
     name: Build and test
