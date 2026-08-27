@@ -133,8 +133,7 @@ def assemble_matrix(
 
     for cell in mesh.cells:
         for i, j in enumerate(cell):
-            for k, p in enumerate(mesh.points[j]):
-                coords[i, k] = p
+            coords[i, :] = mesh.points[j]
         test_dofs = []
         trial_dofs = []
         for d in range(tdim + 1):
@@ -183,8 +182,7 @@ def assemble_vector(
 
     for cell in mesh.cells:
         for i, j in enumerate(cell):
-            for k, p in enumerate(mesh.points[j]):
-                coords[i, k] = p
+            coords[i, :] = mesh.points[j]
         test_dofs = []
         for d in range(tdim + 1):
             for et, vs in zip(mesh_cell.sub_entities(d), mesh_cell.sub_entity_vertices(d)):
@@ -214,7 +212,7 @@ def apply_bcs(matrix, vector, bcs):
 
 
 @pytest.mark.parametrize("npoints", [1, 3, 8])
-@pytest.mark.parametrize("degree", range(1, 4))
+@pytest.mark.parametrize("degree", range(1, 5))
 def test_poisson_problem_square(npoints, degree, code_dir):
     """Test a full Poisson problem solve.
 
@@ -222,8 +220,6 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     For this problem, Δu = 2 * degree * (degree - 1) * (x - y) ** (degree - 2) and
     we use Dirichlet BCs on all four sides of a unit square.
     """
-    if degree > 2:
-        pytest.xfail()
     points = np.array(
         [[i / npoints, j / npoints] for j in range(npoints + 1) for i in range(npoints + 1)]
     )
@@ -235,7 +231,7 @@ def test_poisson_problem_square(npoints, degree, code_dir):
             cells.append([origin, origin + 1, origin + npoints + 2])
             cells.append([origin, origin + npoints + 2, origin + npoints + 1])
 
-    e = element("Lagrange", "triangle", degree)
+    e = element("Lagrange", "triangle", degree, lagrange_variant="equispaced")
     domain = coordinate_element(element("Lagrange", "triangle", 1, shape=(2,)))
 
     mesh = Mesh(
@@ -264,11 +260,13 @@ def test_poisson_problem_square(npoints, degree, code_dir):
         dofmap["triangle"] = {}
         for cell in cells:
             dofmap["triangle"][tuple(cell)] = [dof_n + i for i in range(ndofs_triangle)]
-            if degree == 3:
-                dof_locations[dof_n] = (points[cell[0]] + points[cell[1]] + points[cell[2]]) / 3
-            else:
-                raise NotImplementedError()
-            dof_n += ndofs_triangle
+            a = points[cell[0]]
+            b = points[cell[1]]
+            c = points[cell[2]]
+            for j in range(1, degree - 1):
+                for i in range(1, degree - j):
+                    dof_locations[dof_n] = a + i * (b - a) / degree + j * (c - a) / degree
+                    dof_n += 1
 
     ndofs = (npoints * degree + 1) ** 2
     assert dof_n == ndofs
