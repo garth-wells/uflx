@@ -1,14 +1,7 @@
 """Test solving a full Poisson problem."""
 
-import hashlib
-import os
-from typing import NamedTuple
-
 import numpy as np
-import numpy.typing as npt
 import pytest
-import uflx_codegeneration
-from cffi import FFI
 from uflx import (
     SpatialCoordinate,
     TestFunction,
@@ -19,181 +12,8 @@ from uflx import (
     grad,
     inner,
 )
-from uflx.domains import AbstractCoordinateElement
-from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.integrals import AbstractIntegral
 
 from basix_uflx import element
-
-
-class Mesh(NamedTuple):
-    """A mesh."""
-
-    points: npt.NDArray[np.float64]
-    cells: list[list[int]]
-    domain: AbstractCoordinateElement
-
-
-class FunctionSpace(NamedTuple):
-    """A function space."""
-
-    mesh: Mesh
-    space: AbstractReferenceMappedFunctionSpace
-    dofmap: dict[str, dict[tuple[int, ...], list[int]]]
-
-
-def assemble_code(form, code_dir, filename=None):
-    """Assemble a code kernel."""
-    ffi = FFI()
-    code, signatures = uflx_codegeneration.generate(form)
-
-    if filename is None:
-        h = hashlib.sha1(code.encode("utf-8"))
-        filename = f"basix_uflx_test_{h.hexdigest()}"
-        while os.path.isfile(os.path.join(code_dir, f"{filename}.c")):
-            filename += "_"
-
-    ffi.cdef("\n".join(signatures.values()))
-    ffi.set_source(filename, code)
-    so = ffi.compile(code_dir)
-
-    lib = ffi.dlopen(so)
-    empty = np.zeros(0)
-
-    def tabulate(local_tensor, coords):
-        local_tensor[:] = 0.0
-        lib.tabulate_tensor_f64(
-            ffi.cast("double*", local_tensor.ctypes.data),
-            ffi.cast("double*", empty.ctypes.data),
-            ffi.cast("double*", empty.ctypes.data),
-            ffi.cast("double*", coords.ctypes.data),
-            ffi.NULL,
-            ffi.NULL,
-            ffi.NULL,
-        )
-
-    return tabulate
-
-
-def get_entity_dofs(
-    dofmap: dict[str, dict[tuple[int, ...], list[int]]], entity_name: str, vertices: tuple[int, ...]
-) -> list[int]:
-    """Get dofs associated with an entity."""
-    dofs = dofmap.get(entity_name, {})
-    if vertices in dofs:
-        return dofs[vertices]
-
-    for key, value in dofs.items():
-        if set(key) == set(vertices):
-            if len(value) > 1:
-                if entity_name == "interval":
-                    return value[::-1]
-                raise NotImplementedError()
-            return value
-    return []
-
-
-def assemble_matrix(
-    form: AbstractIntegral,
-    test_function_space: FunctionSpace,
-    trial_function_space: FunctionSpace,
-    code_dir: str,
-) -> npt.NDArray[np.float64]:
-    """Assemble a matrix."""
-    tabulate = assemble_code(form, code_dir)
-
-    mesh = test_function_space.mesh
-    assert trial_function_space.mesh == mesh
-
-    test_dim = test_function_space.space.elements[0].dim
-    trial_dim = trial_function_space.space.elements[0].dim
-    assert test_function_space.space.domain == trial_function_space.space.domain == mesh.domain
-    gdim = mesh.domain.geometric_dimension
-    assert len(mesh.domain.cells) == 1
-    mesh_cell = mesh.domain.cells[0]
-    tdim = mesh_cell.topological_dimension
-
-    test_ndofs = sum(
-        len(entity_dofs)
-        for dofs in test_function_space.dofmap.values()
-        for entity_dofs in dofs.values()
-    )
-    trial_ndofs = sum(
-        len(entity_dofs)
-        for dofs in trial_function_space.dofmap.values()
-        for entity_dofs in dofs.values()
-    )
-
-    npoints = mesh.domain.cells[0].sub_entity_count(0)
-
-    local_mat = np.zeros((test_dim, trial_dim))
-    coords = np.zeros((npoints, gdim))
-
-    matrix = np.zeros((test_ndofs, trial_ndofs))
-
-    for cell in mesh.cells:
-        for i, j in enumerate(cell):
-            coords[i, :] = mesh.points[j]
-        test_dofs = []
-        trial_dofs = []
-        for d in range(tdim + 1):
-            for et, vs in zip(mesh_cell.sub_entities(d), mesh_cell.sub_entity_vertices(d)):
-                cell_vs = tuple(cell[i] for i in vs)
-                test_dofs += get_entity_dofs(test_function_space.dofmap, et.name, cell_vs)
-                trial_dofs += get_entity_dofs(trial_function_space.dofmap, et.name, cell_vs)
-
-        tabulate(local_mat, coords)
-        for test_dof, row in zip(test_dofs, local_mat):
-            for trial_dof, entry in zip(trial_dofs, row):
-                matrix[test_dof, trial_dof] += entry
-
-    return matrix
-
-
-def assemble_vector(
-    form: AbstractIntegral,
-    test_function_space: FunctionSpace,
-    code_dir: str,
-) -> npt.NDArray[np.float64]:
-    """Assemble a vector."""
-    tabulate = assemble_code(form, code_dir)
-
-    mesh = test_function_space.mesh
-
-    test_dim = test_function_space.space.elements[0].dim
-    assert test_function_space.space.domain == mesh.domain
-    gdim = mesh.domain.geometric_dimension
-    assert len(mesh.domain.cells) == 1
-    mesh_cell = mesh.domain.cells[0]
-    tdim = mesh_cell.topological_dimension
-
-    test_ndofs = sum(
-        len(entity_dofs)
-        for dofs in test_function_space.dofmap.values()
-        for entity_dofs in dofs.values()
-    )
-
-    npoints = mesh.domain.cells[0].sub_entity_count(0)
-
-    local_vec = np.zeros(test_dim)
-    coords = np.zeros((npoints, gdim))
-
-    vector = np.zeros(test_ndofs)
-
-    for cell in mesh.cells:
-        for i, j in enumerate(cell):
-            coords[i, :] = mesh.points[j]
-        test_dofs = []
-        for d in range(tdim + 1):
-            for et, vs in zip(mesh_cell.sub_entities(d), mesh_cell.sub_entity_vertices(d)):
-                cell_vs = tuple(cell[i] for i in vs)
-                test_dofs += get_entity_dofs(test_function_space.dofmap, et.name, cell_vs)
-
-        tabulate(local_vec, coords)
-        for test_dof, entry in zip(test_dofs, local_vec):
-            vector[test_dof] += entry
-
-    return vector
 
 
 def apply_bcs(matrix, vector, bcs):
@@ -213,7 +33,9 @@ def apply_bcs(matrix, vector, bcs):
 
 @pytest.mark.parametrize("npoints", [1, 3, 8])
 @pytest.mark.parametrize("degree", range(1, 5))
-def test_poisson_problem_square(npoints, degree, code_dir):
+def test_poisson_problem_square(
+    npoints, degree, code_dir, create_mesh, create_function_space, assemble_matrix, assemble_vector
+):
     """Test a full Poisson problem solve.
 
     This tests a manufactured problem with the solution u = (x - y) ** degree.
@@ -234,7 +56,7 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     e = element("Lagrange", "triangle", degree, lagrange_variant="equispaced")
     domain = coordinate_element(element("Lagrange", "triangle", 1, shape=(2,)))
 
-    mesh = Mesh(
+    mesh = create_mesh(
         points=points,
         cells=cells,
         domain=domain,
@@ -279,7 +101,7 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     x = SpatialCoordinate(2)
     rhs = -2 * degree * (degree - 1) * (x[0] - x[1]) ** (degree - 2) * v * dx
 
-    wrapped_space = FunctionSpace(space=space, mesh=mesh, dofmap=dofmap)
+    wrapped_space = create_function_space(space=space, mesh=mesh, dofmap=dofmap)
 
     matrix = assemble_matrix(form, wrapped_space, wrapped_space, code_dir)
     vector = assemble_vector(rhs, wrapped_space, code_dir)
