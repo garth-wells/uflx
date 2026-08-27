@@ -24,7 +24,7 @@ repository = "https://github.com/garth-wells/uflx"
 
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
-lint = ["ruff", "mypy", "pyrefly"]
+lint = ["ruff", "mypy", "pyrefly", "types-networkx"]
 ci = ["pytest", "pytest-xdist"]
 
 [tool.ruff]
