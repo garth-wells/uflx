@@ -61,6 +61,5 @@ ignore_missing_imports = true
 exclude = "^external/"
 
 [tool.pyrefly]
-project-excludes = ["**/external/"]
 preset = "legacy"
 ignore-missing-imports = ["*"]
