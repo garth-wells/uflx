@@ -155,9 +155,23 @@ class LagrangeElement(AbstractFiniteElement):
         #
         # 2
         # |\
+        # 0-1
+        #
+        # 2
+        # |\
         # 4 5
         # |  \
         # 0-3-1
+        #
+        # 2
+        # |\
+        # 6 8
+        # |  \
+        # 5 10 9
+        # |    \
+        # 0-3-4-1
+        #
+        # etc
         #
         # This is not currently the same as the ordering used by Basix,
         # see https://github.com/FEniCS/basix/issues/1020
@@ -197,9 +211,162 @@ class LagrangeElement(AbstractFiniteElement):
                             for (x, y) in points
                         ]
                     if derivatives >= 2:
-                        table[3, :, :, 0] = [[4, 4, 0, -8 * x, 0, 0] for (x, y) in points]
+                        table[3, :, :, 0] = [[4, 4, 0, -8, 0, 0] for (x, y) in points]
                         table[4, :, :, 0] = [[4, 0, 0, -4, -4, 4] for (x, y) in points]
                         table[5, :, :, 0] = [[4, 0, 4, 0, -8, 0] for (x, y) in points]
+                case 3:
+                    table[0, :, :, 0] = [
+                        [
+                            -9 * x**3 / 2
+                            - 27 * x**2 * y / 2
+                            + 9 * x**2
+                            - 27 * x * y**2 / 2
+                            + 18 * x * y
+                            - 11 * x / 2
+                            - 9 * y**3 / 2
+                            + 9 * y**2
+                            - 11 * y / 2
+                            + 1,
+                            9 * x**3 / 2 - 9 * x**2 / 2 + x,
+                            9 * y**3 / 2 - 9 * y**2 / 2 + y,
+                            27 * x**3 / 2
+                            + 27 * x**2 * y
+                            - 45 * x**2 / 2
+                            + 27 * x * y**2 / 2
+                            - 45 * x * y / 2
+                            + 9 * x,
+                            -27 * x**3 / 2
+                            - 27 * x**2 * y / 2
+                            + 18 * x**2
+                            + 9 * x * y / 2
+                            - 9 * x / 2,
+                            27 * x**2 * y / 2
+                            + 27 * x * y**2
+                            - 45 * x * y / 2
+                            + 27 * y**3 / 2
+                            - 45 * y**2 / 2
+                            + 9 * y,
+                            -27 * x * y**2 / 2
+                            + 9 * x * y / 2
+                            - 27 * y**3 / 2
+                            + 18 * y**2
+                            - 9 * y / 2,
+                            27 * x**2 * y / 2 - 9 * x * y / 2,
+                            27 * x * y**2 / 2 - 9 * x * y / 2,
+                            -27 * x**2 * y - 27 * x * y**2 + 27 * x * y,
+                        ]
+                        for (x, y) in points
+                    ]
+                    if derivatives >= 1:
+                        table[1, :, :, 0] = [
+                            [
+                                -27 * x**2 / 2
+                                - 27 * x * y
+                                + 18 * x
+                                - 27 * y**2 / 2
+                                + 18 * y
+                                - 11 / 2,
+                                27 * x**2 / 2 - 9 * x + 1,
+                                0,
+                                81 * x**2 / 2
+                                + 54 * x * y
+                                - 45 * x
+                                + 27 * y**2 / 2
+                                - 45 * y / 2
+                                + 9,
+                                -81 * x**2 / 2 - 27 * x * y + 36 * x + 9 * y / 2 - 9 / 2,
+                                27 * x * y + 27 * y**2 - 45 * y / 2,
+                                -27 * y**2 / 2 + 9 * y / 2,
+                                27 * x * y - 9 * y / 2,
+                                27 * y**2 / 2 - 9 * y / 2,
+                                -54 * x * y - 27 * y**2 + 27 * y,
+                            ]
+                            for (x, y) in points
+                        ]
+                        table[2, :, :, 0] = [
+                            [
+                                -27 * x**2 / 2
+                                - 27 * x * y
+                                + 18 * x
+                                - 27 * y**2 / 2
+                                + 18 * y
+                                - 11 / 2,
+                                0,
+                                27 * y**2 / 2 - 9 * y + 1,
+                                27 * x**2 + 27 * x * y - 45 * x / 2,
+                                -27 * x**2 / 2 + 9 * x / 2,
+                                27 * x**2 / 2
+                                + 54 * x * y
+                                - 45 * x / 2
+                                + 81 * y**2 / 2
+                                - 45 * y
+                                + 9,
+                                -27 * x * y + 9 * x / 2 - 81 * y**2 / 2 + 36 * y - 9 / 2,
+                                27 * x**2 / 2 - 9 * x / 2,
+                                27 * x * y - 9 * x / 2,
+                                -27 * x**2 - 54 * x * y + 27 * x,
+                            ]
+                            for (x, y) in points
+                        ]
+                    if derivatives >= 2:
+                        table[3, :, :, 0] = [
+                            [
+                                -27 * x - 27 * y + 18,
+                                27 * x - 9,
+                                0,
+                                81 * x + 54 * y - 45,
+                                -81 * x - 27 * y + 36,
+                                27 * y,
+                                0,
+                                27 * y,
+                                0,
+                                -54 * y,
+                            ]
+                            for (x, y) in points
+                        ]
+                        table[4, :, :, 0] = [
+                            [
+                                -27 * x - 27 * y + 18,
+                                0,
+                                0,
+                                54 * x + 27 * y - 45 / 2,
+                                9 / 2 - 27 * x,
+                                27 * x + 54 * y - 45 / 2,
+                                9 / 2 - 27 * y,
+                                27 * x - 9 / 2,
+                                27 * y - 9 / 2,
+                                -54 * x - 54 * y + 27,
+                            ]
+                            for (x, y) in points
+                        ]
+                        table[5, :, :, 0] = [
+                            [
+                                -27 * x - 27 * y + 18,
+                                0,
+                                27 * y - 9,
+                                27 * x,
+                                0,
+                                54 * x + 81 * y - 45,
+                                -27 * x - 81 * y + 36,
+                                0,
+                                27 * x,
+                                -54 * x,
+                            ]
+                            for (x, y) in points
+                        ]
+                    if derivatives >= 3:
+                        table[6, :, :, 0] = [
+                            [-27, 27, 0, 81, -81, 0, 0, 0, 0, 0] for (x, y) in points
+                        ]
+                        table[7, :, :, 0] = [
+                            [-27, 0, 0, 54, -27, 27, 0, 27, 0, -54] for (x, y) in points
+                        ]
+                        table[8, :, :, 0] = [
+                            [-27, 0, 0, 27, 0, 54, -27, 0, 27, -54] for (x, y) in points
+                        ]
+                        table[9, :, :, 0] = [
+                            [-27, 0, 27, 0, 0, 81, -81, 0, 0, 0] for (x, y) in points
+                        ]
                 case _:
                     raise NotImplementedError()
             return table
