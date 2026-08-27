@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, TypeAlias
 
 from uflx.expressions import AbstractExpression, RealScalar, expression_sum
 from uflx.graphs import GraphNode
 
-NestedSequence = AbstractExpression | Sequence["NestedSequence"]
-NestedTuple = AbstractExpression | tuple["NestedTuple", ...]
+NestedSequence: TypeAlias = AbstractExpression | Sequence["NestedSequence"]
+NestedTuple: TypeAlias = AbstractExpression | tuple["NestedTuple", ...]
 
 
 class Tensor(AbstractExpression):

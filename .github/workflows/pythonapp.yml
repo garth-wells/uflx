@@ -40,6 +40,10 @@ jobs:
           mypy . --exclude external
           mypy external/codegeneration
           mypy external/basix_uflx
+      - name: Pyrefly check
+        run: |
+          pip install pyrefly
+          pyrefly check
 
   build:
     name: Build and test

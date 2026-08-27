@@ -102,7 +102,9 @@ class Integral(AbstractIntegral):
 class Measure(AbstractMeasure):
     """An integral measure."""
 
-    def __init__(self, dim: int | None = None, codim=int | None, boundary_only: bool = False):
+    def __init__(
+        self, dim: int | None = None, codim: int | None = None, boundary_only: bool = False
+    ):
         """Initialise."""
         self._dim = dim
         self._codim = codim
@@ -117,7 +119,7 @@ class Measure(AbstractMeasure):
         """Representation."""
         kwargs = {}
         if self._dim is not None:
-            kwargs["codim"] = self._dim
+            kwargs["dim"] = self._dim
         if self._codim is not None:
             kwargs["codim"] = self._codim
         if self._boundary_only:

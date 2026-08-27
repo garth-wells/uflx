@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import networkx as nx
 
@@ -77,15 +77,15 @@ class Graph(nx.DiGraph):
         """Iterate through the ordered graph nodes."""
         match order:
             case NodeOrder.roots_first:
-                return nx.topological_sort(self)
+                return cast(Iterable[GraphNode], nx.topological_sort(self))
             case NodeOrder.leaves_first:
-                return reversed(list(nx.topological_sort(self)))
+                return cast(Iterable[GraphNode], reversed(list(nx.topological_sort(self))))
             case _:
                 raise ValueError("Invalid node order")
 
     def descendants(self, node: GraphNode) -> set[GraphNode]:
         """Get all descendants of a node."""
-        return nx.descendants(self, node)
+        return cast(set[GraphNode], nx.descendants(self, node))
 
     def is_dag(self) -> bool:
         """Check if this graph is a directed acyclic graph."""

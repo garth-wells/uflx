@@ -26,6 +26,7 @@ ruff format --check .          # use `ruff format .` to auto-fix
 mypy . --exclude external
 mypy external/codegeneration
 mypy external/basix_uflx
+pyrefly check                  # second type checker, config in [tool.pyrefly]
 ```
 
 Run the core test suite:
