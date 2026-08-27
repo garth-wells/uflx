@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, cast
 
 from uflx.expressions import AbstractExpression, RealScalar, expression_sum
 from uflx.graphs import GraphNode
@@ -109,8 +109,9 @@ class Matrix(Tensor):
 
     def transpose(self) -> Matrix:
         """Get the transpose of the matrix."""
+        entries = cast(tuple[tuple[AbstractExpression, ...], ...], self._entries)
         return Matrix(
-            [[self._entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])]  # type: ignore
+            [[entries[i][j] for i in range(self._shape[0])] for j in range(self._shape[1])]
         )
 
     def matmat(self, other: Matrix) -> Matrix:
@@ -136,15 +137,16 @@ class Matrix(Tensor):
         elif rows < cols:
             return self.transpose().matmat(self.matmat(self.transpose()).compute_inverse())
         else:
+            entries = cast(tuple[tuple[AbstractExpression, ...], ...], self._entries)
             match rows:
                 case 0:
                     return Matrix([[]])
                 case 1:
-                    [[a]] = self._entries  # type: ignore
+                    [[a]] = entries
                     assert isinstance(a, AbstractExpression)
                     return Matrix([[RealScalar(1.0) / a]])
                 case 2:
-                    [[a, b], [c, d]] = self._entries  # type: ignore
+                    [[a, b], [c, d]] = entries
                     assert isinstance(a, AbstractExpression)
                     assert isinstance(b, AbstractExpression)
                     assert isinstance(c, AbstractExpression)
@@ -162,22 +164,23 @@ class Matrix(Tensor):
         elif rows < cols:
             return self.matmat(self.transpose()).compute_determinant()
         else:
+            entries = cast(tuple[tuple[AbstractExpression, ...], ...], self._entries)
             match rows:
                 case 0:
                     return RealScalar(1.0)
                 case 1:
-                    [[a]] = self._entries  # type: ignore
+                    [[a]] = entries
                     assert isinstance(a, AbstractExpression)
                     return a
                 case 2:
-                    [[a, b], [c, d]] = self._entries  # type: ignore
+                    [[a, b], [c, d]] = entries
                     assert isinstance(a, AbstractExpression)
                     assert isinstance(b, AbstractExpression)
                     assert isinstance(c, AbstractExpression)
                     assert isinstance(d, AbstractExpression)
                     return a * d - b * c
                 case _:
-                    [[a, b, c], [d, e, f], [g, h, i]] = self._entries  # type: ignore
+                    [[a, b, c], [d, e, f], [g, h, i]] = entries
                     assert isinstance(a, AbstractExpression)
                     assert isinstance(b, AbstractExpression)
                     assert isinstance(c, AbstractExpression)

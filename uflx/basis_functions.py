@@ -185,6 +185,11 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
 
+    @property
+    @abstractmethod
+    def point(self) -> AbstractPoint:
+        """The point at which the function is evaluated."""
+
 
 class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     """A basis function evaluated at a point on the physical cell."""
@@ -215,6 +220,11 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
             self._component: int | None = 0
         else:
             self._component = component
+
+    @property
+    def point(self) -> AbstractPoint:
+        """The point at which the function is evaluated."""
+        return self._point
 
     @property
     def element(self) -> AbstractFiniteElement:

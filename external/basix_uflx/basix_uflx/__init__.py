@@ -3,6 +3,7 @@
 import hashlib
 from abc import abstractmethod
 from collections.abc import Sequence
+from typing import Any
 from warnings import warn
 
 import basix
@@ -84,13 +85,13 @@ class BasixCell(uflx.entities.AbstractEntity):
         return f"{self!r}"
 
 
-def hash_data(data: Sequence[np.floating] | npt.ArrayLike):
+def hash_data(data: Sequence[np.floating] | npt.ArrayLike) -> str:
     """Return a hash of an array of floating point numbers."""
 
-    def hash_data_inner(data: Sequence[np.floating] | np.floating | npt.ArrayLike):
+    def hash_data_inner(data: Any) -> str:
         """Represent an array as a string, ready for hashing."""
         try:
-            return ",".join(hash_data_inner(i) for i in data)  # type: ignore
+            return ",".join(hash_data_inner(i) for i in data)
         except TypeError:
             return f"{data!r}"
 
@@ -122,8 +123,8 @@ class BasixElement(AbstractFiniteElement):
                 f"{self._element.value_shape}, {self._element.map_type.name}, "
                 f"{self._element.discontinuous}, {self._element.embedded_subdegree}, "
                 f"{self._element.embedded_superdegree}, {self._element.dtype}, "
-                f"{self._element.dof_ordering}, {hash_data(self._element.wcoeffs)}, "  # type: ignore
-                f"{hash_data(self._element.x)}, {hash_data(self._element.M)}"  # type: ignore
+                f"{self._element.dof_ordering}, {hash_data(self._element.wcoeffs)}, "
+                f"{hash_data(self._element.x)}, {hash_data(self._element.M)}"
             )
         else:
             return (
@@ -512,9 +513,9 @@ def quadrature_element(
         assert weights is None
         assert degree is not None
         if scheme is None:
-            points, weights = basix.make_quadrature(cell, degree)  # type: ignore
+            points, weights = basix.make_quadrature(cell, degree)
         else:
-            points, weights = basix.make_quadrature(  # type: ignore
+            points, weights = basix.make_quadrature(
                 cell, degree, rule=basix.quadrature.string_to_type(scheme)
             )
 

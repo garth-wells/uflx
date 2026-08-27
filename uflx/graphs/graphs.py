@@ -82,7 +82,7 @@ class Graph(nx.DiGraph):
         """Print a graph."""
         print_node(self, self.root)
 
-    def subgraph(self, node: GraphNode) -> Graph:  # type: ignore[override]
+    def subgraph_of_node(self, node: GraphNode) -> Graph:
         """Get the subgraph with the input node as the root node."""
         return generate_graph(node)
 

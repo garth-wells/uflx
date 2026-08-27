@@ -30,7 +30,7 @@ def insert_geometry_functions(
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = FunctionCall(f, *f_args)
-            functions[f] = ("double", inputs, expand_geometry(graph.subgraph(node)))
+            functions[f] = ("double", inputs, expand_geometry(graph.subgraph_of_node(node)))
         elif isinstance(node, Jacobian):
             f = variable_namer.geometry_function_name()
             fs = [
