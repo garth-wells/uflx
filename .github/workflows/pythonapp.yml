@@ -37,11 +37,6 @@ jobs:
         run: |
           pip install -e external/codegeneration
           pip install -e external/basix_uflx
-      - name: MyPy check
-        run: |
-          mypy . --exclude external
-          mypy external/codegeneration
-          mypy external/basix_uflx
       - name: Pyrefly check
         run: pyrefly check
 

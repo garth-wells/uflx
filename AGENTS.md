@@ -23,10 +23,7 @@ Lint (must pass with zero diff/errors, matches CI):
 ```
 ruff check .
 ruff format --check .          # use `ruff format .` to auto-fix
-mypy . --exclude external
-mypy external/codegeneration
-mypy external/basix_uflx
-pyrefly check                  # second type checker, config in [tool.pyrefly]
+pyrefly check                  # type checker, config in [tool.pyrefly]
 ```
 
 Run the core test suite:
@@ -114,7 +111,7 @@ Follows FEniCS project conventions (see [dolfinx](https://github.com/FEniCS/dolf
 - **Docstrings**: Google style (`Args:`, `Returns:`, etc.), required on modules,
   classes and methods (`D` rules are enforced, `__init__.py` is exempted from unused
   imports only — not docstrings).
-- **Type hints**: used throughout and checked with `mypy` (`[tool.mypy]` in
+- **Type hints**: used throughout and checked with `pyrefly` (`[tool.pyrefly]` in
   `pyproject.toml`); not currently enforced by a ruff annotation rule, but new public
   functions/methods should still be annotated to match the rest of the codebase.
 - **File header**: most files under `uflx/` (the core object-model layer —
