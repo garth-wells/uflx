@@ -2,17 +2,6 @@
 
 import numpy as np
 import pytest
-from cffi import FFI
-from uflx import (
-    SpatialCoordinate,
-    TestFunction,
-    TrialFunction,
-    coordinate_element,
-    dx,
-    function_space,
-    grad,
-    inner,
-)
 
 from uflx_codegeneration.utils import index
 
