@@ -1,6 +1,6 @@
 """Test code generation."""
 
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
 import pytest
@@ -793,7 +793,7 @@ def test_mass_matrix(lagrange_element, code_dir, degree, expected_matrices):
     ffi.set_source(f"test_mass_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
-    lib = cast(Any, ffi.dlopen(so))
+    lib: Any = ffi.dlopen(so)
 
     mat = np.zeros(expected_matrices[0].shape)
     coords = np.zeros((3, 2))
@@ -1504,7 +1504,7 @@ def test_stiffness_matrix(lagrange_element, code_dir, degree, expected_matrices)
     ffi.set_source(f"test_stiffness_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
-    lib = cast(Any, ffi.dlopen(so))
+    lib: Any = ffi.dlopen(so)
 
     mat = np.zeros(expected_matrices[0].shape)
     coords = np.zeros((3, 2))
@@ -1667,7 +1667,7 @@ def test_linear_form(lagrange_element, code_dir, degree, expected_vectors):
     ffi.set_source(f"test_linear_form_degree{degree}", code)
     so = ffi.compile(code_dir)
 
-    lib = cast(Any, ffi.dlopen(so))
+    lib: Any = ffi.dlopen(so)
 
     vec = np.zeros(len(expected_vectors[0]))
     coords = np.zeros((3, 2))

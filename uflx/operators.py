@@ -5,8 +5,6 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
-from typing import cast
-
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
@@ -35,12 +33,13 @@ class Grad(UnaryOperator):
     def __init__(self, argument: GraphNode):
         """Initialise."""
         assert isinstance(argument, AbstractPhysicalFunction)
+        self._physical_argument = argument
         super().__init__(argument)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self.argument.function_space.domain.geometric_dimension,)  # type: ignore
+        return (self._physical_argument.function_space.domain.geometric_dimension,)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -53,13 +52,13 @@ class ReferenceGrad(UnaryOperator):
     def __init__(self, argument: GraphNode):
         """Initialise."""
         assert isinstance(argument, AbstractReferenceFunction)
+        self._reference_argument = argument
         super().__init__(argument)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        argument = cast(AbstractReferenceFunction, self.argument)
-        return (argument.domain_size,)
+        return (self._reference_argument.domain_size,)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -69,7 +68,7 @@ class ReferenceGrad(UnaryOperator):
 
     def expand_geometry(self) -> GraphNode:
         """Expand geometry."""
-        argument = cast(AbstractReferenceFunction, self.argument)
+        argument = self._reference_argument
         return Vector([argument.diff(i) for i in range(argument.domain_size)])
 
 

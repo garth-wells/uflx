@@ -2,7 +2,7 @@
 
 import hashlib
 import os
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -57,7 +57,7 @@ def assemble_code(form, code_dir, filename=None):
     ffi.set_source(filename, code)
     so = ffi.compile(code_dir)
 
-    lib = cast(Any, ffi.dlopen(so))
+    lib: Any = ffi.dlopen(so)
     empty = np.zeros(0)
 
     def tabulate(local_tensor, coords):
