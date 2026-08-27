@@ -32,11 +32,11 @@ jobs:
           ruff check .
           ruff format --check .
       - name: Install UFLx
-        run: pip install -e ".[lint]"
+        run: pip install -e ".[lint,ci]"
       - name: Install external libraries
         run: |
-          pip install -e external/codegeneration
-          pip install -e external/basix_uflx
+          pip install external/codegeneration
+          pip install external/basix_uflx
       - name: Pyrefly check
         run: pyrefly check
 

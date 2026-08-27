@@ -57,5 +57,4 @@ select = [
 convention = "google"
 
 [tool.pyrefly]
-preset = "legacy"
-ignore-missing-imports = ["*"]
+ignore-missing-imports = ["cffi", "networkx"]

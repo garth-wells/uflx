@@ -228,8 +228,8 @@ class QuadratureElement(AbstractFiniteElement):
     def reference_map(self) -> uflx.maps.AbstractReferenceMap:
         return self._reference_map
 
-    def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
-        if nderivs > 0:
+    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
+        if derivatives > 0:
             raise ValueError("Cannot take derivatives of Quadrature element.")
 
         points = np.asarray(points)
@@ -289,11 +289,11 @@ class RealElement(AbstractFiniteElement):
     def reference_value_shape(self) -> tuple[int, ...]:
         return self._value_shape
 
-    def tabulate(self, nderivs: int, points: npt.ArrayLike) -> npt.NDArray:
+    def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
         points = np.asarray(points)
         table = np.zeros(
             [
-                number_of_derivatives(nderivs, self.cell),
+                number_of_derivatives(derivatives, self.cell),
                 points.shape[0],
                 self.reference_value_size,
                 self.reference_value_size,

@@ -201,7 +201,7 @@ def tabulate_quadrature(
     """Generate tables of values for quadrature rules."""
     table_map = {}
     tables = {}
-    to_replace = {}
+    to_replace: dict[GraphNode, GraphNode] = {}
     for node in graph:
         if isinstance(node, QuadratureWeight):
             id = (node.rule, "weights")
@@ -217,7 +217,7 @@ def tabulate_quadrature(
                 table_map[id] = name
                 tables[name] = node.rule.points
             to_replace[node] = Point(
-                *[
+                [
                     ArrayEntry(
                         table_map[id],
                         (

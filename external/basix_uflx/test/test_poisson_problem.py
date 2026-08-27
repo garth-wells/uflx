@@ -2,7 +2,7 @@
 
 import hashlib
 import os
-from typing import NamedTuple
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -57,7 +57,7 @@ def assemble_code(form, code_dir, filename=None):
     ffi.set_source(filename, code)
     so = ffi.compile(code_dir)
 
-    lib = ffi.dlopen(so)
+    lib = cast(Any, ffi.dlopen(so))
     empty = np.zeros(0)
 
     def tabulate(local_tensor, coords):
@@ -240,7 +240,9 @@ def test_poisson_problem_square(npoints, degree, code_dir):
         domain=domain,
     )
 
-    dofmap = {"point": {(i,): [i] for i, _ in enumerate(points)}}
+    dofmap: dict[str, dict[tuple[int, ...], list[int]]] = {
+        "point": {(i,): [i] for i, _ in enumerate(points)}
+    }
     dof_locations = {i: p for i, p in enumerate(points)}
     dof_n = points.shape[0]
     if degree > 1:

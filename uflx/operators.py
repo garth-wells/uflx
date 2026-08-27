@@ -5,6 +5,8 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
+from typing import cast
+
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
@@ -48,8 +50,6 @@ class Grad(UnaryOperator):
 class ReferenceGrad(UnaryOperator):
     """Gradient operator."""
 
-    argument: AbstractReferenceFunction
-
     def __init__(self, argument: GraphNode):
         """Initialise."""
         assert isinstance(argument, AbstractReferenceFunction)
@@ -58,7 +58,8 @@ class ReferenceGrad(UnaryOperator):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self.argument.domain_size,)
+        argument = cast(AbstractReferenceFunction, self.argument)
+        return (argument.domain_size,)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -68,7 +69,8 @@ class ReferenceGrad(UnaryOperator):
 
     def expand_geometry(self) -> GraphNode:
         """Expand geometry."""
-        return Vector([self.argument.diff(i) for i in range(self.argument.domain_size)])
+        argument = cast(AbstractReferenceFunction, self.argument)
+        return Vector([argument.diff(i) for i in range(argument.domain_size)])
 
 
 class Conj(UnaryOperator):
