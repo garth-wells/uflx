@@ -88,11 +88,12 @@ class Graph(nx.DiGraph):
 
     def ordered_nodes(self, order: NodeOrder = NodeOrder.leaves_first) -> Iterable[GraphNode]:
         """Iterate through the ordered graph nodes."""
+        nodes = cast(list[GraphNode], list(nx.topological_sort(self)))
         match order:
             case NodeOrder.roots_first:
-                return cast(Iterable[GraphNode], nx.topological_sort(self))
+                return nodes
             case NodeOrder.leaves_first:
-                return cast(Iterable[GraphNode], reversed(list(nx.topological_sort(self))))
+                return list(reversed(nodes))
             case _:
                 raise ValueError("Invalid node order")
 
