@@ -58,3 +58,7 @@ convention = "google"
 
 [tool.pyrefly]
 ignore-missing-imports = ["cffi", "networkx"]
+
+[tool.pyrefly.errors]
+unused-ignore = true
+unused-type-ignore = true
