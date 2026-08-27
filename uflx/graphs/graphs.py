@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import networkx as nx
 
@@ -32,6 +32,19 @@ def print_node(graph: Graph, node: GraphNode, indentation: int = 0):
     successors = list(graph.successors(node))
     for i, child in enumerate(successors):
         _print_tree(graph, child, indent, i == len(successors) - 1)
+
+
+@runtime_checkable
+class GraphNode(Hashable, Protocol):
+    """A node in a graph."""
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
 
 
 class Graph(nx.DiGraph):
@@ -69,40 +82,28 @@ class Graph(nx.DiGraph):
         """Print a graph."""
         print_node(self, self.root)
 
-    def subgraph(self, node: GraphNode) -> Graph:
+    def subgraph_of_node(self, node: GraphNode) -> Graph:
         """Get the subgraph with the input node as the root node."""
         return generate_graph(node)
 
     def ordered_nodes(self, order: NodeOrder = NodeOrder.leaves_first) -> Iterable[GraphNode]:
         """Iterate through the ordered graph nodes."""
+        nodes = cast(list[GraphNode], list(nx.topological_sort(self)))
         match order:
             case NodeOrder.roots_first:
-                return nx.topological_sort(self)
+                return nodes
             case NodeOrder.leaves_first:
-                return reversed(list(nx.topological_sort(self)))
+                return list(reversed(nodes))
             case _:
                 raise ValueError("Invalid node order")
 
     def descendants(self, node: GraphNode) -> set[GraphNode]:
         """Get all descendants of a node."""
-        return nx.descendants(self, node)
+        return cast(set[GraphNode], nx.descendants(self, node))
 
     def is_dag(self) -> bool:
         """Check if this graph is a directed acyclic graph."""
         return nx.is_directed_acyclic_graph(self)
-
-
-@runtime_checkable
-class GraphNode(Protocol):
-    """A node in a graph."""
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
 
 
 class RepresentedByGraph(Protocol):

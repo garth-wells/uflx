@@ -3,7 +3,7 @@ name: UFLx CI
 on:
   push:
     branches:
-      - "**"
+      - main
     tags:
       - "v*"
   pull_request:
@@ -13,47 +13,46 @@ on:
     branches:
       - main
   workflow_dispatch:
-  # # Weekly build on Mondays at 8 am
-  # schedule:
-  #   - cron: "0 8 * * 1"
 
 jobs:
   lint:
     name: Lint code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     env:
       UFLX_ENABLE_TESTING: "1"
     steps:
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Ruff check
         run: |
           pip install ruff
           ruff check .
           ruff format --check .
-      - name: MyPy check
+      - name: Install UFLx
+        run: pip install -e ".[lint,ci]"
+      - name: Install external libraries
         run: |
-          pip install mypy
-          mypy . --exclude external
-          mypy external/codegeneration
-          mypy external/basix_uflx
+          pip install external/codegeneration
+          pip install external/basix_uflx
+      - name: Pyrefly check
+        run: pyrefly check
 
   build:
     name: Build and test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-24.04]
+        os: [ubuntu-26.04]
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     env:
       UFLX_ENABLE_TESTING: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 

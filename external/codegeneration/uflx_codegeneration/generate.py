@@ -65,16 +65,20 @@ def pull_back_to_reference(
     node_map: dict[GraphNode, GraphNode] = {}
     for node in graph.ordered_nodes():
         if isinstance(node, Grad):
+            assert isinstance(node.argument, EvaluatedPhysicalBasisFunction)
             argument = node_map.get(node.argument, node.argument)
-            point = (
-                node.argument._point.reference_point  # type: ignore
-                if isinstance(node.argument._point, ReferenceToPhysical)  # type: ignore
-                else PhysicalToReference(node.argument._point)  # type: ignore
+            domain = extract_domain(graph, node)
+            assert isinstance(domain, AbstractCoordinateElement)
+            point = node.argument.point
+            reference_point = (
+                point.reference_point
+                if isinstance(point, ReferenceToPhysical)
+                else PhysicalToReference(point, domain)
             )
             if isinstance(argument, PushedForward):
                 node_map[node] = JacobianInverseTranspose(
-                    node.argument._point.domain,  # type: ignore
-                    point,
+                    domain,
+                    reference_point,
                 ) * ReferenceGrad(argument.function)
         elif isinstance(node, EvaluatedPhysicalBasisFunction):
             assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
@@ -201,7 +205,7 @@ def tabulate_quadrature(
     """Generate tables of values for quadrature rules."""
     table_map = {}
     tables = {}
-    to_replace = {}
+    to_replace: dict[GraphNode, GraphNode] = {}
     for node in graph:
         if isinstance(node, QuadratureWeight):
             id = (node.rule, "weights")
@@ -217,7 +221,7 @@ def tabulate_quadrature(
                 table_map[id] = name
                 tables[name] = node.rule.points
             to_replace[node] = Point(
-                *[
+                [
                     ArrayEntry(
                         table_map[id],
                         (

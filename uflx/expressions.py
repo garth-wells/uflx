@@ -35,7 +35,7 @@ class AbstractExpression(ABC):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
 
-    def __rmul__(self, other):
+    def __rmul__(self, other: int | float) -> Mult:
         """Multiply."""
         if isinstance(other, int):
             return Mult(Integer(other), self)
@@ -43,7 +43,7 @@ class AbstractExpression(ABC):
             return Mult(RealScalar(other), self)
         return NotImplemented
 
-    def __mul__(self, other):
+    def __mul__(self, other: int | float | AbstractExpression) -> AbstractExpression:
         """Multiply."""
         if isinstance(other, int):
             return Mult(self, Integer(other))
@@ -61,19 +61,19 @@ class AbstractExpression(ABC):
             case _:
                 return NotImplemented
 
-    def __truediv__(self, other):
+    def __truediv__(self, other: AbstractExpression) -> Div:
         """Division."""
         if not isinstance(other, AbstractExpression):
             return NotImplemented
         return Div(self, other)
 
-    def __add__(self, other):
+    def __add__(self, other: AbstractExpression) -> AbstractExpression:
         """Add."""
         if isinstance(other, AbstractExpression):
             return Add(self, other)
         return NotImplemented
 
-    def __sub__(self, other):
+    def __sub__(self, other: AbstractExpression) -> AbstractExpression:
         """Subtract."""
         if isinstance(other, AbstractExpression):
             return Subtract(self, other)
@@ -166,7 +166,7 @@ class Integer(AbstractInteger):
         """The arguments used to initialise this object."""
         return (self.value,)
 
-    def __add__(self, other):
+    def __add__(self, other: AbstractExpression) -> AbstractExpression:
         """Add."""
         if isinstance(other, AbstractExpression):
             if self.value == 0:
@@ -174,7 +174,7 @@ class Integer(AbstractInteger):
             return Add(self, other)
         return NotImplemented
 
-    def __sub__(self, other):
+    def __sub__(self, other: AbstractExpression) -> AbstractExpression:
         """Subtract."""
         if isinstance(other, AbstractExpression):
             if self.value == 0:
@@ -182,7 +182,7 @@ class Integer(AbstractInteger):
             return Subtract(self, other)
         return NotImplemented
 
-    def __mul__(self, other):
+    def __mul__(self, other: AbstractExpression | float | int) -> AbstractExpression:
         """Multiply."""
         if isinstance(other, AbstractExpression):
             if self.value == 0:

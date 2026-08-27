@@ -15,11 +15,11 @@ class AbstractReferenceMap(ABC):
     """Abstract base class for reference maps."""
 
     @abstractmethod
-    def push_forward_symbolic(self, function: AbstractExpression):
+    def push_forward_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a reference cell to a physical cell."""
 
     @abstractmethod
-    def pull_back_symbolic(self, function: AbstractExpression):
+    def pull_back_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a physical cell to a reference cell."""
 
     @abstractmethod
@@ -30,11 +30,11 @@ class AbstractReferenceMap(ABC):
 class IdentityReferenceMap(AbstractReferenceMap):
     """Identity map."""
 
-    def push_forward_symbolic(self, function: AbstractExpression):
+    def push_forward_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a reference cell to a physical cell."""
         return function
 
-    def pull_back_symbolic(self, function: AbstractExpression):
+    def pull_back_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a physical cell to a reference cell."""
         return function
 
@@ -55,11 +55,11 @@ class BlockedReferenceMap(AbstractReferenceMap):
         self._component_map = component_map
         self._shape = shape
 
-    def push_forward_symbolic(self, function: AbstractExpression):
+    def push_forward_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a reference cell to a physical cell."""
         return function  # TODO
 
-    def pull_back_symbolic(self, function: AbstractExpression):
+    def pull_back_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 
@@ -82,11 +82,11 @@ class SymmetricReferenceMap(AbstractReferenceMap):
         self._shape = shape
         self._symmetry_map = symmetry_map
 
-    def push_forward_symbolic(self, function: AbstractExpression):
+    def push_forward_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a reference cell to a physical cell."""
         return function  # TODO
 
-    def pull_back_symbolic(self, function: AbstractExpression):
+    def pull_back_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 
@@ -107,11 +107,11 @@ class MixedReferenceMap(AbstractReferenceMap):
         self._sub_maps = sub_maps
         self._shapes = shapes
 
-    def push_forward_symbolic(self, function: AbstractExpression):
+    def push_forward_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a reference cell to a physical cell."""
         return function  # TODO
 
-    def pull_back_symbolic(self, function: AbstractExpression):
+    def pull_back_symbolic(self, function: AbstractExpression) -> AbstractExpression:
         """Map function values from a physical cell to a reference cell."""
         return function  # TODO
 

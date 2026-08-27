@@ -1,9 +1,13 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "uflx"
 version = "0.0.1"
-description = "ULFx: Experimental minimal UFL"
+description = "UFLx: Experimental minimal UFL"
 readme = "README.md"
-requires-python = ">=3.11.0"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [
     { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
@@ -20,7 +24,7 @@ repository = "https://github.com/garth-wells/uflx"
 
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
-lint = ["ruff", "mypy"]
+lint = ["ruff", "pyrefly"]
 ci = ["pytest", "pytest-xdist"]
 
 [tool.ruff]
@@ -52,5 +56,9 @@ select = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.mypy]
-ignore_missing_imports = true
+[tool.pyrefly]
+ignore-missing-imports = ["cffi", "networkx"]
+
+[tool.pyrefly.errors]
+unused-ignore = true
+unused-type-ignore = true

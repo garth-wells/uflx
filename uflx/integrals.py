@@ -5,6 +5,8 @@
 # SPDX-License-Identifier:    MIT
 """Measures and integrals."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -15,7 +17,7 @@ from uflx.graphs import Graph, GraphNode, generate_graph
 class AbstractMeasure(ABC):
     """Abstract base class for an integral measure."""
 
-    def __rmul__(self, other):
+    def __rmul__(self, other: AbstractExpression) -> Integral:
         """Right multiply by an expression to form an integral."""
         if isinstance(other, AbstractExpression):
             return Integral(other, self)
@@ -102,7 +104,9 @@ class Integral(AbstractIntegral):
 class Measure(AbstractMeasure):
     """An integral measure."""
 
-    def __init__(self, dim: int | None = None, codim=int | None, boundary_only: bool = False):
+    def __init__(
+        self, dim: int | None = None, codim: int | None = None, boundary_only: bool = False
+    ):
         """Initialise."""
         self._dim = dim
         self._codim = codim
@@ -117,7 +121,7 @@ class Measure(AbstractMeasure):
         """Representation."""
         kwargs = {}
         if self._dim is not None:
-            kwargs["codim"] = self._dim
+            kwargs["dim"] = self._dim
         if self._codim is not None:
             kwargs["codim"] = self._codim
         if self._boundary_only:

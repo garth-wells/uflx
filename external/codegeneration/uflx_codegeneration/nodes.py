@@ -14,11 +14,11 @@ def flatten_component(
     indices: tuple[int | str, ...],
     shape: tuple[int, ...],
     bracketed: bool = False,
-):
+) -> str:
     """Flatten the component in an array access."""
     assert len(indices) == len(shape)
     if len(indices) == 1:
-        return indices[0]
+        return str(indices[0])
 
     component = (
         flatten_component(indices[:-1], shape[:-1], True) + f" * {shape[-1]} + {indices[-1]}"
