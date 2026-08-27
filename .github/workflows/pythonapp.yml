@@ -22,17 +22,21 @@ jobs:
       UFLX_ENABLE_TESTING: "1"
     steps:
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Ruff check
         run: |
           pip install ruff
           ruff check .
           ruff format --check .
       - name: Install UFLx
-        run: pip install .[lint]
+        run: pip install -e ".[lint]"
+      - name: Install external libraries
+        run: |
+          pip install -e external/codegeneration
+          pip install -e external/basix_uflx
       - name: MyPy check
         run: |
           mypy . --exclude external
