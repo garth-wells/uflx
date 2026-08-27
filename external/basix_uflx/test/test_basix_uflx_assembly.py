@@ -391,7 +391,7 @@ def test_mass_matrix(
             id="degree 2, fourth cell",
         ),
         pytest.param(
-            2,
+            1,
             2,
             np.array([[1.0, 0.2], [1.5, 1.2], [2.5, 1.0], [2.0, 1.2], [2.0, 0.2], [1.0, 1.0]]),
             np.array(
@@ -462,7 +462,7 @@ def test_mass_matrix(
             id="degree 2 element, degree 2 geometry",
         ),
         pytest.param(
-            2,
+            3,
             2,
             np.array([[1.0, 0.2], [1.5, 1.2], [2.5, 1.0], [2.0, 1.2], [2.0, 0.2], [1.0, 1.0]]),
             np.array(
