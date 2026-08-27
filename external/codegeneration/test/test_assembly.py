@@ -799,8 +799,7 @@ def test_mass_matrix(lagrange_element, code_dir, degree, expected_matrices):
 
     for cell, expected_mat in zip(cells, expected_matrices):
         for i, j in enumerate(cell):
-            for k, p in enumerate(pts[j]):
-                coords[i, k] = p
+            coords[i, :] = pts[j]
         mat[:] = 0.0
         lib.tabulate_tensor_f64(
             ffi.cast("double*", mat.ctypes.data),
@@ -1511,8 +1510,7 @@ def test_stiffness_matrix(lagrange_element, code_dir, degree, expected_matrices)
 
     for cell, expected_mat in zip(cells, expected_matrices):
         for i, j in enumerate(cell):
-            for k, p in enumerate(pts[j]):
-                coords[i, k] = p
+            coords[i, :] = pts[j]
         mat[:] = 0.0
         lib.tabulate_tensor_f64(
             ffi.cast("double*", mat.ctypes.data),
@@ -1675,8 +1673,7 @@ def test_linear_form(lagrange_element, code_dir, degree, expected_vectors):
 
     for cell, expected_vec in zip(cells, expected_vectors):
         for i, j in enumerate(cell):
-            for k, p in enumerate(pts[j]):
-                coords[i, k] = p
+            coords[i, :] = pts[j]
         vec[:] = 0.0
         lib.tabulate_tensor_f64(
             ffi.cast("double*", vec.ctypes.data),

@@ -307,7 +307,7 @@ def element(
     family: basix.ElementFamily | str,
     cell: basix.CellType | str,
     degree: int,
-    lagrange_variant: basix.LagrangeVariant = basix.LagrangeVariant.unset,
+    lagrange_variant: basix.LagrangeVariant | str = basix.LagrangeVariant.unset,
     dpc_variant: basix.DPCVariant = basix.DPCVariant.unset,
     discontinuous: bool = False,
     shape: tuple[int, ...] | None = None,
@@ -350,6 +350,8 @@ def element(
             discontinuous = True
 
         family = basix.finite_element.string_to_family(family, cell.name)
+    if isinstance(lagrange_variant, str):
+        lagrange_variant = basix.LagrangeVariant[lagrange_variant]
 
     # Default variant choices
     EF = basix.ElementFamily
