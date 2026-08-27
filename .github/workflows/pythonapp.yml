@@ -13,9 +13,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-  # # Weekly build on Mondays at 8 am
-  # schedule:
-  #   - cron: "0 8 * * 1"
 
 jobs:
   lint:
@@ -55,9 +52,9 @@ jobs:
     env:
       UFLX_ENABLE_TESTING: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
