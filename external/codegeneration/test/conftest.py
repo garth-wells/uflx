@@ -151,6 +151,16 @@ class LagrangeElement(AbstractFiniteElement):
 
     def tabulate(self, derivatives: int, points: npt.ArrayLike) -> npt.NDArray:
         """Create table of basis function values and derivatives."""
+        # Note: the basis functions here use this ordering:
+        #
+        # 2
+        # |\
+        # 4 5
+        # |  \
+        # 0-3-1
+        #
+        # This is not currently the same as the ordering used by Basix,
+        # see https://github.com/FEniCS/basix/issues/1020
         points = np.asarray(points)
         table = np.zeros(
             [number_of_derivatives(derivatives, self.cell), points.shape[0], self.dim, 1]
@@ -171,24 +181,24 @@ class LagrangeElement(AbstractFiniteElement):
                             (1 - x - y) * (1 - 2 * x - 2 * y),
                             x * (2 * x - 1),
                             y * (2 * y - 1),
-                            4 * x * y,
-                            4 * y * (1 - x - y),
                             4 * x * (1 - x - y),
+                            4 * y * (1 - x - y),
+                            4 * x * y,
                         ]
                         for (x, y) in points
                     ]
                     if derivatives >= 1:
                         table[1, :, :, 0] = [
-                            [-3 + 4 * x + 4 * y, 4 * x - 1, 0, 4 * y, -4 * y, 4 - 8 * x - 4 * y]
+                            [-3 + 4 * x + 4 * y, 4 * x - 1, 0, 4 - 8 * x - 4 * y, -4 * y, 4 * y]
                             for (x, y) in points
                         ]
                         table[2, :, :, 0] = [
-                            [-3 + 4 * x + 4 * y, 0, 4 * y - 1, 4 * x, 4 - 4 * x - 8 * y, -4 * x]
+                            [-3 + 4 * x + 4 * y, 0, 4 * y - 1, -4 * x, 4 - 4 * x - 8 * y, 4 * x]
                             for (x, y) in points
                         ]
                     if derivatives >= 2:
-                        table[3, :, :, 0] = [[4, 4, 0, 0, 0, -8 * x] for (x, y) in points]
-                        table[4, :, :, 0] = [[4, 0, 0, 4, -4, -4] for (x, y) in points]
+                        table[3, :, :, 0] = [[4, 4, 0, -8 * x, 0, 0] for (x, y) in points]
+                        table[4, :, :, 0] = [[4, 0, 0, -4, -4, 4] for (x, y) in points]
                         table[5, :, :, 0] = [[4, 0, 4, 0, -8, 0] for (x, y) in points]
                 case _:
                     raise NotImplementedError()
@@ -229,5 +239,9 @@ def code_dir():
 
 def pytest_generate_tests(metafunc):
     """Generate tests."""
-    if not os.path.isdir(CODE_DIRECTORY):
+    if os.path.isdir(CODE_DIRECTORY):
+        os.system(f"rm {CODE_DIRECTORY}/*.c")
+        os.system(f"rm {CODE_DIRECTORY}/*.o")
+        os.system(f"rm {CODE_DIRECTORY}/*.so")
+    else:
         os.mkdir(CODE_DIRECTORY)

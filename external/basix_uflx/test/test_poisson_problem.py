@@ -222,9 +222,8 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     For this problem, Δu = 2 * degree * (degree - 1) * (x - y) ** (degree - 2) and
     we use Dirichlet BCs on all four sides of a unit square.
     """
-    if degree > 1:
+    if degree > 2:
         pytest.xfail()
-
     points = np.array(
         [[i / npoints, j / npoints] for j in range(npoints + 1) for i in range(npoints + 1)]
     )
@@ -258,13 +257,13 @@ def test_poisson_problem_square(npoints, degree, code_dir):
                     a = points[edge[0]]
                     b = points[edge[1]]
                     for i in range(ndofs_interval):
-                        dof_locations[dof_n + i] = a + (i + 1) * (a - b) / (ndofs_interval + 1)
+                        dof_locations[dof_n + i] = a + (i + 1) * (b - a) / (ndofs_interval + 1)
                     dof_n += ndofs_interval
     if degree > 2:
         ndofs_triangle = (degree - 2) * (degree - 1) // 2
         dofmap["triangle"] = {}
         for cell in cells:
-            dofmap["interval"][edge] = [dof_n + i for i in range(ndofs_triangle)]
+            dofmap["triangle"][tuple(cell)] = [dof_n + i for i in range(ndofs_triangle)]
             if degree == 3:
                 dof_locations[dof_n] = (points[cell[0]] + points[cell[1]] + points[cell[2]]) / 3
             else:
@@ -280,7 +279,7 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
     x = SpatialCoordinate(2)
-    rhs = 2 * degree * (degree - 1) * (x[0] - x[1]) ** (degree - 2) * v * dx
+    rhs = -2 * degree * (degree - 1) * (x[0] - x[1]) ** (degree - 2) * v * dx
 
     wrapped_space = FunctionSpace(space=space, mesh=mesh, dofmap=dofmap)
 
@@ -302,9 +301,5 @@ def test_poisson_problem_square(npoints, degree, code_dir):
 
     solution = np.linalg.inv(matrix) @ vector
 
-    for i in range(1, npoints):
-        for j in range(1, npoints):
-            index = (npoints + 1) * j + i
-            x, y = points[index]
-            for d in dofmap["point"][(index,)]:
-                assert np.isclose(solution[d], (x - y) ** degree)
+    for d, (x, y) in dof_locations.items():
+        assert np.isclose(solution[d], (x - y) ** degree)

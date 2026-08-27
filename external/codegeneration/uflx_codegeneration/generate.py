@@ -1,5 +1,6 @@
 """Code generation."""
 
+import quadraturerules
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
@@ -169,7 +170,7 @@ def integrals_to_quadrature(
 
             assert isinstance(domain, AbstractCoordinateElement)
             integrand = (
-                QuadratureWeight(rules[node.measure], variables[a.component_index])
+                QuadratureWeight(rules[node.measure], qvariable)
                 * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
                 * node.integrand
             )
@@ -253,9 +254,14 @@ def generate(
     assert graph.is_dag()
 
     # TODO: get this from somewhere
-    rules: dict[AbstractMeasure, QuadratureRule] = {
-        dx: quadrature_rule([[1 / 6, 1 / 6], [2 / 3, 1 / 6], [1 / 6, 2 / 3]], [1 / 6, 1 / 6, 1 / 6])
-    }
+    rules: dict[AbstractMeasure, QuadratureRule] = {}
+    # For now, use a degree 10 rule:
+    points, weights = quadraturerules.single_integral_quadrature(
+        quadraturerules.QuadratureRule.XiaoGimbutas,
+        quadraturerules.Domain.Triangle,
+        10,
+    )
+    rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
     graph = integrals_to_quadrature(graph, rules)
     graph = pull_back_to_reference(graph)
