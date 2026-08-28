@@ -35,7 +35,7 @@ class AbstractExpression(ABC):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
 
-    def __mul__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __mul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
         if isinstance(other, AbstractExpression):
             if self.value_shape == other.value_shape:
@@ -54,14 +54,14 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
-    def __rmul__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __rmul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
         try:
             return to_scalar(other) * self
         except ValueError:
             return NotImplemented
 
-    def __truediv__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __truediv__(self, other: Any) -> AbstractExpression:
         """Division."""
         if isinstance(other, AbstractExpression):
             return Div(self, other)
@@ -70,14 +70,14 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
-    def __rtruediv__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __rtruediv__(self, other: Any) -> AbstractExpression:
         """Division."""
         try:
             return to_scalar(other) / self
         except ValueError:
             return NotImplemented
 
-    def __add__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __add__(self, other: Any) -> AbstractExpression:
         """Add."""
         if isinstance(other, AbstractExpression):
             return Add(self, other)
@@ -86,14 +86,14 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
-    def __radd__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __radd__(self, other: Any) -> AbstractExpression:
         """Add."""
         try:
             return to_scalar(other) + self
         except ValueError:
             return NotImplemented
 
-    def __sub__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __sub__(self, other: Any) -> AbstractExpression:
         """Subtract."""
         if isinstance(other, AbstractExpression):
             return Subtract(self, other)
@@ -102,7 +102,7 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
-    def __rsub__(self, other: Any) -> AbstractExpression | NotImplementedType:
+    def __rsub__(self, other: Any) -> AbstractExpression:
         """Subtract."""
         try:
             return to_scalar(other) - self
@@ -146,7 +146,7 @@ class AbstractExpression(ABC):
         return Im(self)
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         try:
             return complex(self.as_float())
         except ValueError:
@@ -228,7 +228,7 @@ class RealScalar(AbstractScalar):
 
 
 class ComplexScalar(AbstractScalar):
-    """A complex scalar"""
+    """A complex scalar."""
 
     def __init__(self, re: AbstractScalar, im: AbstractScalar):
         """Initialise."""
@@ -260,7 +260,7 @@ class ComplexScalar(AbstractScalar):
         return self._im
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self._re.as_float() + 1j * self._im.as_float()
 
 
@@ -288,7 +288,6 @@ class Integer(AbstractInteger):
     def as_int(self) -> int:
         """Convert to an integer."""
         return self.value
-
 
 
 def to_scalar(value: Any) -> AbstractScalar:
@@ -420,7 +419,7 @@ class Mult(BinaryOperator):
         return self.first.component(*indices) * self.second.component(*indices)
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self.first.as_complex() * self.second.as_complex()
 
     def as_float(self) -> float:
@@ -438,14 +437,14 @@ class ScalarMult(BinaryOperator):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self.seconf.value_shape
+        return self.second.value_shape
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         return self.first * self.second.component(*indices)
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self.first.as_complex() * self.second.as_complex()
 
     def as_float(self) -> float:
@@ -476,7 +475,7 @@ class Div(BinaryOperator):
         raise ValueError("Cannot get a component of a scalar expression")
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self.first.as_complex() / self.second.as_complex()
 
     def as_float(self) -> float:
@@ -518,7 +517,7 @@ class Add(BinaryOperator):
         return self.first.im + self.second.im
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self.first.as_complex() + self.second.as_complex()
 
     def as_float(self) -> float:
@@ -528,7 +527,6 @@ class Add(BinaryOperator):
     def as_int(self) -> int:
         """Convert to an integer."""
         return self.first.as_int() + self.second.as_int()
-
 
 
 class Subtract(BinaryOperator):
@@ -551,7 +549,7 @@ class Subtract(BinaryOperator):
         return self.first.component(*indices) - self.second.component(*indices)
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return self.first.as_complex() - self.second.as_complex()
 
     def as_float(self) -> float:
@@ -601,7 +599,7 @@ class Neg(UnaryOperator):
         return Neg(self.argument.component(*indices))
 
     def as_complex(self) -> complex:
-        """Convert to a complexing number."""
+        """Convert to a complex number."""
         return -self.argument.as_complex()
 
     def as_float(self) -> float:
@@ -611,7 +609,6 @@ class Neg(UnaryOperator):
     def as_int(self) -> int:
         """Convert to an integer."""
         return -self.argument.as_int()
-
 
 
 class MatVec(BinaryOperator):

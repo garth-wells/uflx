@@ -1,9 +1,12 @@
+"""Test complex values."""
+
 import numpy as np
-import uflx
+
 from uflx.expressions import to_scalar
 
 
 def test_complex_scalar_add():
+    """Test addition with complex scalars."""
     five = to_scalar(5)
 
     z = five + 2j
@@ -16,6 +19,7 @@ def test_complex_scalar_add():
 
 
 def test_complex_scalar_sub():
+    """Test subtraction with complex scalars."""
     five = to_scalar(5)
 
     z = five - 2j
@@ -28,6 +32,7 @@ def test_complex_scalar_sub():
 
 
 def test_complex_scalar_mult():
+    """Test multiplication with complex scalars."""
     five = to_scalar(5)
 
     z = five * 2j
@@ -40,6 +45,7 @@ def test_complex_scalar_mult():
 
 
 def test_complex_scalar_div():
+    """Test division with complex scalars."""
     five = to_scalar(5)
 
     z = five / 2j
@@ -52,6 +58,7 @@ def test_complex_scalar_div():
 
 
 def test_complex_scalar_neg():
+    """Test negation with complex scalars."""
     z = to_scalar(3 - 2j)
 
     assert np.isclose(z.re.as_float(), 3)
