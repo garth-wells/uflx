@@ -61,6 +61,12 @@ jobs:
       - name: Run units tests
         run: pytest -n auto --durations 20 test/
 
+      - name: Check test coverage is high
+        run: |
+          pip -v install pytest-cov
+          pytest -n auto --cov-report json --cov=uflx --durations 20 test/
+          python3 .github/scripts/coverage_check.py
+
       - name: Install external libraries
         run: |
           pip -v install external/codegeneration
