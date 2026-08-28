@@ -5,7 +5,7 @@ from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedRefere
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, Argument
+from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
 from uflx.geometry import (
     JacobianDeterminant,
     JacobianInverseTranspose,
@@ -47,6 +47,8 @@ from uflx_codegeneration.utils import indented
 
 def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
     """Extract the domain associated with a node."""
+    from IPython import embed; embed()
+    print(node)
     domain: AbstractDomain | None = None
     for i in graph.descendants(node):
         if isinstance(i, AbstractPhysicalFunction):
@@ -54,6 +56,11 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
                 domain = i.function_space.domain
             else:
                 assert domain == i.function_space.domain
+        if hasattr(i, "domain"):
+            if domain is None:
+                domain = i.domain
+            else:
+                assert domain == i.domain
     assert domain is not None
     return domain
 
@@ -81,7 +88,7 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in graph.descendants(node):
-                if isinstance(i, Argument):
+                if isinstance(i, (Argument, ReferenceArgument)):
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
@@ -228,9 +235,6 @@ def generate(
     )
     rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
-    # TODO: move this dwn to codegeneration algorithms
-    graph = integrals_to_quadrature(graph, rules)
-
     # Apply algorithms from UFLx
     graph.print()
     print("----------")
@@ -242,6 +246,7 @@ def generate(
     print("----------")
 
     # Apply codegeneration algorithms
+    graph = integrals_to_quadrature(graph, rules)  # WORKING ON THIS
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)

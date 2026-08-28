@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from uflx.expressions import AbstractExpression
+from uflx.functions import AbstractPhysicalFunction
+from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, generate_graph
 
 
@@ -99,6 +101,21 @@ class Integral(AbstractIntegral):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self._integrand, self._measure
+
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        integrand = node_map.get(self._integrand, self._integrand)
+        domain = None
+        for node in self.graph.descendants(self._integrand):
+            if isinstance(node, AbstractPhysicalFunction):
+                if domain is None:
+                    domain = node.function_space.domain
+                else:
+                    assert domain == node.function_space.domain
+        assert domain is not None
+        det = abs(JacobianDeterminant(domain, None))
+
+        return Integral(det * integrand, self._measure)
 
 
 class Measure(AbstractMeasure):
