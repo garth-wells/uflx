@@ -20,7 +20,8 @@ from uflx.graphs import (
     RepresentedByGraph,
     generate_graph,
 )
-from uflx.graphs.algorithms import reconstruct_node, replace
+from uflx.finite_elements import AbstractReferenceMappedFiniteElement
+from uflx.graphs.algorithms import reconstruct_node, replace, pull_back_to_reference
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import PushedForward, apply_push_forwards
 from uflx.operators import Grad, ReferenceGrad
@@ -33,7 +34,6 @@ from uflx_codegeneration.algorithms import (
     tabulate_finite_elements,
 )
 from uflx_codegeneration.c import GenerateC, tables_to_c
-from uflx_codegeneration.finite_element import AbstractReferenceMappedFiniteElement
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import (
     QuadratureLoop,
@@ -56,45 +56,6 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
                 assert domain == i.function_space.domain
     assert domain is not None
     return domain
-
-
-def pull_back_to_reference(
-    graph: Graph,
-) -> Graph:
-    """Pull terms in integrals back to reference values."""
-    node_map: dict[GraphNode, GraphNode] = {}
-    for node in graph.ordered_nodes():
-        if isinstance(node, Grad):
-            assert isinstance(node.argument, EvaluatedPhysicalBasisFunction)
-            argument = node_map.get(node.argument, node.argument)
-            domain = extract_domain(graph, node)
-            assert isinstance(domain, AbstractCoordinateElement)
-            point = node.argument.point
-            reference_point = (
-                point.reference_point
-                if isinstance(point, ReferenceToPhysical)
-                else PhysicalToReference(point, domain)
-            )
-            if isinstance(argument, PushedForward):
-                node_map[node] = JacobianInverseTranspose(
-                    domain,
-                    reference_point,
-                ) * ReferenceGrad(argument.function)
-        elif isinstance(node, EvaluatedPhysicalBasisFunction):
-            assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
-            if isinstance(node._point, ReferenceToPhysical):
-                node_map[node] = PushedForward(
-                    node._element.reference_map,
-                    EvaluatedReferenceBasisFunction(
-                        node._element,
-                        node._basis_index,
-                        node._point.reference_point,
-                    ),
-                )
-        elif any(a in node_map for a in node.successors):
-            node_map[node] = reconstruct_node(node, node_map)
-
-    return generate_graph(node_map.get(graph.root, graph.root))
 
 
 def integrals_to_quadrature(
@@ -267,9 +228,20 @@ def generate(
     )
     rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
+    # TODO: move this dwn to codegeneration algorithms
     graph = integrals_to_quadrature(graph, rules)
+
+    # Apply algorithms from UFLx
+    graph.print()
+    print("----------")
     graph = pull_back_to_reference(graph)
+    graph.print()
+    print("----------")
     graph = apply_push_forwards(graph)
+    graph.print()
+    print("----------")
+
+    # Apply codegeneration algorithms
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)

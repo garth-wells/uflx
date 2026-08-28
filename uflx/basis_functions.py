@@ -190,6 +190,23 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
     def point(self) -> AbstractPoint:
         """The point at which the function is evaluated."""
 
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        from uflx.geometry import ReferenceToPhysical
+        from uflx.maps import PushedForward
+
+        assert isinstance(self._element, AbstractReferenceMappedFiniteElement)
+        if isinstance(self._point, ReferenceToPhysical):
+            return PushedForward(
+                self._element.reference_map,
+                EvaluatedReferenceBasisFunction(
+                    self._element,
+                    self._basis_index,
+                    self._point.reference_point,
+                ),
+            )
+
+
 
 class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     """A basis function evaluated at a point on the physical cell."""

@@ -45,6 +45,24 @@ class Grad(UnaryOperator):
         """Get a component of the expression."""
         raise NotImplementedError("Cannot get a 'component' of a Grad")
 
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        assert isinstance(self.argument, EvaluatedPhysicalBasisFunction)
+        argument = node_map.get(self.argument, self.argument)
+        domain = extract_domain(graph, node)
+        assert isinstance(domain, AbstractCoordinateElement)
+        point = self.argument.point
+        reference_point = (
+            point.reference_point
+            if isinstance(point, ReferenceToPhysical)
+            else PhysicalToReference(point, domain)
+        )
+        if isinstance(argument, PushedForward):
+            return JacobianInverseTranspose(
+                domain,
+                reference_point,
+            ) * ReferenceGrad(argument.function)
+
 
 class ReferenceGrad(UnaryOperator):
     """Gradient operator."""
