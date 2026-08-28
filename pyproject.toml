@@ -57,7 +57,7 @@ select = [
 convention = "google"
 
 [tool.pyrefly]
-ignore-missing-imports = ["cffi", "networkx", "mlir"]
+ignore-missing-imports = ["cffi", "networkx", "mlir", "mlir.*"]
 
 [tool.pyrefly.errors]
 unused-ignore = true

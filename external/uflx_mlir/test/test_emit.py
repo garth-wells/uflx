@@ -77,7 +77,9 @@ def _reference_stiffness(coords: np.ndarray, degree: int) -> np.ndarray:
     )
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(basix.CellType.tetrahedron, qdeg)
-    tab = e.tabulate(1, points)
+    points = np.asarray(points, dtype=np.float64)
+    weights = np.asarray(weights, dtype=np.float64)
+    tab = np.asarray(e.tabulate(1, points))
 
     x0, x1, x2, x3 = coords
     jacobian = np.column_stack([x1 - x0, x2 - x0, x3 - x0])

@@ -18,9 +18,10 @@ from __future__ import annotations
 import basix
 import numpy as np
 from uflx.complex import take_real_part
+from uflx.domains import AbstractCoordinateElement
 from uflx.geometry import CoordinateDofComponent, expand_geometry
 from uflx.graphs import Graph, GraphNode, NodeOrder, generate_graph
-from uflx.integrals import dx
+from uflx.integrals import AbstractMeasure, dx
 from uflx.maps import apply_push_forwards
 from uflx_codegeneration.algorithms import expand_inner_products, tabulate_finite_elements
 from uflx_codegeneration.generate import (
@@ -30,7 +31,7 @@ from uflx_codegeneration.generate import (
     tabulate_quadrature,
 )
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
-from uflx_codegeneration.quadrature import QuadratureLoop, quadrature_rule
+from uflx_codegeneration.quadrature import QuadratureLoop, QuadratureRule, quadrature_rule
 
 
 def coordinate_shape(form) -> tuple[int, int]:
@@ -47,6 +48,8 @@ def coordinate_shape(form) -> tuple[int, int]:
     """
     graph = form.graph
     domain = extract_domain(graph, graph.root)
+    if not isinstance(domain, AbstractCoordinateElement):
+        raise NotImplementedError("Only domains with a coordinate element are supported.")
     if len(domain.elements) != 1:
         raise NotImplementedError("Only domains with exactly one element are supported.")
     (coord_element,) = domain.elements
@@ -72,7 +75,7 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
     """
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(cell, qdeg)
-    rules = {dx: quadrature_rule(points, weights)}
+    rules: dict[AbstractMeasure, QuadratureRule] = {dx: quadrature_rule(points, weights)}
 
     graph = form.graph
     assert graph.is_dag()

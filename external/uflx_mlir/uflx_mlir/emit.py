@@ -82,7 +82,6 @@ from mlir.ir import (
 )
 from uflx.expressions import (
     Abs,
-    AbstractExpression,
     Add,
     Div,
     Integer,
@@ -93,7 +92,7 @@ from uflx.expressions import (
 )
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Variable
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Loop, Variable
 from uflx_codegeneration.quadrature import QuadratureLoop
 
 from uflx_mlir.hoist import (
@@ -174,7 +173,7 @@ def _memref_store(value: Value, memref_val: Value, indices: list[Value]) -> None
     Operation.create("memref.store", operands=[value, memref_val, *indices])
 
 
-def _emit_node(node: AbstractExpression, cache: dict[Any, Value], ctx: _OpCtx) -> None:
+def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
     """Emit ops for one node of the AddToLocalTensor body's expression DAG.
 
     Every graph successor (child) of `node` already has an entry in
@@ -268,8 +267,11 @@ def _build_nest(
     loop_node, var = chain[depth]
     if isinstance(loop_node, QuadratureLoop):
         lo, hi = 0, loop_node.rule.npoints
-    else:
+    elif isinstance(loop_node, Loop):
+        assert isinstance(loop_node.start, int) and isinstance(loop_node.end, int)
         lo, hi = loop_node.start, loop_node.end
+    else:
+        raise NotImplementedError(f"Unexpected loop node type {type(loop_node)} in chain")
     assert var not in ctx.index_vars, f"loop variable {var!r} shadows an outer one"
 
     lb = ctx.index_const[lo]
