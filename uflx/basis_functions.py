@@ -99,7 +99,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        return self._point.point_index
+        return self._point.index
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -237,7 +237,7 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        return self._point.point_index
+        return self._point.index
 
     @property
     def value_shape(self) -> tuple[int, ...]:

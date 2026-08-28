@@ -1,8 +1,12 @@
+"""Test implementation of infinity."""
+
 import pytest
-from uflx.utils import infinity, Infinity, negative_infinity, NegativeInfinity
+
+from uflx.utils import Infinity, NegativeInfinity, infinity, negative_infinity
 
 
 def test_is():
+    """Test the is operator."""
     assert infinity is infinity
     assert infinity is Infinity()
     assert negative_infinity is negative_infinity
@@ -15,6 +19,7 @@ def test_is():
 
 
 def test_add():
+    """Test addition."""
     assert infinity + -1 is infinity
     assert infinity + 0 is infinity
     assert infinity + 1 is infinity
@@ -40,6 +45,7 @@ def test_add():
 
 
 def test_subtract():
+    """Test subtraction."""
     assert infinity - -1 is infinity
     assert infinity - 0 is infinity
     assert infinity - 1 is infinity

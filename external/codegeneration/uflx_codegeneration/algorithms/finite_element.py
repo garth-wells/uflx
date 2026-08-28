@@ -11,7 +11,7 @@ from uflx.graphs.algorithms import replace
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
 from uflx_codegeneration.nodes import ArrayEntry
-from uflx_codegeneration.points import AbstractPointInSet
+from uflx_codegeneration.quadrature import QuadratureRule
 from uflx_codegeneration.utils import index
 
 
@@ -27,8 +27,7 @@ def tabulate_finite_elements(
         if isinstance(node, GraphNode) and isinstance(
             node, AbstractEvaluatedReferenceBasisFunction
         ):
-            assert isinstance(node.point, AbstractPointInSet)
-            id = (node.element, node.point.points_id)
+            id = (node.element, node.point.points_set)
             if id in table_map:
                 name = table_map[id]
             else:
@@ -36,7 +35,12 @@ def tabulate_finite_elements(
                 table_map[id] = name
             if name not in table_info or sum(node.derivative) > table_info[name][1]:
                 assert isinstance(node.element, AbstractFiniteElement)
-                table_info[name] = (node.element, sum(node.derivative), node.point.points)
+                assert isinstance(node.point.points_set, QuadratureRule)
+                table_info[name] = (
+                    node.element,
+                    sum(node.derivative),
+                    node.point.points_set.points,
+                )
             if node.component_index is None:
                 to_replace[node] = ArrayEntry(
                     table_map[id], (index(*node.derivative), node.point_index, node.basis_index)

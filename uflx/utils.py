@@ -14,9 +14,6 @@ def flatten(indices: tuple[int, ...], sizes: tuple[int, ...], reverse: bool = Tr
         return indices[0] + sizes[0] * flatten(indices[1:], sizes[1:])
 
 
-instances = {}
-
-
 class Infinity:
     """Countable infinity."""
 
@@ -29,6 +26,8 @@ class Infinity:
         return cls._instance
 
     class InfinityType:
+        """Countable infinity."""
+
         def __add__(self, other):
             """Add."""
             if isinstance(other, int):
@@ -86,6 +85,8 @@ class NegativeInfinity:
         return cls._instance
 
     class InfinityType:
+        """Countable negative infinity."""
+
         def __add__(self, other):
             """Add."""
             if isinstance(other, int):
@@ -129,7 +130,6 @@ class NegativeInfinity:
         def __neg__(self):
             """Negate."""
             return Infinity()
-
 
 
 infinity = Infinity()

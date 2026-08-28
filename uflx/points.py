@@ -1,7 +1,7 @@
 """Sets of points."""
 
 from abc import abstractmethod
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from uflx.expressions import AbstractExpression
@@ -14,7 +14,7 @@ class AbstractSetOfPoints:
 
     @property
     @abstractmethod
-    def dim(self) -> int | Infinity:
+    def npoints(self) -> int | Infinity:
         """The number of points in the set."""
 
     @property
@@ -27,10 +27,11 @@ class RD(AbstractSetOfPoints):
     """R^d."""
 
     def __init__(self, dim: int):
+        """Initialise."""
         self._dim = dim
 
     @property
-    def dim(self) -> int | Infinity:
+    def npoints(self) -> int | Infinity:
         """The number of points in the set."""
         return Infinity()
 
@@ -50,14 +51,13 @@ class AbstractPoint(AbstractExpression):
 
     @property
     @abstractmethod
-    def points_set(self) -> int:
+    def points_set(self) -> AbstractSetOfPoints:
         """The set of points containing this point."""
 
     @property
-    @abstractmethod
-    def point_index(self) -> int | str:
+    def index(self) -> int | str:
         """The point's index in the set of points."""
-        if self.point_set.dim is Infinity():
+        if self.points_set.npoints is Infinity():
             raise RuntimeError("Cannot index points in an infinite set")
         raise NotImplementedError()
 
@@ -80,11 +80,9 @@ class Point(AbstractPoint):
         self._components = tuple(components)
 
     @property
-    @abstractmethod
-    def points_set(self) -> int:
+    def points_set(self) -> AbstractSetOfPoints:
         """The set of points containing this point."""
         return RD(len(self._components))
-
 
     @property
     def dim(self) -> int:
@@ -164,6 +162,6 @@ class IntegrationDummyPoint(AbstractPoint):
         return self._dim
 
     @property
-    def points_set(self) -> int:
+    def points_set(self) -> AbstractSetOfPoints:
         """The set of points containing this point."""
         raise NotImplementedError()

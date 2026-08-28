@@ -1,33 +1,39 @@
 """Quadrature rules."""
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
+from uflx.points import AbstractPoint, AbstractSetOfPoints
 
 from uflx_codegeneration.c import GenerateC
-from uflx_codegeneration.points import AbstractPointInSet
 from uflx_codegeneration.utils import indented
 
 
-class QuadratureRule:
+class QuadratureRule(AbstractSetOfPoints):
     """A quadrature rule."""
 
     def __init__(self, points: npt.NDArray[np.floating], weights: npt.NDArray[np.floating]):
         """Initialise."""
+        assert points.shape[0] == len(weights)
         self.points = points
         self.weights = weights
 
     @property
-    def npoints(self):
-        """The number of points in the quadrature rule."""
+    def npoints(self) -> int:
+        """The number of points in the set."""
         return len(self.weights)
 
+    @property
+    def geometric_dimension(self) -> int:
+        """The dimension of each point in the set."""
+        return self.points.shape[1]
 
-class QuadraturePoint(AbstractPointInSet):
+
+class QuadraturePoint(AbstractPoint):
     """A point in a quadrature rule."""
 
     def __init__(self, rule: QuadratureRule, index: int | str):
@@ -36,23 +42,28 @@ class QuadraturePoint(AbstractPointInSet):
         self._index = index
 
     @property
+    def points_set(self) -> QuadratureRule:
+        """Get all the points in the set."""
+        return self.rule
+
+    @property
+    def dim(self) -> int:
+        """The dimension of the point."""
+        return self.rule.geometric_dimension
+
+    @property
     def index(self) -> int | str:
         """Get the index of the point in the set."""
         return self._index
 
-    @property
-    def points(self) -> npt.NDArray[np.floating]:
-        """Get all the points in the set."""
-        return self.rule.points
-
-    @property
-    def points_id(self) -> Hashable:
-        """Get an identifier for the set of points."""
-        return self.rule
-
     def __repr__(self):
         """Representation."""
         return f"QuadraturePoint({self._index})"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
 
     @property
     def init_args(self) -> tuple[Any, ...]:
