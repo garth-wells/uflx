@@ -96,7 +96,7 @@ class Integral(AbstractIntegral):
         """Initialise."""
         self._measure = measure
         if label is None:
-            self._label = f"_uflx.integrals.Integrals_{next(self._n)}"
+            self._label = f"uflx-Integral-{next(self._n)}"
         else:
             self._label = label
 
