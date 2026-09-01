@@ -85,7 +85,7 @@ class Argument(AbstractPhysicalFunction):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return Argument(self._space, self._component, integral_label)
+        return self.__class__(self._space, self._component, integral_label)
 
     @property
     def component_index(self) -> int:
@@ -119,7 +119,11 @@ class Argument(AbstractPhysicalFunction):
                 and old.function_space == self.function_space
                 and old.component_index == self.component_index
             ):
-                if self.integral_label is not None and new.integral_label is None:
+                if (
+                    isinstance(new, Argument)
+                    and self.integral_label is not None
+                    and new.integral_label is None
+                ):
                     return new.reconstruct_with_integral_label(self.integral_label)
                 return new
 
@@ -135,12 +139,12 @@ class TestFunction(Argument):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return TestFunction(self._space, integral_label)
+        return self.__class__(self._space, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return (self._space, self.integral_label)
+        return self._space, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -156,12 +160,12 @@ class TrialFunction(Argument):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return TrialFunction(self._space, integral_label)
+        return self.__class__(self._space, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return (self._space,)
+        return self._space, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""

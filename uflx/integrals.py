@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from itertools import count
-from typing import Any
+from typing import Any, cast
 
 from uflx.expressions import AbstractExpression
 from uflx.functions import Argument
@@ -100,7 +100,7 @@ class Integral(AbstractIntegral):
         else:
             self._label = label
 
-        replacements = {}
+        replacements: dict[GraphNode, GraphNode] = {}
         i_graph = generate_graph(integrand)
         for node in i_graph:
             if isinstance(node, Argument) and node.integral_label is None:
@@ -113,7 +113,7 @@ class Integral(AbstractIntegral):
     @property
     def integrand(self) -> AbstractExpression:
         """The integrand."""
-        return self._integrand
+        return cast(AbstractExpression, self._integrand)
 
     @property
     def measure(self) -> AbstractMeasure:
