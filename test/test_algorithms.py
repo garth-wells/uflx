@@ -12,10 +12,13 @@ def test_replace(lagrange_element):
     u = TrialFunction(space)
     v = TestFunction(space)
 
-    form1 = u * dx
-    form2 = v * dx
+    form = u * dx
 
-    replaced_graph1 = replace(form1.graph, {u: v})
-    graph2 = form2.graph
+    replaced_graph = replace(form.graph, {u: v})
 
-    assert graph2.root == replaced_graph1.root
+    form.graph.print()
+    replaced_graph.print()
+
+    assert isinstance(form.integrand, TrialFunction)
+    assert isinstance(replaced_graph.root.integrand, TestFunction)
+
