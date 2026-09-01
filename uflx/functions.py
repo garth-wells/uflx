@@ -62,7 +62,9 @@ class AbstractReferenceFunction(AbstractFunction):
 class Argument(AbstractPhysicalFunction):
     """A function that is a dimension of the tensor to be assembled."""
 
-    def __init__(self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None):
+    def __init__(
+        self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None
+    ):
         """Initialise.
 
         Args:
@@ -112,7 +114,11 @@ class Argument(AbstractPhysicalFunction):
     def get_replacement(self, replacements: dict[GraphNode, GraphNode]) -> GraphNode | None:
         """Get the node to replace this node with, or None if no replacement can be made."""
         for old, new in replacements.items():
-            if isinstance(old, Argument) and old.function_space == self.function_space and old.component_index == self.component_index:
+            if (
+                isinstance(old, Argument)
+                and old.function_space == self.function_space
+                and old.component_index == self.component_index
+            ):
                 if self.integral_label is not None and new.integral_label is None:
                     return new.reconstruct_with_integral_label(self.integral_label)
                 return new

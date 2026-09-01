@@ -5,6 +5,7 @@ from uflx.functions import Argument
 
 
 def test_argument_labelling(lagrange_element):
+    """Test the integral labelling of arguments."""
     element = lagrange_element("triangle", 1)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
@@ -28,4 +29,3 @@ def test_argument_labelling(lagrange_element):
     for node in form2.graph:
         if isinstance(node, Argument):
             assert node.integral_label == form2.label
-

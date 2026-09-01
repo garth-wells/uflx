@@ -21,4 +21,3 @@ def test_replace(lagrange_element):
 
     assert isinstance(form.integrand, TrialFunction)
     assert isinstance(replaced_graph.root.integrand, TestFunction)
-

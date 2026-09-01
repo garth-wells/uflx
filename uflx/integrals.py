@@ -85,13 +85,14 @@ class AbstractIntegral(ABC):
         """A unique label for the integral."""
 
 
-
 class Integral(AbstractIntegral):
     """An integral."""
 
     _n = count(0)
 
-    def __init__(self, integrand: AbstractExpression, measure: AbstractMeasure, label: str | None = None):
+    def __init__(
+        self, integrand: AbstractExpression, measure: AbstractMeasure, label: str | None = None
+    ):
         """Initialise."""
         self._measure = measure
         if label is None:
