@@ -6,7 +6,6 @@ from typing import Any
 
 from uflx.expressions import AbstractExpression
 from uflx.graphs import GraphNode
-from uflx.utils import Infinity
 
 
 class AbstractSetOfPoints:
@@ -14,7 +13,7 @@ class AbstractSetOfPoints:
 
     @property
     @abstractmethod
-    def npoints(self) -> int | Infinity:
+    def npoints(self) -> int | str:
         """The number of points in the set."""
 
     @property
@@ -31,9 +30,9 @@ class RD(AbstractSetOfPoints):
         self._dim = dim
 
     @property
-    def npoints(self) -> int | Infinity:
+    def npoints(self) -> int | str:
         """The number of points in the set."""
-        return Infinity()
+        return "Infinity"
 
     @property
     def geometric_dimension(self) -> int:
@@ -57,7 +56,7 @@ class AbstractPoint(AbstractExpression):
     @property
     def index(self) -> int | str:
         """The point's index in the set of points."""
-        if self.points_set.npoints is Infinity():
+        if self.points_set.npoints == "Infinity":
             raise RuntimeError("Cannot index points in an infinite set")
         raise NotImplementedError()
 
