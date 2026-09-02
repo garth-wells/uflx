@@ -70,6 +70,20 @@ class AbstractEntity(ABC):
         """
         return len(self.sub_entities(dim))
 
+    @property
+    def is_simplex(self) -> bool:
+        """Whether this entity is a simplex.
+
+        A cell of topological dimension d is a simplex iff it has exactly d + 1
+        vertices (eg a quadrilateral has 4 vertices at d = 2, and a hexahedron 8 at
+        d = 3 -- both more than d + 1, so neither is a simplex). This is computed
+        generically from sub_entities(0) and topological_dimension, rather than
+        requiring every AbstractEntity subclass to declare it explicitly, since
+        vertex count already determines it for every cell shape currently supported
+        here.
+        """
+        return len(self.sub_entities(0)) == self.topological_dimension + 1
+
     @abstractmethod
     def __hash__(self):
         """Hash."""
