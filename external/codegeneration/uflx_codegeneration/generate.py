@@ -120,7 +120,7 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in graph.descendants(node):
-                if isinstance(i, Argument):
+                if isinstance(i, Argument) and i.integral_label == node.label:
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
