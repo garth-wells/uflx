@@ -15,7 +15,7 @@ from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedF
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
-from uflx.points import AbstractPoint, AbstractPointInSet
+from uflx.points import AbstractPoint
 from uflx.utils import flatten
 
 
@@ -99,9 +99,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        if isinstance(self._point, AbstractPointInSet):
-            return self._point.index
-        return 0
+        return self._point.index
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -256,9 +254,7 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     @property
     def point_index(self) -> int | str:
         """The index of the point in the set of points."""
-        if isinstance(self._point, AbstractPointInSet):
-            return self._point.index
-        return 0
+        return self._point.index
 
     @property
     def value_shape(self) -> tuple[int, ...]:
