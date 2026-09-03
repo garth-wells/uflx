@@ -208,28 +208,27 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     _n = count(0)
 
-    def __init__(
-        self,
-        space: AbstractFunctionSpace,
-        count: int | None = None,
-        integral_label: str | None = None,
-    ):
+    def __init__(self, space: AbstractFunctionSpace):
         """Initialise.
 
         Args:
             space: The function space that this function lives in
-            count: A value that, together with the function space, uniquely
-                   identifies this coefficient. Auto-generated if not given.
-                   Needed because, unlike Argument (which only ever has two
-                   instances, numbered 0 and 1 for test/trial), a form can
-                   contain any number of distinct coefficients on the same
-                   function space, so component-style numbering can't tell
-                   them apart.
-            integral_label: The label of the integral that this coefficient
-                            is included in
         """
-        super().__init__(space, integral_label)
-        self._count = next(self._n) if count is None else count
+        super().__init__(space)
+        self._count = next(self._n)
+
+    @classmethod
+    def _restore(
+        cls,
+        space: AbstractFunctionSpace,
+        count: int,
+        integral_label: str | None,
+    ) -> Self:
+        """Restore a coefficient without allocating a new identity."""
+        coefficient = cls.__new__(cls)
+        AbstractIntegralScopedFunction.__init__(coefficient, space, integral_label)
+        coefficient._count = count
+        return coefficient
 
     @property
     def count(self) -> int:
@@ -238,12 +237,12 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the coefficient with the given integral label."""
-        return self.__class__(self._space, self._count, integral_label)
+        return self.__class__._restore(self._space, self._count, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._count, self.integral_label
+        return (self._space,)
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
