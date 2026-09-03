@@ -31,6 +31,9 @@ conversion from this generic pipeline).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import cast
+
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode, NodeOrder, generate_graph
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
@@ -151,6 +154,173 @@ def compute_levels(add_node: AddToLocalTensor, loop_vars: list[str]) -> dict[Gra
             )
         levels[node] = level
     return levels
+
+
+def _prefix_depth(deps: frozenset[str], loop_vars: list[str]) -> int:
+    """The largest d such that set(loop_vars[:d]) is a SUBSET of deps.
+
+    This is the opposite comparison from compute_levels()'s notion of
+    level (the smallest d such that deps is a subset of
+    set(loop_vars[:d])). The two coincide whenever deps IS some prefix of
+    loop_vars exactly (the common case): both then equal that prefix's
+    length. They diverge exactly when deps references a loop variable
+    "past a gap" -- e.g. deps={q, j} with loop_vars=[q, i, j] (the node
+    needs q and j but not i, which sits between them in the nesting):
+    compute_levels' level is 3 (deps isn't covered by any prefix shorter
+    than the whole chain), while this function returns 1 (every loop
+    variable *before* the gap -- here just {q} -- is still a valid landing
+    point; d=1 is as far out as this node's computation can be hoisted
+    without first resolving the gap). See compute_fission_plan, which uses
+    this to detect exactly that situation and route it through an auxiliary
+    loop instead of forcing the node down to the innermost level.
+    """
+    d = 0
+    for v in loop_vars:
+        if v not in deps:
+            break
+        d += 1
+    return d
+
+
+@dataclass(frozen=True)
+class FissionGroup:
+    """A set of expression-DAG nodes sharing the same "gap" dependence pattern.
+
+    E.g. every node here depends on the
+    quadrature point and the trial-function dof index, but not the
+    test-function dof index sitting between them in the loop nest -- and so
+    can't be hoisted any further by compute_levels()'s ordinary
+    prefix-based depth alone (see _prefix_depth's docstring). Instead they
+    get computed once each, ahead of time, in a small auxiliary loop nest
+    covering exactly the "gap" variables, with results saved to a scratch
+    buffer indexed by those variables and read back via a plain array
+    lookup wherever they're actually needed in the main nest -- the same
+    technique the hand-written kernels in mlir-kernels/python/
+    generate_kernel.py already use (their numx_scratch/numy_scratch/
+    numz_scratch buffers).
+
+    Attributes:
+        depth: the main-chain depth at which this group's auxiliary loop
+            should be inserted -- i.e. right after loop_vars[depth - 1] is
+            entered and before loop_vars[depth] is entered. Every node in
+            this group depends on every loop variable in loop_vars[:depth]
+            (already in scope there) plus every variable in gap_vars, and
+            nothing else.
+        gap_vars: the loop variables (in the same outer-to-inner order as
+            the main chain) this group depends on beyond `depth` -- the
+            auxiliary loop nests one scf.for per entry, in this order.
+        nodes: every node assigned to this group, in dependency
+            (children-before-parents) order -- exactly the subset of
+            topo_order()'s result that must be computed inside the
+            auxiliary loop rather than the main nest.
+        scratch: the subset of `nodes` that must actually be written to a
+            scratch buffer -- i.e. has at least one dependent (successor's
+            parent) outside this exact group, so its value must survive
+            past the auxiliary loop closing. A node in `nodes` but not in
+            `scratch` is a pure local intermediate: every consumer of it is
+            also in this same group, so it only ever needs to exist as an
+            ordinary SSA value inside the auxiliary loop's own body.
+    """
+
+    depth: int
+    gap_vars: tuple[str, ...]
+    nodes: tuple[GraphNode, ...]
+    scratch: tuple[GraphNode, ...]
+
+
+def compute_fission_plan(
+    add_node: AddToLocalTensor, loop_vars: list[str]
+) -> tuple[dict[GraphNode, int], list[FissionGroup]]:
+    """Extend compute_levels() with loop-fission groups.
+
+    Covers nodes a plain prefix-based depth can't hoist at all (see
+    _prefix_depth and FissionGroup above).
+
+    Returns (levels, fission_groups):
+      - levels: like compute_levels()'s result, EXCEPT that a node
+        belonging to a fission group is given level len(loop_vars) --
+        i.e. "only reachable at the very bottom of the main nest" is still
+        literally true of where it's *referenced* from (see FissionGroup's
+        docstring on why: even though a fission group's own auxiliary loop
+        sits much shallower, at `depth`, a consumer outside the group can
+        only safely load the scratch result back once every gap variable
+        is genuinely back in scope in the main chain -- which, for the
+        common two-dof-loop-plus-quadrature case this was written for, is
+        only true at the innermost level anyway, since the gap variable is
+        the innermost loop var itself). Every OTHER node's level is
+        identical to compute_levels()'s -- this function only ever pulls
+        nodes OUT of the "stuck at the deepest level" bucket compute_levels
+        would otherwise put them in; it never changes the level of a node
+        that already had a real prefix-covering depth.
+      - fission_groups: one FissionGroup per distinct (depth, gap_vars)
+        pairing that actually occurs, in the order their auxiliary loops
+        should be emitted (by depth, and -- for groups sharing a depth --
+        by which one is needed first in `nodes`' own dependency order, so a
+        group whose nodes depend on another same-depth group's scratch
+        output is never emitted before it).
+    """
+    loop_var_set = set(loop_vars)
+    depends_on: dict[GraphNode, frozenset[str]] = {}
+    graph = generate_graph(add_node.body)
+    topo = list(graph.ordered_nodes(NodeOrder.leaves_first))
+    for node in topo:
+        deps = set(_direct_loop_deps(node, loop_var_set))
+        for child in node.successors:
+            deps |= depends_on[child]
+        depends_on[node] = frozenset(deps)
+    topo_index = {node: i for i, node in enumerate(topo)}
+
+    # A node's "signature" is None if it's an ordinary prefix-hoistable node
+    # (compute_levels' notion of level applies directly, no fission needed),
+    # or (depth, gap_vars) if it needs fission.
+    signature: dict[GraphNode, tuple[int, tuple[str, ...]] | None] = {}
+    levels: dict[GraphNode, int] = {}
+    for node, deps in depends_on.items():
+        depth = _prefix_depth(deps, loop_vars)
+        gap_vars = tuple(v for v in loop_vars[depth:] if v in deps)
+        if gap_vars:
+            signature[node] = (depth, gap_vars)
+        else:
+            signature[node] = None
+            levels[node] = depth
+
+    # Reverse of `successors` (a node's own operands) -- who *uses* each
+    # node -- needed to tell whether a fission candidate's value ever
+    # escapes its own group. A sentinel stands in for "used by
+    # AddToLocalTensor itself" (add_node.body has no successors of its
+    # own within this DAG), so a fissioned root is still correctly seen as
+    # escaping its group.
+    root_consumer = object()
+    parents: dict[GraphNode, list[object]] = {node: [] for node in topo}
+    for node in topo:
+        for child in node.successors:
+            parents[child].append(node)
+    parents[add_node.body].append(root_consumer)
+
+    groups: dict[tuple[int, tuple[str, ...]], list[GraphNode]] = {}
+    for node in topo:
+        sig = signature[node]
+        if sig is not None:
+            groups.setdefault(sig, []).append(node)
+
+    fission_groups: list[FissionGroup] = []
+    for (depth, gap_vars), nodes in groups.items():
+        nodes_sorted = tuple(sorted(nodes, key=topo_index.__getitem__))
+        scratch = tuple(
+            node
+            for node in nodes_sorted
+            if any(
+                parent is root_consumer
+                or signature.get(cast(GraphNode, parent)) != (depth, gap_vars)
+                for parent in parents[node]
+            )
+        )
+        for node in nodes_sorted:
+            levels[node] = len(loop_vars)
+        fission_groups.append(FissionGroup(depth, gap_vars, nodes_sorted, scratch))
+
+    fission_groups.sort(key=lambda g: (g.depth, min(topo_index[n] for n in g.nodes)))
+    return levels, fission_groups
 
 
 def reorder_quadrature_outermost(

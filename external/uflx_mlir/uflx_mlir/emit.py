@@ -31,6 +31,26 @@ Two things keep the generated code from doing needless work:
     (~27x slower than FFCx per call before this, ~1.8x faster after, on a
     P3 tetrahedron stiffness kernel).
 
+    Depth-based hoisting alone still has a blind spot: a node that depends
+    on the quadrature point and one dof loop but not the OTHER dof loop
+    sitting between them in the nesting (e.g. depends on {quadrature,
+    trial-dof} but not test-dof, with loops nested quadrature -> test-dof
+    -> trial-dof) can't be covered by any PREFIX of the loop nest, so
+    hoist.compute_levels() alone would force it to the innermost level
+    anyway -- costing O(ntest_dofs * ntrial_dofs * nquadrature) instead of
+    the O(ntrial_dofs * nquadrature) its actual dependencies allow. This
+    dominates at higher polynomial degree (larger ndofs), which is exactly
+    what regressed a P6 tetrahedron stiffness kernel (84 dofs) to ~10%
+    slower than FFCx despite the identical-shaped P3 kernel (20 dofs)
+    being ~1.8x faster. hoist.compute_fission_plan() detects this "gap"
+    pattern directly and reports it as a FissionGroup; _emit_fission_group
+    below materializes each such group into its own small auxiliary loop
+    -- covering just the skipped-over variable(s) -- storing results into
+    a scratch memref and reading them back via a plain array lookup at
+    the point they're actually needed, the same technique the
+    hand-written kernels in mlir-kernels/python/generate_kernel.py already
+    use (their numx_scratch/numy_scratch/numz_scratch buffers).
+
 Deliberately built almost entirely on `Operation.create` plus the core
 `mlir.ir` primitives (Context, Location, Module, InsertionPoint, Region,
 Block, the Type/Attribute constructors) rather than the auto-generated
@@ -96,7 +116,8 @@ from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall
 from uflx_codegeneration.quadrature import QuadratureLoop
 
 from uflx_mlir.hoist import (
-    compute_levels,
+    FissionGroup,
+    compute_fission_plan,
     reorder_quadrature_outermost,
     topo_order,
     walk_loop_chain,
@@ -119,6 +140,15 @@ class _OpCtx:
     global_val: dict[str, Value] = field(default_factory=dict)  # table name -> memref Value
     index_vars: dict[str, Value] = field(default_factory=dict)  # loop var name -> index Value
     zero_f64: Value | None = None
+
+    # Fission-group scratch buffers (see hoist.compute_fission_plan). A node
+    # is a key here only once its group's auxiliary loop has actually
+    # stored its value -- see _emit_fission_group -- so that _emit_node
+    # only takes the "load from scratch" path once that value genuinely
+    # exists and is back in scope.
+    scratch_group: dict[Any, FissionGroup] = field(default_factory=dict)
+    scratch_buf: dict[Any, Value] = field(default_factory=dict)
+    scratch_type: dict[Any, Any] = field(default_factory=dict)
 
     def resolve_index(self, idx: int | str) -> Value:
         """Resolve a Loop/ArrayEntry index entry to an `index`-typed SSA value.
@@ -178,7 +208,7 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
 
     Every graph successor (child) of `node` already has an entry in
     `cache` -- guaranteed by driving this from hoist.topo_order()'s
-    children-before-parents ordering, gated by hoist.compute_levels()'s
+    children-before-parents ordering, gated by hoist.compute_fission_plan()'s
     depth assignment (see generate_mlir_module below). Unlike a naive
     recursive walk, this never recurses into children -- they're looked
     up directly, since they're guaranteed already emitted. Ops are
@@ -187,6 +217,16 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
     the right loop level.
     """
     if node in cache:
+        return
+
+    if node in ctx.scratch_group:
+        # Computed ahead of time by a fission group's auxiliary loop (see
+        # _emit_fission_group) -- read back here at its actual use site
+        # with a fresh memref.load, not recomputed.
+        group = ctx.scratch_group[node]
+        idx = [ctx.resolve_index(v) for v in group.gap_vars]
+        v = _memref_load(ctx.scratch_buf[node], idx, ctx.f64)
+        cache[node] = v
         return
 
     if isinstance(node, (RealScalar, Integer)):
@@ -232,6 +272,82 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
     cache[node] = v
 
 
+def _chain_bounds(chain: list[tuple[GraphNode, str]], var: str) -> tuple[int, int]:
+    """Return the (lo, hi) integer bounds of the loop bound to `var` in `chain`."""
+    for loop_node, v in chain:
+        if v != var:
+            continue
+        if isinstance(loop_node, QuadratureLoop):
+            return 0, loop_node.rule.npoints
+        if isinstance(loop_node, Loop):
+            assert isinstance(loop_node.start, int) and isinstance(loop_node.end, int)
+            assert loop_node.start == 0, (
+                f"loop variable {var!r} starts at {loop_node.start} -- fission scratch buffers "
+                "assume every loop starts at 0."
+            )
+            return loop_node.start, loop_node.end
+        raise NotImplementedError(f"Unexpected loop node type {type(loop_node)} in chain")
+    raise AssertionError(f"loop variable {var!r} not found in chain {chain!r}")
+
+
+def _emit_fission_group(
+    group: FissionGroup,
+    chain: list[tuple[GraphNode, str]],
+    cache: dict[Any, Value],
+    ctx: _OpCtx,
+) -> None:
+    """Emit one fission group's auxiliary precompute loop (see hoist.FissionGroup).
+
+    Builds a nested scf.for (one per group.gap_vars entry) at the CURRENT
+    InsertionPoint, which _build_nest has already positioned at
+    `group.depth` -- every loop_vars[:group.depth] is already open (so
+    group.nodes' non-gap dependencies, already emitted at that shallower
+    level, are safely in cache and in scope), and nothing group.nodes
+    computes leaks out except through the scratch buffers.
+    """
+    shape = tuple(_chain_bounds(chain, v)[1] for v in group.gap_vars)
+    mem_ty = MemRefType.get(list(shape), ctx.f64)
+    for node in group.scratch:
+        buf = Operation.create("memref.alloc", results=[mem_ty]).results[0]
+        ctx.scratch_buf[node] = buf
+        ctx.scratch_type[node] = mem_ty
+
+    def build(remaining: tuple[str, ...]) -> None:
+        if not remaining:
+            for node in group.nodes:
+                _emit_node(node, cache, ctx)
+            for node in group.scratch:
+                idx = [ctx.resolve_index(v) for v in group.gap_vars]
+                _memref_store(cache[node], ctx.scratch_buf[node], idx)
+            return
+        var = remaining[0]
+        lo, hi = _chain_bounds(chain, var)
+        lb, ub, step = ctx.index_const[lo], ctx.index_const[hi], ctx.index_const[1]
+        for_op = Operation.create("scf.for", operands=[lb, ub, step], regions=1)
+        block = for_op.regions[0].blocks.append(ctx.index_t)
+        with InsertionPoint(block):
+            assert var not in ctx.index_vars, f"loop variable {var!r} shadows an outer one"
+            ctx.index_vars[var] = block.arguments[0]
+            build(remaining[1:])
+            Operation.create("scf.yield")
+        del ctx.index_vars[var]
+
+    build(group.gap_vars)
+
+    scratch_set = set(group.scratch)
+    for node in group.nodes:
+        # Every value just computed is scoped to the scf.for regions built
+        # above and may not be referenced again by identity outside them.
+        # A scratch node gets a fresh, properly scoped replacement the
+        # next time it's needed (see _emit_node's scratch_group branch); a
+        # pure local intermediate (not in group.scratch) is never
+        # referenced again at all, since every one of its consumers is
+        # inside this same group.
+        del cache[node]
+        if node in scratch_set:
+            ctx.scratch_group[node] = group
+
+
 def _build_nest(
     depth: int,
     chain: list[tuple[GraphNode, str]],
@@ -241,13 +357,15 @@ def _build_nest(
     cache: dict[Any, Value],
     ctx: _OpCtx,
     add_node: AddToLocalTensor,
+    groups_by_depth: dict[int, list[FissionGroup]],
 ) -> None:
     """Recursively build the (reordered, hoisted) loop nest around add_node's accumulation.
 
     At each depth, first emits (in dependency order) every not-yet-emitted
-    body-DAG node whose level allows it here, then either recurses into
-    the next scf.for (depth < len(chain)) or performs the final
-    load/add/store into %A (depth == len(chain)).
+    body-DAG node whose level allows it here, then emits any fission group
+    anchored at this depth (see hoist.FissionGroup / _emit_fission_group),
+    then either recurses into the next scf.for (depth < len(chain)) or
+    performs the final load/add/store into %A (depth == len(chain)).
     """
     for node in topo:
         if node in emitted:
@@ -255,6 +373,20 @@ def _build_nest(
         if levels[node] <= depth:
             _emit_node(node, cache, ctx)
             emitted.add(node)
+
+    for group in groups_by_depth.get(depth, []):
+        _emit_fission_group(group, chain, cache, ctx)
+        scratch_set = set(group.scratch)
+        for node in group.nodes:
+            # Scratch nodes stay out of `emitted`: they're picked back up
+            # (via _emit_node's scratch_group redirect) the next time the
+            # topo scan above reaches them, at whatever depth they're
+            # actually used. A pure local intermediate is done for good --
+            # nothing outside this group ever references it -- so it must
+            # be marked emitted, or a later depth's topo scan would try to
+            # recompute it from since-deleted cache entries.
+            if node not in scratch_set:
+                emitted.add(node)
 
     if depth == len(chain):
         result = cache[add_node.body]
@@ -281,7 +413,7 @@ def _build_nest(
     block = for_op.regions[0].blocks.append(ctx.index_t)
     with InsertionPoint(block):
         ctx.index_vars[var] = block.arguments[0]
-        _build_nest(depth + 1, chain, levels, topo, emitted, cache, ctx, add_node)
+        _build_nest(depth + 1, chain, levels, topo, emitted, cache, ctx, add_node, groups_by_depth)
         Operation.create("scf.yield")
     del ctx.index_vars[var]
 
@@ -395,9 +527,12 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
 
                 _emit_zero_init(a_shape, ctx)
 
-                levels = compute_levels(add_node, loop_vars)
+                levels, fission_groups = compute_fission_plan(add_node, loop_vars)
                 topo = topo_order(add_node)
-                _build_nest(0, chain, levels, topo, set(), {}, ctx, add_node)
+                groups_by_depth: dict[int, list[FissionGroup]] = {}
+                for group in fission_groups:
+                    groups_by_depth.setdefault(group.depth, []).append(group)
+                _build_nest(0, chain, levels, topo, set(), {}, ctx, add_node, groups_by_depth)
 
                 Operation.create("func.return")
 
