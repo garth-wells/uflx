@@ -55,6 +55,11 @@ class AbstractPhysicalFunction(AbstractFunction):
         """The value shape of the expression."""
         return self.function_space.value_shape
 
+    @property
+    def domain_size(self) -> int:
+        """The size of the domain (ie the number of inputs to the function)."""
+        return self.function_space.domain.cells[0].topological_dimension
+
 
 class AbstractReferenceFunction(AbstractFunction):
     """Abstract base class for a function on a reference cell."""
@@ -87,11 +92,6 @@ class AbstractIntegralScopedFunction(AbstractPhysicalFunction):
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
         return self._space
-
-    @property
-    def domain_size(self) -> int:
-        """The size of the domain (ie the number of inputs to the function)."""
-        return self._space.domain.cells[0].topological_dimension
 
     @abstractmethod
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
