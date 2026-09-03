@@ -50,6 +50,29 @@ Two things keep the generated code from doing needless work:
     the point they're actually needed, the same technique the
     hand-written kernels in mlir-kernels/python/generate_kernel.py already
     use (their numx_scratch/numy_scratch/numz_scratch buffers).
+  - value-based (structural) common-subexpression elimination, in
+    addition to the identity-based `cache` above: uflx's expression node
+    classes (RealScalar, Integer, Add/Sub/Mult/Div/Neg/Abs,
+    CoordinateDofComponent, ...) and uflx_codegeneration's ArrayEntry
+    don't define __eq__/__hash__, so uflx_codegeneration's own graph
+    construction routinely builds many object-distinct nodes for the same
+    logical value -- most starkly the P1-affine coordinate/Jacobian/detJ
+    geometry, rebuilt wholesale at each of its many uses in the lowered
+    graph (confirmed directly against the lowered graph: 12 distinct
+    (point, component) coordinate values were represented by well over a
+    hundred distinct CoordinateDofComponent objects, a duplication factor
+    invariant across polynomial degree since the geometry map is always
+    P1). Because `cache` is keyed by object IDENTITY (it has to be --
+    that's what the topo/level walk hands it), none of these
+    object-distinct-but-value-identical nodes were ever recognized as the
+    same computation, so the ENTIRE geometry subexpression was emitted
+    from scratch again and again. `_node_signature` below builds a second,
+    VALUE-keyed cache (`ctx.signature_cache`) alongside `cache`: a hit
+    there aliases the new node straight to the already-emitted Value
+    instead of re-emitting it. This only applies to nodes reached via the
+    main topo-ordered scan in _build_nest -- see `_emit_node`'s
+    `use_signature_cache` parameter and _emit_fission_group's call site
+    for why fission-group-internal emission opts out.
 
 Deliberately built almost entirely on `Operation.create` plus the core
 `mlir.ir` primitives (Context, Location, Module, InsertionPoint, Region,
@@ -150,6 +173,12 @@ class _OpCtx:
     scratch_buf: dict[Any, Value] = field(default_factory=dict)
     scratch_type: dict[Any, Any] = field(default_factory=dict)
 
+    # Value-based CSE cache (see module docstring): node signature ->
+    # already-emitted Value, populated/consulted only for nodes emitted
+    # via the main topo scan (_build_nest), never for fission-group-
+    # internal emission (see _emit_node's use_signature_cache parameter).
+    signature_cache: dict[Any, Value] = field(default_factory=dict)
+
     def resolve_index(self, idx: int | str) -> Value:
         """Resolve a Loop/ArrayEntry index entry to an `index`-typed SSA value.
 
@@ -203,7 +232,53 @@ def _memref_store(value: Value, memref_val: Value, indices: list[Value]) -> None
     Operation.create("memref.store", operands=[value, memref_val, *indices])
 
 
-def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
+def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
+    """Return a hashable, value-based signature for `node`, or None to opt out.
+
+    Returns None if this node type opts out of the signature cache
+    entirely. See the module docstring for why this exists. For a leaf node the
+    signature is built directly from its own field values (e.g. a
+    CoordinateDofComponent's (point, component, tdim)); for a compound
+    (Neg/Abs/Add/Subtract/Mult/Div) node it's built from the IDENTITY of
+    its children's already-emitted Values (via `cache`), not from the
+    child nodes themselves -- since `_emit_node` only ever calls this
+    after a node's children are already in `cache` (topo order), this
+    composes correctly bottom-up: two structurally-equal subtrees only
+    get an equal signature once their own children have already been
+    recognized as equal by this same mechanism.
+
+    Returns None (never dedup) for anything not listed here: ArrayEntry
+    and the ops above are exactly the leaf/compound node types
+    `_emit_node` itself knows how to emit; Variable/FunctionCall raise
+    before ever reaching here.
+    """
+    if isinstance(node, (RealScalar, Integer)):
+        return (type(node), node.value)
+    if isinstance(node, CoordinateDofComponent):
+        return (CoordinateDofComponent, node._point, node._component, node._tdim)
+    if isinstance(node, ArrayEntry):
+        return (ArrayEntry, node.array, tuple(node.index))
+    if isinstance(node, Neg):
+        return (Neg, id(cache[node.argument]))
+    if isinstance(node, Abs):
+        return (Abs, id(cache[node.argument]))
+    if isinstance(node, Add):
+        return (Add, id(cache[node.first]), id(cache[node.second]))
+    if isinstance(node, Subtract):
+        return (Subtract, id(cache[node.first]), id(cache[node.second]))
+    if isinstance(node, Mult):
+        return (Mult, id(cache[node.first]), id(cache[node.second]))
+    if isinstance(node, Div):
+        return (Div, id(cache[node.first]), id(cache[node.second]))
+    return None
+
+
+def _emit_node(
+    node: GraphNode,
+    cache: dict[Any, Value],
+    ctx: _OpCtx,
+    use_signature_cache: bool = True,
+) -> None:
     """Emit ops for one node of the AddToLocalTensor body's expression DAG.
 
     Every graph successor (child) of `node` already has an entry in
@@ -215,6 +290,21 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
     created at whatever the CURRENT InsertionPoint is, which the
     depth-driven driver in generate_mlir_module has already positioned at
     the right loop level.
+
+    `use_signature_cache` gates the value-based CSE described in the
+    module docstring: _build_nest's main topo scan leaves it True (the
+    default), but _emit_fission_group passes False. A fission group's
+    auxiliary loop reuses the SAME loop-variable NAME as the main chain's
+    own dof loops (a different, sibling scf.for region, not a shadowing
+    one -- see _emit_fission_group), so an index-tuple-based signature
+    computed in there (e.g. an ArrayEntry keyed on that variable name)
+    could collide with a structurally-identical-looking signature from
+    the main chain despite referring to a semantically different binding.
+    Excluding all fission-group-internal emission from both reading and
+    writing the signature cache sidesteps that hazard entirely, at the
+    cost of not deduplicating within (or against) fission groups -- those
+    are already small, purpose-built auxiliary loops, not the bulk of the
+    redundant work this cache targets.
     """
     if node in cache:
         return
@@ -227,6 +317,11 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
         idx = [ctx.resolve_index(v) for v in group.gap_vars]
         v = _memref_load(ctx.scratch_buf[node], idx, ctx.f64)
         cache[node] = v
+        return
+
+    sig = _node_signature(node, cache) if use_signature_cache else None
+    if sig is not None and sig in ctx.signature_cache:
+        cache[node] = ctx.signature_cache[sig]
         return
 
     if isinstance(node, (RealScalar, Integer)):
@@ -270,6 +365,8 @@ def _emit_node(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> None:
         raise NotImplementedError(f"No op-builder emitter for expression node type {type(node)}")
 
     cache[node] = v
+    if sig is not None:
+        ctx.signature_cache[sig] = v
 
 
 def _chain_bounds(chain: list[tuple[GraphNode, str]], var: str) -> tuple[int, int]:
@@ -315,7 +412,7 @@ def _emit_fission_group(
     def build(remaining: tuple[str, ...]) -> None:
         if not remaining:
             for node in group.nodes:
-                _emit_node(node, cache, ctx)
+                _emit_node(node, cache, ctx, use_signature_cache=False)
             for node in group.scratch:
                 idx = [ctx.resolve_index(v) for v in group.gap_vars]
                 _memref_store(cache[node], ctx.scratch_buf[node], idx)
