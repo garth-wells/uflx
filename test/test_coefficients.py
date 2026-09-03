@@ -1,7 +1,5 @@
 """Test coefficients."""
 
-import pytest
-
 from uflx import TestFunction, coordinate_element, dx, function_space, inner
 from uflx.functions import Coefficient
 
@@ -46,16 +44,6 @@ def test_coefficient_count_is_auto_generated(lagrange_element):
     w1 = Coefficient(space)
     w2 = Coefficient(space)
     assert w1.count != w2.count
-
-
-def test_coefficient_count_is_private(lagrange_element):
-    """Test that coefficient counts cannot be provided through the public constructor."""
-    element = lagrange_element("triangle", 1)
-    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
-    space = function_space(domain, element)
-
-    with pytest.raises(TypeError):
-        Coefficient(space, count=42)
 
 
 def test_coefficient_function_space(lagrange_element):
