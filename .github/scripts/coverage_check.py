@@ -1,3 +1,5 @@
+"""Check that test coverage is high."""
+
 import json
 
 with open(".coverage.json") as f:
@@ -9,10 +11,10 @@ too_low = [
     if filedata["summary"]["percent_covered"] < 70
 ]
 if len(too_low) > 0:
-    raise RuntimeError("Coverage is too low for these files:\n" + "\n".join(
-        f"  - {filename} ({percent}%)"
-        for filename, percent in too_low
-    ))
+    raise RuntimeError(
+        "Coverage is too low for these files:\n"
+        + "\n".join(f"  - {filename} ({percent}%)" for filename, percent in too_low)
+    )
 
 if data["totals"]["percent_covered"] < 85:
     raise RuntimeError("Overall coverage is too low")
