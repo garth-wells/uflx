@@ -104,6 +104,7 @@ provides it.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -189,6 +190,17 @@ class _OpCtx:
     signature_cache: dict[Any, Value] = field(default_factory=dict)
     geometry_val: Value | None = None
     geometry_components: dict[int, Value] = field(default_factory=dict)
+
+    # GPU-assembly hooks (see uflx_mlir.gpu_assembly): a chain loop variable
+    # (or a fission group's gap variable) present here is bound directly to
+    # the given Value instead of getting its own scf.for -- see
+    # _build_nest and _emit_fission_group.build(). Empty by default, which
+    # keeps generate_mlir_module's CPU output byte-for-byte unchanged.
+    thread_bindings: dict[str, Value] = field(default_factory=dict)
+    # Replaces the default load/add/store into ctx.a_val at the bottom of
+    # the loop nest when set -- see _build_nest. None (the default) keeps
+    # generate_mlir_module's CPU output byte-for-byte unchanged.
+    commit: Callable[[Any, Value], None] | None = None
 
     def resolve_index(self, idx: int | str) -> Value:
         """Resolve a Loop/ArrayEntry index entry to an `index`-typed SSA value.
@@ -472,6 +484,22 @@ def _emit_fission_group(
                 _memref_store(cache[node], ctx.scratch_buf[node], idx)
             return
         var = remaining[0]
+
+        if var in ctx.thread_bindings:
+            # GPU-assembly hook: see the matching branch in _build_nest.
+            # A fission group's whole benefit is reuse across a LOOP on
+            # the outer (skipped-over) axis; when that axis is instead a
+            # single thread-bound value, there is exactly one gap-var
+            # value per thread and this degenerates to a direct bind --
+            # correct, if not the most efficient encoding (see
+            # gpu_assembly's module docstring for why that's acceptable
+            # for now).
+            assert var not in ctx.index_vars, f"loop variable {var!r} shadows an outer one"
+            ctx.index_vars[var] = ctx.thread_bindings[var]
+            build(remaining[1:])
+            del ctx.index_vars[var]
+            return
+
         lo, hi = _chain_bounds(chain, var)
         lb, ub, step = ctx.index_const[lo], ctx.index_const[hi], ctx.index_const[1]
         for_op = Operation.create("scf.for", operands=[lb, ub, step], regions=1)
@@ -557,13 +585,31 @@ def _build_nest(
 
     if depth == len(chain):
         result = cache[add_node.body]
-        idx = [ctx.resolve_index(i) for i in add_node.component]
-        old = _memref_load(ctx.a_val, idx, ctx.f64)  # type: ignore[attr-defined]
-        new = _op2("arith.addf", ctx.f64, old, result)
-        _memref_store(new, ctx.a_val, idx)  # type: ignore[attr-defined]
+        if ctx.commit is not None:
+            # GPU-assembly hook (see uflx_mlir.gpu_assembly): a CSR
+            # scatter (or any other alternate output) instead of the
+            # dense-local-tensor load/add/store below.
+            ctx.commit(ctx, result)
+        else:
+            idx = [ctx.resolve_index(i) for i in add_node.component]
+            old = _memref_load(ctx.a_val, idx, ctx.f64)  # type: ignore[attr-defined]
+            new = _op2("arith.addf", ctx.f64, old, result)
+            _memref_store(new, ctx.a_val, idx)  # type: ignore[attr-defined]
         return
 
     loop_node, var = chain[depth]
+
+    if var in ctx.thread_bindings:
+        # GPU-assembly hook (see uflx_mlir.gpu_assembly): this axis is a
+        # single, already-known value (e.g. a thread/block coordinate),
+        # not something to loop over -- bind it directly and recurse
+        # straight through, opening no scf.for at all.
+        assert var not in ctx.index_vars, f"loop variable {var!r} shadows an outer one"
+        ctx.index_vars[var] = ctx.thread_bindings[var]
+        _build_nest(depth + 1, chain, levels, topo, emitted, cache, ctx, add_node, groups_by_depth)
+        del ctx.index_vars[var]
+        return
+
     if isinstance(loop_node, QuadratureLoop):
         lo, hi = 0, loop_node.rule.npoints
     elif isinstance(loop_node, Loop):
