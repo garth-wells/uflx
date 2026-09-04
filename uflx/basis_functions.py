@@ -193,16 +193,17 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
         from uflx.geometry import ReferenceToPhysical
         from uflx.maps import PushedForward
 
-        assert isinstance(self._element, AbstractReferenceMappedFiniteElement)
-        if isinstance(self._point, ReferenceToPhysical):
+        assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
+        if isinstance(self.point, ReferenceToPhysical):
             return PushedForward(
-                self._element.reference_map,
+                self.element.reference_map,
                 EvaluatedReferenceBasisFunction(
-                    self._element,
-                    self._basis_index,
-                    self._point.reference_point,
+                    self.element,
+                    self.basis_index,
+                    self.point.reference_point,
                 ),
             )
+        raise NotImplementedError()
 
 
 class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):

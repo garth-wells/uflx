@@ -66,9 +66,9 @@ class AbstractReferenceFunction(AbstractFunction):
     """Abstract base class for a function on a reference cell."""
 
     @property
+    @abstractmethod
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self.function_space.elements[0].reference_value_shape
 
 
 class AbstractIntegralScopedFunction(AbstractPhysicalFunction):
@@ -125,6 +125,12 @@ class AbstractReferenceIntegralScopedFunction(AbstractReferenceFunction):
     @abstractmethod
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct this function with the given integral label."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
+        return self.function_space.elements[0].reference_value_shape
 
 
 class Argument(AbstractIntegralScopedFunction):

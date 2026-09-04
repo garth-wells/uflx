@@ -190,7 +190,7 @@ class PhysicalToReference(AbstractPoint):
 class Jacobian(AbstractExpression):
     """The Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self.domain = domain
         self.point = point
@@ -221,6 +221,8 @@ class Jacobian(AbstractExpression):
         """Expand geometry."""
         gdim, tdim = self.value_shape
         (element,) = self.domain.elements
+
+        assert self.point is not None
 
         return Matrix(
             [
@@ -292,7 +294,7 @@ class Jacobian(AbstractExpression):
 class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initialise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -327,7 +329,7 @@ class JacobianDeterminant(AbstractExpression):
 class JacobianInverse(AbstractExpression):
     """The inverse of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -366,7 +368,7 @@ class JacobianInverse(AbstractExpression):
 class JacobianTranspose(AbstractExpression):
     """The transpose of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -405,7 +407,7 @@ class JacobianTranspose(AbstractExpression):
 class JacobianInverseTranspose(AbstractExpression):
     """The inverse transpose of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain

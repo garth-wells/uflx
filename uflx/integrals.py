@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from itertools import count
 from typing import Any, cast
 
+from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.functions import (
     AbstractIntegralScopedFunction,
@@ -142,7 +143,10 @@ class Integral(AbstractIntegral):
                 else:
                     assert domain == node.function_space.domain
         assert domain is not None
-        det = abs(JacobianDeterminant(domain, None))
+        assert isinstance(domain, AbstractCoordinateElement)
+        det = abs(JacobianDeterminant(domain))
+
+        assert isinstance(integrand, AbstractExpression)
 
         return Integral(det * integrand, self._measure)
 
