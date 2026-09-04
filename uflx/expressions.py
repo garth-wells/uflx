@@ -145,12 +145,51 @@ class RealScalar(AbstractScalar):
         return (self.value,)
 
 
+class ComplexScalar(AbstractScalar):
+    """A Complex scalar."""
+
+    def __init__(self, real_part: AbstractScalar, imag_part: AbstractScalar):
+        """Initialise."""
+        self._real_part = real_part
+        self._imag_part = imag_part
+
+    def __repr__(self):
+        """Representation."""
+        return f"{self._real_part}+{self._imag_part}j"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._real_part, self._imag_part
+
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self._real_part
+
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return self._imag_part
+
+
 class Integer(AbstractInteger):
     """An integer."""
 
     def __init__(self, value: int):
         """Initialise."""
         self.value = value
+
+    def __eq__(self, other):
+        if isinstance(other, Integer):
+            return self.value == other.value
+        return self.value == other
+
+    def __hash__(self):
+        return hash(("uflx.Integer", self.value))
 
     def __repr__(self):
         """Representation."""
