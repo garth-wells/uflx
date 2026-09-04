@@ -99,7 +99,7 @@ class Graph(nx.DiGraph):
 
     def descendants(self, node: GraphNode) -> set[GraphNode]:
         """Get all descendants of a node."""
-        return cast(set[GraphNode], nx.descendants(self, node))
+        return cast(set[GraphNode], {node, *nx.descendants(self, node)})
 
     def is_dag(self) -> bool:
         """Check if this graph is a directed acyclic graph."""
