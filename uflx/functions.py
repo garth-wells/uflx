@@ -65,11 +65,6 @@ class AbstractPhysicalFunction(AbstractFunction):
 class AbstractReferenceFunction(AbstractFunction):
     """Abstract base class for a function on a reference cell."""
 
-    # @property
-    # @abstractmethod
-    # def function_space(self) -> AbstractFunctionSpace:
-    #    """The function space that this function lives in."""
-
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
