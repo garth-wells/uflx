@@ -3,9 +3,10 @@
 This is deliberately NOT a from-scratch FEM-kernel generator: all of the
 actual finite-element math (quadrature selection/tabulation, geometry
 expansion, pull-back/push-forward, inner-product expansion) is done by
-uflx_codegeneration's existing, generic, C-backend pipeline, reused
-unchanged via `uflx_mlir.lowering.lower_form`. The only thing this module
-adds is a replacement for the LAST step: instead of
+uflx_codegeneration's existing, generic, C-backend pipeline, reused via
+`uflx_mlir.lowering.lower_form`. The experimental affine-Poisson path adds
+a geometry-extraction pass at that boundary. This module then replaces the
+LAST step: instead of
 uflx_codegeneration.c's monkey-patched `.generate_c()` string builder, it
 walks the same fully-lowered graph and builds MLIR IR directly with
 `mlir.ir.Operation.create`.
@@ -138,6 +139,11 @@ from uflx.graphs import GraphNode
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Loop, Variable
 from uflx_codegeneration.quadrature import QuadratureLoop
 
+from uflx_mlir.geometry import (
+    GeometryKernelSpec,
+    GeometryTensorComponent,
+    geometry_kernel_name,
+)
 from uflx_mlir.hoist import (
     FissionGroup,
     compute_fission_plan,
@@ -178,6 +184,7 @@ class _OpCtx:
     # via the main topo scan (_build_nest), never for fission-group-
     # internal emission (see _emit_node's use_signature_cache parameter).
     signature_cache: dict[Any, Value] = field(default_factory=dict)
+    geometry_val: Value | None = None
 
     def resolve_index(self, idx: int | str) -> Value:
         """Resolve a Loop/ArrayEntry index entry to an `index`-typed SSA value.
@@ -258,6 +265,8 @@ def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
         return (CoordinateDofComponent, node._point, node._component, node._tdim)
     if isinstance(node, ArrayEntry):
         return (ArrayEntry, node.array, tuple(node.index))
+    if isinstance(node, GeometryTensorComponent):
+        return (GeometryTensorComponent, node.packed_index)
     if isinstance(node, Neg):
         return (Neg, id(cache[node.argument]))
     if isinstance(node, Abs):
@@ -352,6 +361,9 @@ def _emit_node(
         pt = ctx.resolve_index(node._point)
         comp = ctx.resolve_index(node._component)
         v = _memref_load(ctx.coords_val, [pt, comp], ctx.f64)  # type: ignore[attr-defined]
+    elif isinstance(node, GeometryTensorComponent):
+        assert ctx.geometry_val is not None
+        v = _memref_load(ctx.geometry_val, [ctx.resolve_index(node.packed_index)], ctx.f64)
     elif isinstance(node, ArrayEntry):
         mem = ctx.global_val[node.array]
         idx = [ctx.resolve_index(i) for i in node.index]
@@ -533,6 +545,106 @@ def _emit_zero_init(
         Operation.create("scf.yield")
 
 
+def _emit_affine_tetrahedron_geometry_function(
+    kernel_name: str, geometry_ty, coords_ty, f64, index_t
+) -> None:
+    """Emit ``G = abs(det(J)) inv(J) inv(J).T`` in packed symmetric form."""
+    func_ty = FunctionType.get([geometry_ty, coords_ty], [])
+    func_op = Operation.create(
+        "func.func",
+        attributes={
+            "sym_name": StringAttr.get(geometry_kernel_name(kernel_name)),
+            "function_type": TypeAttr.get(func_ty),
+            "llvm.emit_c_interface": UnitAttr.get(),
+        },
+        regions=1,
+    )
+    entry = func_op.regions[0].blocks.append(geometry_ty, coords_ty)
+    with InsertionPoint(entry):
+        geometry, coords = entry.arguments
+        indices = {
+            i: Operation.create(
+                "arith.constant",
+                results=[index_t],
+                attributes={"value": IntegerAttr.get(index_t, i)},
+            ).results[0]
+            for i in range(6)
+        }
+
+        # For the reference tetrahedron, J[:, j] = x[j + 1] - x[0].
+        jacobian = [
+            [
+                _op2(
+                    "arith.subf",
+                    f64,
+                    _memref_load(coords, [indices[column + 1], indices[row]], f64),
+                    _memref_load(coords, [indices[0], indices[row]], f64),
+                )
+                for column in range(3)
+            ]
+            for row in range(3)
+        ]
+        (a, b, c), (d, e, f), (g, h, i) = jacobian
+
+        def product_difference(x, y, z, w):
+            return _op2(
+                "arith.subf",
+                f64,
+                _op2("arith.mulf", f64, x, y),
+                _op2("arith.mulf", f64, z, w),
+            )
+
+        adjugate = [
+            [
+                product_difference(e, i, f, h),
+                product_difference(c, h, b, i),
+                product_difference(b, f, c, e),
+            ],
+            [
+                product_difference(f, g, d, i),
+                product_difference(a, i, c, g),
+                product_difference(c, d, a, f),
+            ],
+            [
+                product_difference(d, h, e, g),
+                product_difference(b, g, a, h),
+                product_difference(a, e, b, d),
+            ],
+        ]
+        determinant = _op2(
+            "arith.addf",
+            f64,
+            _op2(
+                "arith.addf",
+                f64,
+                _op2("arith.mulf", f64, a, adjugate[0][0]),
+                _op2("arith.mulf", f64, b, adjugate[1][0]),
+            ),
+            _op2("arith.mulf", f64, c, adjugate[2][0]),
+        )
+        absolute_determinant = _op1("math.absf", f64, determinant)
+        inverse = [
+            [_op2("arith.divf", f64, value, determinant) for value in row] for row in adjugate
+        ]
+
+        packed_components = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
+        for packed_index, (row, column) in enumerate(packed_components):
+            products = [
+                _op2("arith.mulf", f64, inverse[row][axis], inverse[column][axis])
+                for axis in range(3)
+            ]
+            dot = _op2(
+                "arith.addf",
+                f64,
+                _op2("arith.addf", f64, products[0], products[1]),
+                products[2],
+            )
+            value = _op2("arith.mulf", f64, absolute_determinant, dot)
+            _memref_store(value, geometry, [indices[packed_index]])
+
+        Operation.create("func.return")
+
+
 def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellType) -> Module:
     """Generate a self-contained MLIR module for a UFLx form's tabulate_tensor kernel.
 
@@ -550,7 +662,7 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
         via the Module's own reference to it.
     """
     ncoorddofs, tdim = coordinate_shape(form)
-    tables, graph = lower_form(form, degree, cell)
+    tables, graph, geometry = lower_form(form, degree, cell)
     root = graph.root
     chain, add_node = walk_loop_chain(root)
     chain = reorder_quadrature_outermost(chain)
@@ -558,6 +670,8 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
     a_shape = add_node.shape
 
     int_constants = collect_int_constants(root, a_shape)
+    if geometry is not None:
+        int_constants.update(range(geometry.output_size))
 
     ctx_container = Context()
     with ctx_container, Location.unknown():
@@ -566,6 +680,7 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
         index_t = IndexType.get()
         a_ty = MemRefType.get(list(a_shape), f64)
         coords_ty = MemRefType.get([ncoorddofs, tdim], f64)
+        geometry_ty = MemRefType.get([geometry.output_size], f64) if geometry is not None else None
 
         ctx = _OpCtx(
             a_shape=a_shape,
@@ -596,6 +711,14 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
                     },
                 )
 
+            if geometry is not None:
+                assert isinstance(geometry, GeometryKernelSpec)
+                assert geometry.scope == "cell"
+                assert geometry_ty is not None
+                _emit_affine_tetrahedron_geometry_function(
+                    kernel_name, geometry_ty, coords_ty, f64, index_t
+                )
+
             func_ty = FunctionType.get([a_ty, coords_ty], [])
             func_op = Operation.create(
                 "func.func",
@@ -614,6 +737,22 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
                 for i in sorted(int_constants):
                     ctx.index_const[i] = _const_index(ctx, i)
                 ctx.zero_f64 = _const_f64(ctx, 0.0)
+
+                if geometry is not None:
+                    assert geometry_ty is not None
+                    ctx.geometry_val = Operation.create(
+                        "memref.alloca", results=[geometry_ty]
+                    ).results[0]
+                    Operation.create(
+                        "func.call",
+                        operands=[
+                            ctx.geometry_val,
+                            ctx.coords_val,  # type: ignore[attr-defined]
+                        ],
+                        attributes={
+                            "callee": FlatSymbolRefAttr.get(geometry_kernel_name(kernel_name))
+                        },
+                    )
 
                 for name in sorted(tables):
                     ctx.global_val[name] = Operation.create(

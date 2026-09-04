@@ -3,9 +3,10 @@
 This deliberately reuses uflx_codegeneration's existing, generic pipeline
 for the actual finite-element math (quadrature selection/tabulation,
 geometry expansion, pull-back/push-forward, inner-product expansion) --
-the same functions imported below from uflx_codegeneration.generate -- and
-only replaces uflx_codegeneration.c's C-string-building final step with an
-MLIR generator (see emit.py). One deliberate simplification relative to
+the same functions imported below from uflx_codegeneration.generate -- with
+one experimental affine-Poisson geometry-extraction pass. It replaces
+uflx_codegeneration.c's C-string-building final step with an MLIR generator
+(see emit.py). One deliberate simplification relative to
 the C backend: the quadrature rule is chosen generically via
 basix.make_quadrature for the integral's actual cell and a computed
 degree, instead of uflx_codegeneration.generate.generate()'s hardcoded
@@ -33,6 +34,8 @@ from uflx_codegeneration.generate import (
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import QuadratureLoop, QuadratureRule, quadrature_rule
 
+from uflx_mlir.geometry import GeometryKernelSpec, extract_affine_poisson_geometry
+
 
 def coordinate_shape(form) -> tuple[int, int]:
     """Return the coordinate element's (n_coordinate_dofs, tdim) for a form's domain.
@@ -53,10 +56,15 @@ def coordinate_shape(form) -> tuple[int, int]:
     if len(domain.elements) != 1:
         raise NotImplementedError("Only domains with exactly one element are supported.")
     (coord_element,) = domain.elements
-    return coord_element.dim, domain.geometric_dimension
+    gdim = domain.geometric_dimension
+    if coord_element.dim % gdim != 0:
+        raise ValueError("Coordinate element dimension is not divisible by its value size.")
+    return coord_element.dim // gdim, gdim
 
 
-def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.ndarray], Graph]:
+def lower_form(
+    form, degree: int, cell: basix.CellType
+) -> tuple[dict[str, np.ndarray], Graph, GeometryKernelSpec | None]:
     """Lower a UFLx form to a graph of arithmetic/loop/table nodes.
 
     Runs uflx_codegeneration's own pipeline stages, with a quadrature rule
@@ -68,10 +76,11 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
         cell: The reference cell the form is integrated over.
 
     Returns:
-        A tuple (tables, graph): `tables` maps table name to its constant
+        A tuple (tables, graph, geometry): `tables` maps table name to its constant
         numpy array (quadrature weights, tabulated basis functions, ...);
         `graph` is the fully-lowered DAG whose root is a chain of
-        Loop/QuadratureLoop nodes ending in a single AddToLocalTensor.
+        Loop/QuadratureLoop nodes ending in a single AddToLocalTensor; and
+        `geometry` describes a separately extracted geometry kernel, if any.
     """
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(cell, qdeg)
@@ -95,6 +104,7 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
     graph = integrals_to_quadrature(graph, rules)
+    graph, geometry = extract_affine_poisson_geometry(graph, cell)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
     graph = take_real_part(graph)
@@ -102,7 +112,7 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)
     tables = {**q_tables, **fe_tables}
-    return tables, graph
+    return tables, graph, geometry
 
 
 def collect_int_constants(root: GraphNode, a_shape: tuple[int, ...]) -> set[int]:

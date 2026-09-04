@@ -16,14 +16,14 @@ import pytest
 from basix_uflx import element
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
 
-pytest.importorskip("mlir")
+pytest.importorskip("mlir.ir")
 
 from mlir.execution_engine import ExecutionEngine
 from mlir.ir import Module
 from mlir.passmanager import PassManager
 from mlir.runtime import get_ranked_memref_descriptor
 
-from uflx_mlir import generate_mlir_module
+from uflx_mlir import generate_mlir_module, geometry_kernel_name
 
 # Lowers scf.for/math/arith/memref/func all the way to the llvm dialect --
 # the same pipeline this generator's output was validated against on real
@@ -95,6 +95,15 @@ def _reference_stiffness(coords: np.ndarray, degree: int) -> np.ndarray:
     return local_matrix
 
 
+def _reference_geometry(coords: np.ndarray) -> np.ndarray:
+    """Compute the packed affine tetrahedral Poisson metric."""
+    x0, x1, x2, x3 = coords
+    jacobian = np.column_stack([x1 - x0, x2 - x0, x3 - x0])
+    jacobian_inv = np.linalg.inv(jacobian)
+    metric = abs(np.linalg.det(jacobian)) * jacobian_inv @ jacobian_inv.T
+    return metric[np.triu_indices(3)]
+
+
 def _call_kernel(module: Module, kernel_name: str, a: np.ndarray, coords: np.ndarray) -> None:
     """JIT `module` and invoke `kernel_name` via MLIR's packed calling convention.
 
@@ -132,6 +141,9 @@ def test_stiffness_matches_quadrature_reference(degree: int) -> None:
     module = generate_mlir_module(
         form, degree=degree, kernel_name=kernel_name, cell=basix.CellType.tetrahedron
     )
+    module_text = str(module)
+    assert f"func.func @{geometry_kernel_name(kernel_name)}" in module_text
+    assert f"call @{geometry_kernel_name(kernel_name)}" in module_text
 
     coords = np.array(
         [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
@@ -147,3 +159,21 @@ def test_stiffness_matches_quadrature_reference(degree: int) -> None:
     # must sum to ~0 -- a cheap sanity check independent of the reference
     # computation above.
     np.testing.assert_allclose(a.sum(axis=1), 0.0, atol=1e-8)
+
+
+def test_geometry_kernel_matches_numpy_reference() -> None:
+    """Check the separately callable cellwise metric kernel."""
+    kernel_name = "tabulate_tensor_geometry_test"
+    form, _ = _build_stiffness_form(1)
+    module = generate_mlir_module(
+        form, degree=1, kernel_name=kernel_name, cell=basix.CellType.tetrahedron
+    )
+
+    coords = np.array(
+        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+        dtype=np.float64,
+    )
+    geometry = np.zeros(6, dtype=np.float64)
+    _call_kernel(module, geometry_kernel_name(kernel_name), geometry, coords)
+
+    np.testing.assert_allclose(geometry, _reference_geometry(coords), rtol=1e-12, atol=1e-12)

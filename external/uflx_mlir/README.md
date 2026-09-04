@@ -7,10 +7,11 @@ Python op-builder API) and JITs it in-process with
 shelling out to a system compiler.
 
 `generate_mlir_module(form, degree, kernel_name, cell)` reuses
-`uflx_codegeneration`'s own lowering pipeline unchanged (quadrature
+`uflx_codegeneration`'s own lowering pipeline (quadrature
 selection/tabulation, geometry expansion, pull-back/push-forward,
-inner-product expansion) and only replaces the final "walk the lowered
-graph and emit code" step. It also reorders and hoists the generated loop
+inner-product expansion), adds the experimental extraction described below,
+and replaces the final "walk the lowered graph and emit code" step. It also
+reorders and hoists the generated loop
 nest (`uflx_mlir/hoist.py`) -- `uflx_codegeneration`'s pipeline nests the
 per-dof loops OUTSIDE the quadrature loop, which is the worst order for
 this kind of assembly, since it forces recomputing quadrature-point-only
@@ -23,11 +24,30 @@ slower than FFCx's own compiled kernel to ~1.8x faster, per call
 across hardware, but a real, JIT'd, end-to-end measurement, not an
 estimate).
 
+For affine tetrahedral Poisson forms, the backend also extracts the
+cellwise geometry tensor
+
+```text
+G = abs(det(J)) * inv(J) * inv(J).T
+```
+
+into a separate exported function named `<kernel_name>_geometry`. The
+function accepts a `memref<6xf64>` output followed by the usual
+`memref<4x3xf64>` coordinate dofs and stores the symmetric tensor in the
+order `(G00, G01, G02, G11, G12, G22)`. The tabulation function keeps its
+existing public signature, calls this geometry function once per cell,
+and consumes the six resulting values in its reference-gradient
+contraction. `geometry_kernel_name(kernel_name)` returns the exported
+symbol name for clients that want to invoke the geometry kernel directly.
+
 ## Status / restrictions
 
 Same restrictions as `uflx_codegeneration`'s own pipeline currently has: a
 single cell (codim-0) integral, no coefficients or constants, one scalar
 element per function space (see `integrals_to_quadrature`'s own asserts).
+Geometry-kernel extraction is currently deliberately narrower: it covers
+only scalar Poisson stiffness forms on affine tetrahedra. Other forms use
+the existing inline geometry lowering unchanged.
 
 ## Installing
 
