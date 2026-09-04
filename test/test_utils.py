@@ -83,4 +83,5 @@ from uflx.utils import flatten
     ],
 )
 def test_flatten(indices, sizes, reverse, expected_result):
+    """Test flatten utility function."""
     assert flatten(indices, sizes, reverse) == expected_result

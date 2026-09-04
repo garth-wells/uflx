@@ -1,6 +1,6 @@
 """Test map algorithms."""
 
-from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, inner, grad
+from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
 from uflx.functions import AbstractFunction, AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs.algorithms import pull_back_to_reference
 
