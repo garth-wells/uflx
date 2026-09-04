@@ -9,6 +9,9 @@ from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
 from uflx.geometry import (
     JacobianDeterminant,
     JacobianInverseTranspose,
+    JacobianInverse,
+    JacobianTranspose,
+    Jacobian,
     PhysicalToReference,
     ReferenceToPhysical,
     SingleSpatialCoordinate,
@@ -96,6 +99,14 @@ def integrals_to_quadrature(
                             "Code generation only implemented for reference mapped domain"
                         )
                     to_replace[i] = PointComponent(ReferenceToPhysical(qpoint, domain), i._component)
+                if isinstance(i, Jacobian) and i.point is None:
+                    to_replace[i] = Jacobian(i.domain, qpoint)
+                if isinstance(i, JacobianInverse) and i.point is None:
+                    to_replace[i] = JacobianInverse(i.domain, qpoint)
+                if isinstance(i, JacobianTranspose) and i.point is None:
+                    to_replace[i] = JacobianTranspose(i.domain, qpoint)
+                if isinstance(i, JacobianInverseTranspose) and i.point is None:
+                    to_replace[i] = JacobianInverseTranspose(i.domain, qpoint)
                 if isinstance(i, JacobianDeterminant) and i.point is None:
                     to_replace[i] = JacobianDeterminant(i.domain, qpoint)
             for i in arguments:
