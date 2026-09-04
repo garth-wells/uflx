@@ -37,6 +37,7 @@ jobs:
         run: |
           pip install external/codegeneration
           pip install external/basix_uflx
+          pip install external/uflx_mlir
       - name: Pyrefly check
         run: pyrefly check
 
@@ -65,6 +66,7 @@ jobs:
         run: |
           pip -v install external/codegeneration
           pip -v install external/basix_uflx
+          pip -v install external/uflx_mlir
       - name: Run units tests
         run: pytest -n auto --durations 20 external/*/test/
 

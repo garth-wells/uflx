@@ -1,22 +1,15 @@
-[build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "uflx"
+name = "uflx-mlir"
 version = "0.0.1"
-description = "UFLx: Experimental minimal UFL"
+description = "MLIR code-generation backend for UFLx, built on the Python op-builder API"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11.0"
 license = "MIT"
 authors = [
-    { name = "Matthew Scroggs", email = "ufl@mscroggs.co.uk" },
+    { name = "Chris Richardson", email = "cnr12@cam.ac.uk" },
     { name = "Garth Wells", email = "gnw20@cam.ac.uk" }
 ]
-dependencies = ["networkx"]
-
-[tool.setuptools.packages.find]
-exclude = ["external"]
+dependencies = ["uflx", "uflx-codegeneration", "numpy", "fenics-basix"]
 
 [project.urls]
 homepage = "https://github.com/garth-wells/uflx"
@@ -24,8 +17,8 @@ repository = "https://github.com/garth-wells/uflx"
 
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
-lint = ["ruff", "pyrefly"]
-ci = ["pytest", "pytest-xdist", "numpy"]
+lint = ["ruff", "mypy"]
+ci = ["pytest", "pytest-xdist", "basix-uflx"]
 
 [tool.ruff]
 line-length = 100
@@ -56,9 +49,5 @@ select = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.pyrefly]
-ignore-missing-imports = ["cffi", "networkx", "mlir", "mlir.*"]
-
-[tool.pyrefly.errors]
-unused-ignore = true
-unused-type-ignore = true
+[tool.mypy]
+ignore_missing_imports = true
