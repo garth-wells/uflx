@@ -11,9 +11,11 @@ from uflx.graphs.algorithms import replace
 class ComplexValued(Protocol):
     """A complex valued node."""
 
+    @property
     def re(self) -> AbstractExpression:
         """Get real part."""
 
+    @property
     def im(self) -> AbstractExpression:
         """Get imaginary part."""
 
@@ -25,7 +27,7 @@ def take_real_part(
     return replace(
         graph,
         {
-            node: node.re()
+            node: node.re
             for node in graph
             if isinstance(node, ComplexValued) and isinstance(node, GraphNode)
         },
@@ -39,7 +41,7 @@ def take_imaginary_part(
     return replace(
         graph,
         {
-            node: node.im()
+            node: node.im
             for node in graph
             if isinstance(node, ComplexValued) and isinstance(node, GraphNode)
         },
