@@ -10,7 +10,8 @@ shelling out to a system compiler.
 `uflx_codegeneration`'s own lowering pipeline (quadrature
 selection/tabulation, geometry expansion, pull-back/push-forward,
 inner-product expansion), adds the experimental extraction described below,
-and replaces the final "walk the lowered graph and emit code" step. It also
+and directly expands any remaining affine tetrahedral geometry cellwise. It
+then replaces the final "walk the lowered graph and emit code" step and
 reorders and hoists the generated loop
 nest (`uflx_mlir/hoist.py`) -- `uflx_codegeneration`'s pipeline nests the
 per-dof loops OUTSIDE the quadrature loop, which is the worst order for
@@ -39,6 +40,13 @@ existing public signature, calls this geometry function once per cell,
 and consumes the six resulting values in its reference-gradient
 contraction. `geometry_kernel_name(kernel_name)` returns the exported
 symbol name for clients that want to invoke the geometry kernel directly.
+
+Fission scratch buffers are stack-allocated once in the function entry
+block. When equal test and trial spaces produce expressions that differ
+only by their dof-loop variable, the generated kernel reuses the same
+scratch values for both sides. This avoids both hot-loop heap allocation
+and duplicate basis transformations without assuming that all forms are
+Galerkin forms.
 
 ## Status / restrictions
 

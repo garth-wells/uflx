@@ -47,10 +47,15 @@ Two things keep the generated code from doing needless work:
     pattern directly and reports it as a FissionGroup; _emit_fission_group
     below materializes each such group into its own small auxiliary loop
     -- covering just the skipped-over variable(s) -- storing results into
-    a scratch memref and reading them back via a plain array lookup at
-    the point they're actually needed, the same technique the
+    a scratch memref allocated once in the function entry block and reading
+    them back via a plain array lookup at the point they're actually needed,
+    the same technique the
     hand-written kernels in mlir-kernels/python/generate_kernel.py already
     use (their numx_scratch/numy_scratch/numz_scratch buffers).
+    Structurally equal scratch expressions that differ only in their dof-loop
+    variable (as happens for equal test and trial spaces) share that buffer;
+    this preserves generic Petrov-Galerkin behaviour while avoiding duplicate
+    transforms for Galerkin forms.
   - value-based (structural) common-subexpression elimination, in
     addition to the identity-based `cache` above: uflx's expression node
     classes (RealScalar, Integer, Add/Sub/Mult/Div/Neg/Abs,
@@ -170,14 +175,12 @@ class _OpCtx:
     index_vars: dict[str, Value] = field(default_factory=dict)  # loop var name -> index Value
     zero_f64: Value | None = None
 
-    # Fission-group scratch buffers (see hoist.compute_fission_plan). A node
-    # is a key here only once its group's auxiliary loop has actually
-    # stored its value -- see _emit_fission_group -- so that _emit_node
-    # only takes the "load from scratch" path once that value genuinely
-    # exists and is back in scope.
+    # Fission-group scratch buffers (see hoist.compute_fission_plan). Buffers
+    # are allocated in the entry block, while a node becomes a scratch_group
+    # key only once its auxiliary loop has stored the value.
     scratch_group: dict[Any, FissionGroup] = field(default_factory=dict)
     scratch_buf: dict[Any, Value] = field(default_factory=dict)
-    scratch_type: dict[Any, Any] = field(default_factory=dict)
+    alpha_scratch: dict[Any, tuple[GraphNode, FissionGroup]] = field(default_factory=dict)
 
     # Value-based CSE cache (see module docstring): node signature ->
     # already-emitted Value, populated/consulted only for nodes emitted
@@ -282,6 +285,44 @@ def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
     return None
 
 
+def _alpha_signature(node: GraphNode, renamed_indices: dict[str, str]) -> Any | None:
+    """Return a structural signature modulo selected loop-index names."""
+    if isinstance(node, (RealScalar, Integer)):
+        return (type(node), node.value)
+    if isinstance(node, CoordinateDofComponent):
+        return (CoordinateDofComponent, node._point, node._component, node._tdim)
+    if isinstance(node, ArrayEntry):
+        indices = tuple(
+            renamed_indices.get(index, index) if isinstance(index, str) else index
+            for index in node.index
+        )
+        return (ArrayEntry, node.array, indices)
+    if isinstance(node, (Neg, Abs)):
+        argument = _alpha_signature(node.argument, renamed_indices)
+        return None if argument is None else (type(node), argument)
+    if isinstance(node, (Add, Subtract, Mult, Div)):
+        first = _alpha_signature(node.first, renamed_indices)
+        second = _alpha_signature(node.second, renamed_indices)
+        return None if first is None or second is None else (type(node), first, second)
+    return None
+
+
+def _load_alpha_equivalent_scratch(node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx) -> bool:
+    """Load a scratch value equal modulo one active dof-loop variable."""
+    for variable in ctx.index_vars:
+        signature = _alpha_signature(node, {variable: "$dof"})
+        if signature is None or signature not in ctx.alpha_scratch:
+            continue
+        scratch_node, group = ctx.alpha_scratch[signature]
+        if len(group.gap_vars) != 1:
+            continue
+        cache[node] = _memref_load(
+            ctx.scratch_buf[scratch_node], [ctx.resolve_index(variable)], ctx.f64
+        )
+        return True
+    return False
+
+
 def _emit_node(
     node: GraphNode,
     cache: dict[Any, Value],
@@ -326,6 +367,9 @@ def _emit_node(
         idx = [ctx.resolve_index(v) for v in group.gap_vars]
         v = _memref_load(ctx.scratch_buf[node], idx, ctx.f64)
         cache[node] = v
+        return
+
+    if use_signature_cache and _load_alpha_equivalent_scratch(node, cache, ctx):
         return
 
     sig = _node_signature(node, cache) if use_signature_cache else None
@@ -412,14 +456,8 @@ def _emit_fission_group(
     `group.depth` -- every loop_vars[:group.depth] is already open (so
     group.nodes' non-gap dependencies, already emitted at that shallower
     level, are safely in cache and in scope), and nothing group.nodes
-    computes leaks out except through the scratch buffers.
+    computes leaks out except through the entry-block scratch buffers.
     """
-    shape = tuple(_chain_bounds(chain, v)[1] for v in group.gap_vars)
-    mem_ty = MemRefType.get(list(shape), ctx.f64)
-    for node in group.scratch:
-        buf = Operation.create("memref.alloc", results=[mem_ty]).results[0]
-        ctx.scratch_buf[node] = buf
-        ctx.scratch_type[node] = mem_ty
 
     def build(remaining: tuple[str, ...]) -> None:
         if not remaining:
@@ -455,6 +493,22 @@ def _emit_fission_group(
         del cache[node]
         if node in scratch_set:
             ctx.scratch_group[node] = group
+            if len(group.gap_vars) == 1:
+                signature = _alpha_signature(node, {group.gap_vars[0]: "$dof"})
+                if signature is not None:
+                    ctx.alpha_scratch.setdefault(signature, (node, group))
+
+
+def _emit_fission_scratch_allocas(
+    groups: list[FissionGroup], chain: list[tuple[GraphNode, str]], ctx: _OpCtx
+) -> None:
+    """Allocate every fission scratch buffer once in the function entry block."""
+    for group in groups:
+        shape = tuple(_chain_bounds(chain, variable)[1] for variable in group.gap_vars)
+        mem_ty = MemRefType.get(list(shape), ctx.f64)
+        for node in group.scratch:
+            assert node not in ctx.scratch_buf
+            ctx.scratch_buf[node] = Operation.create("memref.alloca", results=[mem_ty]).results[0]
 
 
 def _build_nest(
@@ -761,9 +815,10 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
                         attributes={"name": FlatSymbolRefAttr.get(name)},
                     ).results[0]
 
+                levels, fission_groups = compute_fission_plan(add_node, loop_vars)
+                _emit_fission_scratch_allocas(fission_groups, chain, ctx)
                 _emit_zero_init(a_shape, ctx)
 
-                levels, fission_groups = compute_fission_plan(add_node, loop_vars)
                 topo = topo_order(add_node)
                 groups_by_depth: dict[int, list[FissionGroup]] = {}
                 for group in fission_groups:
