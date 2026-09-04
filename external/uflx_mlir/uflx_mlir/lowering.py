@@ -80,9 +80,21 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
     graph = form.graph
     assert graph.is_dag()
 
-    graph = integrals_to_quadrature(graph, rules)
+    # pull_back_to_reference/apply_push_forwards must run BEFORE
+    # integrals_to_quadrature: since uflx#51 ("Move mapping of integral to
+    # reference into UFLx core"), Jacobian/JacobianDeterminant/
+    # JacobianInverse/JacobianTranspose/JacobianInverseTranspose are built
+    # with point=None by pull_back_to_reference, and it's
+    # integrals_to_quadrature that walks an integral's descendants and
+    # replaces each point-less Jacobian-family node with one bound to the
+    # actual quadrature point -- matching the order
+    # uflx_codegeneration.generate.generate() itself now uses. Running
+    # integrals_to_quadrature first (the old order) leaves those nodes'
+    # `point` permanently None, and expand_geometry's
+    # `assert self.point is not None` fires downstream.
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
+    graph = integrals_to_quadrature(graph, rules)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
     graph = take_real_part(graph)
