@@ -153,8 +153,40 @@ class Matrix(Tensor):
                     assert isinstance(d, AbstractExpression)
                     det = a * d - b * c
                     return Matrix([[d / det, -b / det], [-c / det, a / det]])
+                case 3:
+                    [[a, b, c], [d, e, f], [g, h, i]] = entries
+                    assert isinstance(a, AbstractExpression)
+                    assert isinstance(b, AbstractExpression)
+                    assert isinstance(c, AbstractExpression)
+                    assert isinstance(d, AbstractExpression)
+                    assert isinstance(e, AbstractExpression)
+                    assert isinstance(f, AbstractExpression)
+                    assert isinstance(g, AbstractExpression)
+                    assert isinstance(h, AbstractExpression)
+                    assert isinstance(i, AbstractExpression)
+                    det = a * (e * i - f * h) + b * (f * g - d * i) + c * (d * h - e * g)
+                    # Inverse = adjugate / det, adjugate = cofactor matrix transposed.
+                    return Matrix(
+                        [
+                            [
+                                (e * i - f * h) / det,
+                                (c * h - b * i) / det,
+                                (b * f - c * e) / det,
+                            ],
+                            [
+                                (f * g - d * i) / det,
+                                (a * i - c * g) / det,
+                                (c * d - a * f) / det,
+                            ],
+                            [
+                                (d * h - e * g) / det,
+                                (b * g - a * h) / det,
+                                (a * e - b * d) / det,
+                            ],
+                        ]
+                    )
                 case _:
-                    raise NotImplementedError("Inverting of {rows}x{rows} not implemented.")
+                    raise NotImplementedError(f"Inverting of {rows}x{rows} not implemented.")
 
     def compute_determinant(self) -> AbstractExpression:
         """Compute the inverse of the matrix."""

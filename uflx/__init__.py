@@ -7,7 +7,7 @@
 
 from uflx.domains import coordinate_element
 from uflx.function_spaces import function_space
-from uflx.functions import TestFunction, TrialFunction
+from uflx.functions import Coefficient, TestFunction, TrialFunction
 from uflx.geometry import SpatialCoordinate
 from uflx.integrals import dx
 from uflx.operators import grad, inner

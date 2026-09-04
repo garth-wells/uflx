@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any
 
-from uflx.graphs import GraphNode
+from uflx.graphs.graphs import GraphNode
 
 
 class AbstractExpression(ABC):

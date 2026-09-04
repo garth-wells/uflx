@@ -9,7 +9,6 @@ from uflx.tensors import Matrix
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.nodes import FunctionCall, Variable
-from uflx_codegeneration.points import AbstractPointInSet
 
 
 def insert_geometry_functions(
@@ -25,8 +24,7 @@ def insert_geometry_functions(
             f = variable_namer.geometry_function_name()
             f_args: list[Any] = [coordinate_dofs]
             inputs = [coordinate_dofs]
-            assert isinstance(node.point, AbstractPointInSet)
-            if isinstance(node.point.index, str):
+            if node.point is not None and isinstance(node.point.index, str):
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = FunctionCall(f, *f_args)
@@ -39,8 +37,7 @@ def insert_geometry_functions(
             ]
             inputs = [coordinate_dofs]
             f_args = [coordinate_dofs]
-            assert isinstance(node.point, AbstractPointInSet)
-            if isinstance(node.point.index, str):
+            if node.point is not None and isinstance(node.point.index, str):
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = Matrix([[FunctionCall(f, *f_args) for f in row] for row in fs])
@@ -59,8 +56,7 @@ def insert_geometry_functions(
             ]
             inputs = [coordinate_dofs]
             f_args = [coordinate_dofs]
-            assert isinstance(node.point, AbstractPointInSet)
-            if isinstance(node.point.index, str):
+            if node.point is not None and isinstance(node.point.index, str):
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = Matrix([[FunctionCall(f, *f_args) for f in row] for row in fs])

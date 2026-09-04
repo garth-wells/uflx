@@ -7,7 +7,7 @@ from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, RealScalar, expression_sum
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
-from uflx.points import AbstractPoint, Point
+from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
 from uflx.tensors import Matrix
 
 
@@ -107,7 +107,7 @@ class ReferenceToPhysical(AbstractPoint):
     @property
     def dim(self) -> int:
         """The dimension of the point."""
-        raise NotImplementedError()
+        return self._point.value_shape[0]
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -137,6 +137,11 @@ class ReferenceToPhysical(AbstractPoint):
 
         return Point(components)
 
+    @property
+    def points_set(self) -> AbstractSetOfPoints:
+        """The set of points containing this point."""
+        return RD(self.dim)
+
 
 class PhysicalToReference(AbstractPoint):
     """A point mapped from a physical cell to the reference cell."""
@@ -164,7 +169,7 @@ class PhysicalToReference(AbstractPoint):
     @property
     def dim(self) -> int:
         """The dimension of the point."""
-        raise NotImplementedError()
+        return self._point.value_shape[0]
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -176,11 +181,16 @@ class PhysicalToReference(AbstractPoint):
         """The arguments used to initialise this object."""
         return self._point, self._domain
 
+    @property
+    def points_set(self) -> AbstractSetOfPoints:
+        """The set of points containing this point."""
+        return RD(self.dim)
+
 
 class Jacobian(AbstractExpression):
     """The Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self.domain = domain
         self.point = point
@@ -211,6 +221,8 @@ class Jacobian(AbstractExpression):
         """Expand geometry."""
         gdim, tdim = self.value_shape
         (element,) = self.domain.elements
+
+        assert self.point is not None
 
         return Matrix(
             [
@@ -282,7 +294,7 @@ class Jacobian(AbstractExpression):
 class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initialise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -317,7 +329,7 @@ class JacobianDeterminant(AbstractExpression):
 class JacobianInverse(AbstractExpression):
     """The inverse of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -356,7 +368,7 @@ class JacobianInverse(AbstractExpression):
 class JacobianTranspose(AbstractExpression):
     """The transpose of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain
@@ -395,7 +407,7 @@ class JacobianTranspose(AbstractExpression):
 class JacobianInverseTranspose(AbstractExpression):
     """The inverse transpose of the Jacobian."""
 
-    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint):
+    def __init__(self, domain: AbstractCoordinateElement, point: AbstractPoint | None = None):
         """Initalise."""
         self._jacobian = Jacobian(domain, point)
         self.domain = domain

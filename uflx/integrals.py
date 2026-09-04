@@ -8,10 +8,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from itertools import count
+from typing import Any, cast
 
+from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
+from uflx.functions import (
+    AbstractIntegralScopedFunction,
+    AbstractPhysicalFunction,
+    AbstractReferenceIntegralScopedFunction,
+)
+from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs.algorithms import replace
 
 
 class AbstractMeasure(ABC):
@@ -72,23 +81,46 @@ class AbstractIntegral(ABC):
         """Hash."""
         return hash((hash(self.integrand), hash(self.measure)))
 
-    def __repr__(self) -> str:
-        """Representation."""
-        return self.__class__.__name__
+    @property
+    @abstractmethod
+    def label(self) -> str:
+        """A unique label for the integral."""
 
 
 class Integral(AbstractIntegral):
     """An integral."""
 
-    def __init__(self, integrand: AbstractExpression, measure: AbstractMeasure):
+    _n = count(0)
+
+    def __init__(
+        self, integrand: AbstractExpression, measure: AbstractMeasure, label: str | None = None
+    ):
         """Initialise."""
-        self._integrand = integrand
         self._measure = measure
+        if label is None:
+            self._label = f"uflx-Integral-{next(self._n)}"
+        else:
+            self._label = label
+
+        replacements: dict[GraphNode, GraphNode] = {}
+        i_graph = generate_graph(integrand)
+        for node in i_graph:
+            if (
+                isinstance(
+                    node, (AbstractIntegralScopedFunction, AbstractReferenceIntegralScopedFunction)
+                )
+                and node.integral_label is None
+            ):
+                replacements[node] = node.reconstruct_with_integral_label(self._label)
+        if len(replacements) == 0:
+            self._integrand = integrand
+        else:
+            self._integrand = replace(i_graph, replacements).root
 
     @property
     def integrand(self) -> AbstractExpression:
         """The integrand."""
-        return self._integrand
+        return cast(AbstractExpression, self._integrand)
 
     @property
     def measure(self) -> AbstractMeasure:
@@ -98,7 +130,34 @@ class Integral(AbstractIntegral):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._integrand, self._measure
+        return self._integrand, self._measure, self._label
+
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        integrand = node_map.get(self._integrand, self._integrand)
+        domain = None
+        for node in self.graph.descendants(self._integrand):
+            if isinstance(node, AbstractPhysicalFunction):
+                if domain is None:
+                    domain = node.function_space.domain
+                else:
+                    assert domain == node.function_space.domain
+        assert domain is not None
+        assert isinstance(domain, AbstractCoordinateElement)
+        det = abs(JacobianDeterminant(domain))
+
+        assert isinstance(integrand, AbstractExpression)
+
+        return Integral(det * integrand, self._measure)
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"Integral(label={self._label})"
+
+    @property
+    def label(self) -> str:
+        """A unique label for the integral."""
+        return self._label
 
 
 class Measure(AbstractMeasure):
