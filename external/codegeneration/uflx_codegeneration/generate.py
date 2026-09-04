@@ -7,12 +7,11 @@ from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
 from uflx.geometry import (
-    JacobianDeterminant,
-    JacobianInverseTranspose,
-    JacobianInverse,
-    JacobianTranspose,
     Jacobian,
-    PhysicalToReference,
+    JacobianDeterminant,
+    JacobianInverse,
+    JacobianInverseTranspose,
+    JacobianTranspose,
     ReferenceToPhysical,
     SingleSpatialCoordinate,
     expand_geometry,
@@ -23,11 +22,9 @@ from uflx.graphs import (
     RepresentedByGraph,
     generate_graph,
 )
-from uflx.finite_elements import AbstractReferenceMappedFiniteElement
-from uflx.graphs.algorithms import reconstruct_node, replace, pull_back_to_reference
+from uflx.graphs.algorithms import pull_back_to_reference, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.maps import PushedForward, apply_push_forwards
-from uflx.operators import Grad, ReferenceGrad
+from uflx.maps import apply_push_forwards
 from uflx.points import Point, PointComponent
 
 from uflx_codegeneration import symbols
@@ -98,7 +95,9 @@ def integrals_to_quadrature(
                         raise NotImplementedError(
                             "Code generation only implemented for reference mapped domain"
                         )
-                    to_replace[i] = PointComponent(ReferenceToPhysical(qpoint, domain), i._component)
+                    to_replace[i] = PointComponent(
+                        ReferenceToPhysical(qpoint, domain), i._component
+                    )
                 if isinstance(i, Jacobian) and i.point is None:
                     to_replace[i] = Jacobian(i.domain, qpoint)
                 if isinstance(i, JacobianInverse) and i.point is None:
@@ -155,7 +154,6 @@ def integrals_to_quadrature(
             assert isinstance(domain, AbstractCoordinateElement)
             integrand = (
                 QuadratureWeight(rules[node.measure], qvariable)
-                # * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
                 * node.integrand
             )
 

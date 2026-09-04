@@ -205,7 +205,6 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
             )
 
 
-
 class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     """A basis function evaluated at a point on the physical cell."""
 

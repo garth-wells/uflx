@@ -5,6 +5,7 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
+from uflx.domains import AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.geometry import JacobianInverseTranspose

@@ -1,8 +1,9 @@
 """Algorithms related to push forward and pull back maps."""
 
 from typing import Protocol, runtime_checkable
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph
+
 from uflx.graphs.algorithms.reconstruct import reconstruct_node
+from uflx.graphs.graphs import Graph, GraphNode, generate_graph
 
 
 @runtime_checkable
@@ -11,7 +12,6 @@ class PullBackToReference(Protocol):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-
 
 
 def pull_back_to_reference(

@@ -65,9 +65,9 @@ class AbstractPhysicalFunction(AbstractFunction):
 class AbstractReferenceFunction(AbstractFunction):
     """Abstract base class for a function on a reference cell."""
 
-    #@property
-    #@abstractmethod
-    #def function_space(self) -> AbstractFunctionSpace:
+    # @property
+    # @abstractmethod
+    # def function_space(self) -> AbstractFunctionSpace:
     #    """The function space that this function lives in."""
 
     @property
@@ -188,7 +188,9 @@ class Argument(AbstractIntegralScopedFunction):
 class ReferenceArgument(AbstractReferenceIntegralScopedFunction):
     """A function that is a dimension of the tensor to be assembled on the reference cell."""
 
-    def __init__(self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None):
+    def __init__(
+        self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None
+    ):
         """Initialise.
 
         Args:
@@ -261,7 +263,9 @@ class TestFunction(Argument):
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(self._space.elements[0].reference_map, ReferenceTestFunction(self._space))
+        return PushedForward(
+            self._space.elements[0].reference_map, ReferenceTestFunction(self._space)
+        )
 
 
 class TrialFunction(Argument):
@@ -287,7 +291,9 @@ class TrialFunction(Argument):
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(self._space.elements[0].reference_map, ReferenceTrialFunction(self._space))
+        return PushedForward(
+            self._space.elements[0].reference_map, ReferenceTrialFunction(self._space)
+        )
 
 
 class Coefficient(AbstractIntegralScopedFunction):
