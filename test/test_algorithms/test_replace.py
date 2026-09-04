@@ -1,4 +1,4 @@
-"""Test graph algorithms."""
+"""Test replace algorithm."""
 
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space
 from uflx.graphs.algorithms import replace
