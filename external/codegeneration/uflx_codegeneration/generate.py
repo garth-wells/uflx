@@ -152,10 +152,7 @@ def integrals_to_quadrature(
                 assert a.function_space.domain == domain
 
             assert isinstance(domain, AbstractCoordinateElement)
-            integrand = (
-                QuadratureWeight(rules[node.measure], qvariable)
-                * node.integrand
-            )
+            integrand = QuadratureWeight(rules[node.measure], qvariable) * node.integrand
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
 
