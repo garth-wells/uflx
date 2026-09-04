@@ -7,10 +7,11 @@ Python op-builder API) and JITs it in-process with
 shelling out to a system compiler.
 
 `generate_mlir_module(form, degree, kernel_name, cell)` reuses
-`uflx_codegeneration`'s own lowering pipeline unchanged (quadrature
+`uflx_codegeneration`'s own lowering pipeline (quadrature
 selection/tabulation, geometry expansion, pull-back/push-forward,
-inner-product expansion) and only replaces the final "walk the lowered
-graph and emit code" step. It also reorders and hoists the generated loop
+inner-product expansion), with a direct cellwise expansion for affine
+tetrahedral geometry, and replaces the final "walk the lowered graph and
+emit code" step. It also reorders and hoists the generated loop
 nest (`uflx_mlir/hoist.py`) -- `uflx_codegeneration`'s pipeline nests the
 per-dof loops OUTSIDE the quadrature loop, which is the worst order for
 this kind of assembly, since it forces recomputing quadrature-point-only
@@ -22,6 +23,13 @@ slower than FFCx's own compiled kernel to ~1.8x faster, per call
 (measured on one Apple Silicon laptop -- not a general performance claim
 across hardware, but a real, JIT'd, end-to-end measurement, not an
 estimate).
+
+Fission scratch buffers are stack-allocated once in the function entry
+block. When equal test and trial spaces produce expressions that differ
+only by their dof-loop variable, the generated kernel reuses the same
+scratch values for both sides. This avoids both hot-loop heap allocation
+and duplicate basis transformations without assuming that all forms are
+Galerkin forms.
 
 ## Status / restrictions
 

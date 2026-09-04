@@ -16,14 +16,17 @@ import pytest
 from basix_uflx import element
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
 
-pytest.importorskip("mlir")
+pytest.importorskip("mlir.ir")
 
 from mlir.execution_engine import ExecutionEngine
 from mlir.ir import Module
 from mlir.passmanager import PassManager
 from mlir.runtime import get_ranked_memref_descriptor
+from uflx.expressions import RealScalar
+from uflx_codegeneration.nodes import ArrayEntry
 
 from uflx_mlir import generate_mlir_module
+from uflx_mlir.emit import _alpha_signature
 
 # Lowers scf.for/math/arith/memref/func all the way to the llvm dialect --
 # the same pipeline this generator's output was validated against on real
@@ -120,6 +123,19 @@ def _call_kernel(module: Module, kernel_name: str, a: np.ndarray, coords: np.nda
     raw_fn(packed)
 
 
+def test_alpha_signature_matches_equal_dof_expressions() -> None:
+    """Equivalent test/trial table expressions should share fission scratch."""
+    test_expr = ArrayEntry("FE", (1, "q", "test", 0)) * RealScalar(2.0)
+    trial_expr = ArrayEntry("FE", (1, "q", "trial", 0)) * RealScalar(2.0)
+
+    assert _alpha_signature(test_expr, {"test": "$dof"}) == _alpha_signature(
+        trial_expr, {"trial": "$dof"}
+    )
+    assert _alpha_signature(test_expr, {"test": "$dof"}) != _alpha_signature(
+        trial_expr, {"q": "$dof"}
+    )
+
+
 @pytest.mark.parametrize("degree", [1, 2])
 def test_stiffness_matches_quadrature_reference(degree: int) -> None:
     """Check generate_mlir_module's op-builder output against an independent reference.
@@ -132,6 +148,10 @@ def test_stiffness_matches_quadrature_reference(degree: int) -> None:
     module = generate_mlir_module(
         form, degree=degree, kernel_name=kernel_name, cell=basix.CellType.tetrahedron
     )
+    module_text = str(module)
+    assert "memref.alloc" not in module_text.replace("memref.alloca", "")
+    assert "memref<4x3xf64>" in module_text
+    assert "memref<12x3xf64>" not in module_text
 
     coords = np.array(
         [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],

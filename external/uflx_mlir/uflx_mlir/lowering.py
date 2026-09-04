@@ -19,10 +19,21 @@ import basix
 import numpy as np
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement
-from uflx.geometry import CoordinateDofComponent, expand_geometry
+from uflx.expressions import AbstractExpression
+from uflx.geometry import (
+    CoordinateDofComponent,
+    Jacobian,
+    JacobianDeterminant,
+    JacobianInverse,
+    JacobianInverseTranspose,
+    JacobianTranspose,
+    expand_geometry,
+)
 from uflx.graphs import Graph, GraphNode, NodeOrder, generate_graph
+from uflx.graphs.algorithms import replace
 from uflx.integrals import AbstractMeasure, dx
 from uflx.maps import apply_push_forwards
+from uflx.tensors import Matrix
 from uflx_codegeneration.algorithms import expand_inner_products, tabulate_finite_elements
 from uflx_codegeneration.generate import (
     extract_domain,
@@ -53,7 +64,65 @@ def coordinate_shape(form) -> tuple[int, int]:
     if len(domain.elements) != 1:
         raise NotImplementedError("Only domains with exactly one element are supported.")
     (coord_element,) = domain.elements
-    return coord_element.dim, domain.geometric_dimension
+    gdim = domain.geometric_dimension
+    if coord_element.dim % gdim != 0:
+        raise ValueError("Coordinate element dimension is not divisible by its value size.")
+    return coord_element.dim // gdim, gdim
+
+
+def _affine_tetrahedron_jacobian() -> Matrix:
+    """Build the Jacobian of a P1 tetrahedron directly from its vertices."""
+    return Matrix(
+        [
+            [
+                CoordinateDofComponent(column + 1, row, 3) - CoordinateDofComponent(0, row, 3)
+                for column in range(3)
+            ]
+            for row in range(3)
+        ]
+    )
+
+
+def _expand_affine_tetrahedron_geometry(graph: Graph, cell: basix.CellType) -> Graph:
+    """Expand P1 tetrahedral Jacobian nodes without a quadrature-dependent FE table."""
+    if cell != basix.CellType.tetrahedron:
+        return graph
+
+    replacements: dict[GraphNode, GraphNode] = {}
+    for node in graph:
+        if not isinstance(
+            node,
+            (
+                Jacobian,
+                JacobianDeterminant,
+                JacobianInverse,
+                JacobianTranspose,
+                JacobianInverseTranspose,
+            ),
+        ):
+            continue
+        if len(node.domain.elements) != 1:
+            continue
+        (coordinate_element,) = node.domain.elements
+        if coordinate_element.lagrange_superdegree != 1 or node.domain.geometric_dimension != 3:
+            continue
+
+        jacobian = _affine_tetrahedron_jacobian()
+        replacement: AbstractExpression
+        if isinstance(node, Jacobian):
+            replacement = jacobian
+        elif isinstance(node, JacobianDeterminant):
+            replacement = abs(jacobian.compute_determinant())
+        elif isinstance(node, JacobianInverse):
+            replacement = jacobian.compute_inverse()
+        elif isinstance(node, JacobianTranspose):
+            replacement = jacobian.transpose()
+        else:
+            assert isinstance(node, JacobianInverseTranspose)
+            replacement = jacobian.compute_inverse().transpose()
+        replacements[node] = replacement
+
+    return replace(graph, replacements) if replacements else graph
 
 
 def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.ndarray], Graph]:
@@ -95,6 +164,7 @@ def lower_form(form, degree: int, cell: basix.CellType) -> tuple[dict[str, np.nd
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
     graph = integrals_to_quadrature(graph, rules)
+    graph = _expand_affine_tetrahedron_geometry(graph, cell)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
     graph = take_real_part(graph)
