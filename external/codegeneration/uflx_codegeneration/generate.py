@@ -5,11 +5,13 @@ from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedRefere
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, Argument
+from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
 from uflx.geometry import (
+    Jacobian,
     JacobianDeterminant,
+    JacobianInverse,
     JacobianInverseTranspose,
-    PhysicalToReference,
+    JacobianTranspose,
     ReferenceToPhysical,
     SingleSpatialCoordinate,
     expand_geometry,
@@ -20,10 +22,9 @@ from uflx.graphs import (
     RepresentedByGraph,
     generate_graph,
 )
-from uflx.graphs.algorithms import reconstruct_node, replace
+from uflx.graphs.algorithms import pull_back_to_reference, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
-from uflx.maps import PushedForward, apply_push_forwards
-from uflx.operators import Grad, ReferenceGrad
+from uflx.maps import apply_push_forwards
 from uflx.points import Point, PointComponent
 
 from uflx_codegeneration import symbols
@@ -33,7 +34,6 @@ from uflx_codegeneration.algorithms import (
     tabulate_finite_elements,
 )
 from uflx_codegeneration.c import GenerateC, tables_to_c
-from uflx_codegeneration.finite_element import AbstractReferenceMappedFiniteElement
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.quadrature import (
     QuadratureLoop,
@@ -54,47 +54,13 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
                 domain = i.function_space.domain
             else:
                 assert domain == i.function_space.domain
+        if hasattr(i, "domain"):
+            if domain is None:
+                domain = i.domain
+            else:
+                assert domain == i.domain
     assert domain is not None
     return domain
-
-
-def pull_back_to_reference(
-    graph: Graph,
-) -> Graph:
-    """Pull terms in integrals back to reference values."""
-    node_map: dict[GraphNode, GraphNode] = {}
-    for node in graph.ordered_nodes():
-        if isinstance(node, Grad):
-            assert isinstance(node.argument, EvaluatedPhysicalBasisFunction)
-            argument = node_map.get(node.argument, node.argument)
-            domain = extract_domain(graph, node)
-            assert isinstance(domain, AbstractCoordinateElement)
-            point = node.argument.point
-            reference_point = (
-                point.reference_point
-                if isinstance(point, ReferenceToPhysical)
-                else PhysicalToReference(point, domain)
-            )
-            if isinstance(argument, PushedForward):
-                node_map[node] = JacobianInverseTranspose(
-                    domain,
-                    reference_point,
-                ) * ReferenceGrad(argument.function)
-        elif isinstance(node, EvaluatedPhysicalBasisFunction):
-            assert isinstance(node._element, AbstractReferenceMappedFiniteElement)
-            if isinstance(node._point, ReferenceToPhysical):
-                node_map[node] = PushedForward(
-                    node._element.reference_map,
-                    EvaluatedReferenceBasisFunction(
-                        node._element,
-                        node._basis_index,
-                        node._point.reference_point,
-                    ),
-                )
-        elif any(a in node_map for a in node.successors):
-            node_map[node] = reconstruct_node(node, node_map)
-
-    return generate_graph(node_map.get(graph.root, graph.root))
 
 
 def integrals_to_quadrature(
@@ -110,6 +76,7 @@ def integrals_to_quadrature(
         if isinstance(node, AbstractIntegral):
             rule = rules[node.measure]
             qvariable = variable_namer.variable()
+            qpoint = QuadraturePoint(rule, qvariable)
 
             tensor_shape_components = {}
 
@@ -120,7 +87,7 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in graph.descendants(node):
-                if isinstance(i, Argument) and i.integral_label == node.label:
+                if isinstance(i, (Argument, ReferenceArgument)) and i.integral_label == node.label:
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
@@ -129,12 +96,18 @@ def integrals_to_quadrature(
                             "Code generation only implemented for reference mapped domain"
                         )
                     to_replace[i] = PointComponent(
-                        ReferenceToPhysical(
-                            QuadraturePoint(rule, qvariable),
-                            domain,
-                        ),
-                        i._component,
+                        ReferenceToPhysical(qpoint, domain), i._component
                     )
+                if isinstance(i, Jacobian) and i.point is None:
+                    to_replace[i] = Jacobian(i.domain, qpoint)
+                if isinstance(i, JacobianInverse) and i.point is None:
+                    to_replace[i] = JacobianInverse(i.domain, qpoint)
+                if isinstance(i, JacobianTranspose) and i.point is None:
+                    to_replace[i] = JacobianTranspose(i.domain, qpoint)
+                if isinstance(i, JacobianInverseTranspose) and i.point is None:
+                    to_replace[i] = JacobianInverseTranspose(i.domain, qpoint)
+                if isinstance(i, JacobianDeterminant) and i.point is None:
+                    to_replace[i] = JacobianDeterminant(i.domain, qpoint)
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
@@ -160,24 +133,26 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 assert isinstance(a.function_space.domain, AbstractCoordinateElement)
-                point = QuadraturePoint(rule, qvariable)
-                to_replace[a] = EvaluatedPhysicalBasisFunction(
-                    a.function_space,
-                    a.function_space.elements[0],
-                    variables[a.component_index],
-                    ReferenceToPhysical(point, a.function_space.domain),
-                )
+                if isinstance(a, Argument):
+                    to_replace[a] = EvaluatedPhysicalBasisFunction(
+                        a.function_space,
+                        a.function_space.elements[0],
+                        variables[a.component_index],
+                        ReferenceToPhysical(qpoint, a.function_space.domain),
+                    )
+                elif isinstance(a, ReferenceArgument):
+                    to_replace[a] = EvaluatedReferenceBasisFunction(
+                        a.function_space.elements[0],
+                        variables[a.component_index],
+                        qpoint,
+                    )
 
             domain = arguments[0].function_space.domain
             for a in arguments:
                 assert a.function_space.domain == domain
 
             assert isinstance(domain, AbstractCoordinateElement)
-            integrand = (
-                QuadratureWeight(rules[node.measure], qvariable)
-                * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
-                * node.integrand
-            )
+            integrand = QuadratureWeight(rules[node.measure], qvariable) * node.integrand
 
             body = AddToLocalTensor(variables, tensor_shape, integrand)
 
@@ -267,9 +242,12 @@ def generate(
     )
     rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
-    graph = integrals_to_quadrature(graph, rules)
+    # Apply algorithms from UFLx
     graph = pull_back_to_reference(graph)
     graph = apply_push_forwards(graph)
+
+    # Apply codegeneration algorithms
+    graph = integrals_to_quadrature(graph, rules)
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
