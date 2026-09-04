@@ -12,7 +12,7 @@ from itertools import count
 from typing import Any, cast
 
 from uflx.expressions import AbstractExpression
-from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
+from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument, AbstractIntegralScopedFunction, AbstractReferenceIntegralScopedFunction
 from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, generate_graph
 from uflx.graphs.algorithms import replace
@@ -100,7 +100,7 @@ class Integral(AbstractIntegral):
         replacements: dict[GraphNode, GraphNode] = {}
         i_graph = generate_graph(integrand)
         for node in i_graph:
-            if isinstance(node, (Argument, ReferenceArgument)) and node.integral_label is None:
+            if isinstance(node, (AbstractIntegralScopedFunction, AbstractReferenceIntegralScopedFunction)) and node.integral_label is None:
                 replacements[node] = node.reconstruct_with_integral_label(self._label)
         if len(replacements) == 0:
             self._integrand = integrand
