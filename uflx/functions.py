@@ -218,7 +218,7 @@ class TestFunction(Argument):
         return PushedForward(self._space.elements[0].reference_map, ReferenceTestFunction(self._space))
 
 
-class TrialFunction(ReferenceArgument):
+class TrialFunction(Argument):
     """A trial function."""
 
     def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
@@ -265,7 +265,7 @@ class ReferenceTestFunction(ReferenceArgument):
         raise NotImplementedError()
 
 
-class ReferenceTrialFunction(Argument):
+class ReferenceTrialFunction(ReferenceArgument):
     """A trial function on the reference cell."""
 
     def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):

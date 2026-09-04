@@ -47,8 +47,6 @@ from uflx_codegeneration.utils import indented
 
 def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
     """Extract the domain associated with a node."""
-    from IPython import embed; embed()
-    print(node)
     domain: AbstractDomain | None = None
     for i in graph.descendants(node):
         if isinstance(i, AbstractPhysicalFunction):
@@ -78,6 +76,7 @@ def integrals_to_quadrature(
         if isinstance(node, AbstractIntegral):
             rule = rules[node.measure]
             qvariable = variable_namer.variable()
+            qpoint = QuadraturePoint(rule, qvariable)
 
             tensor_shape_components = {}
 
@@ -96,13 +95,9 @@ def integrals_to_quadrature(
                         raise NotImplementedError(
                             "Code generation only implemented for reference mapped domain"
                         )
-                    to_replace[i] = PointComponent(
-                        ReferenceToPhysical(
-                            QuadraturePoint(rule, qvariable),
-                            domain,
-                        ),
-                        i._component,
-                    )
+                    to_replace[i] = PointComponent(ReferenceToPhysical(qpoint, domain), i._component)
+                if isinstance(i, JacobianDeterminant) and i.point is None:
+                    to_replace[i] = JacobianDeterminant(i.domain, qpoint)
             for i in arguments:
                 i_space = i.function_space
                 if not isinstance(i_space, AbstractReferenceMappedFunctionSpace):
@@ -128,13 +123,19 @@ def integrals_to_quadrature(
             for a in arguments:
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 assert isinstance(a.function_space.domain, AbstractCoordinateElement)
-                point = QuadraturePoint(rule, qvariable)
-                to_replace[a] = EvaluatedPhysicalBasisFunction(
-                    a.function_space,
-                    a.function_space.elements[0],
-                    variables[a.component_index],
-                    ReferenceToPhysical(point, a.function_space.domain),
-                )
+                if isinstance(a, Argument):
+                    to_replace[a] = EvaluatedPhysicalBasisFunction(
+                        a.function_space,
+                        a.function_space.elements[0],
+                        variables[a.component_index],
+                        ReferenceToPhysical(qpoint, a.function_space.domain),
+                    )
+                elif isinstance(a, ReferenceArgument):
+                    to_replace[a] = EvaluatedReferenceBasisFunction(
+                        a.function_space.elements[0],
+                        variables[a.component_index],
+                        qpoint,
+                    )
 
             domain = arguments[0].function_space.domain
             for a in arguments:
@@ -143,7 +144,7 @@ def integrals_to_quadrature(
             assert isinstance(domain, AbstractCoordinateElement)
             integrand = (
                 QuadratureWeight(rules[node.measure], qvariable)
-                * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
+                # * abs(JacobianDeterminant(domain, QuadraturePoint(rules[node.measure], qvariable)))
                 * node.integrand
             )
 
@@ -236,17 +237,11 @@ def generate(
     rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
     # Apply algorithms from UFLx
-    graph.print()
-    print("----------")
     graph = pull_back_to_reference(graph)
-    graph.print()
-    print("----------")
     graph = apply_push_forwards(graph)
-    graph.print()
-    print("----------")
 
     # Apply codegeneration algorithms
-    graph = integrals_to_quadrature(graph, rules)  # WORKING ON THIS
+    graph = integrals_to_quadrature(graph, rules)
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)

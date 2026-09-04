@@ -12,7 +12,7 @@ from itertools import count
 from typing import Any, cast
 
 from uflx.expressions import AbstractExpression
-from uflx.functions import AbstractPhysicalFunction, Argument
+from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
 from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, generate_graph
 from uflx.graphs.algorithms import replace
@@ -76,10 +76,6 @@ class AbstractIntegral(ABC):
         """Hash."""
         return hash((hash(self.integrand), hash(self.measure)))
 
-    def __repr__(self) -> str:
-        """Representation."""
-        return self.__class__.__name__
-
     @property
     @abstractmethod
     def label(self) -> str:
@@ -104,7 +100,7 @@ class Integral(AbstractIntegral):
         replacements: dict[GraphNode, GraphNode] = {}
         i_graph = generate_graph(integrand)
         for node in i_graph:
-            if isinstance(node, Argument) and node.integral_label is None:
+            if isinstance(node, (Argument, ReferenceArgument)) and node.integral_label is None:
                 replacements[node] = node.reconstruct_with_integral_label(self._label)
         if len(replacements) == 0:
             self._integrand = integrand
@@ -124,7 +120,7 @@ class Integral(AbstractIntegral):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._integrand, self._measure
+        return self._integrand, self._measure, self._label
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
@@ -140,6 +136,10 @@ class Integral(AbstractIntegral):
         det = abs(JacobianDeterminant(domain, None))
 
         return Integral(det * integrand, self._measure)
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"Integral(label={self._label})"
 
     @property
     def label(self) -> str:
