@@ -1,12 +1,15 @@
 """Test complex numbers."""
+
 import pytest
 
-from uflx.expressions import Integer, ComplexScalar
-from uflx.complex import take_real_part, take_imaginary_part
+from uflx.complex import take_imaginary_part, take_real_part
+from uflx.expressions import ComplexScalar, Integer
 from uflx.graphs import generate_graph
+
 
 @pytest.fixture
 def z():
+    """The complex number 4+6j."""
     a = Integer(4)
     b = Integer(6)
     return generate_graph(ComplexScalar(a, b))

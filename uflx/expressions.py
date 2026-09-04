@@ -184,11 +184,13 @@ class Integer(AbstractInteger):
         self.value = value
 
     def __eq__(self, other):
+        """Check for equality."""
         if isinstance(other, Integer):
             return self.value == other.value
         return self.value == other
 
     def __hash__(self):
+        """Hash."""
         return hash(("uflx.Integer", self.value))
 
     def __repr__(self):

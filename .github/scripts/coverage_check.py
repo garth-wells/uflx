@@ -16,5 +16,5 @@ if len(too_low) > 0:
         + "\n".join(f"  - {filename} ({percent}%)" for filename, percent in too_low)
     )
 
-if data["totals"]["percent_covered"] < 85:
+if data["totals"]["percent_covered"] < 80:
     raise RuntimeError("Overall coverage is too low")

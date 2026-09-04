@@ -104,7 +104,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        return self._element.reference_value_shape
 
     def __repr__(self):
         """Representation."""
@@ -259,7 +259,7 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        return self._element.physical_value_shape(self._point.dim)
 
     def __repr__(self):
         """Representation."""
