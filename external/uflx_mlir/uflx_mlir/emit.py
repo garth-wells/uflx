@@ -188,6 +188,7 @@ class _OpCtx:
     # internal emission (see _emit_node's use_signature_cache parameter).
     signature_cache: dict[Any, Value] = field(default_factory=dict)
     geometry_val: Value | None = None
+    geometry_components: dict[int, Value] = field(default_factory=dict)
 
     def resolve_index(self, idx: int | str) -> Value:
         """Resolve a Loop/ArrayEntry index entry to an `index`-typed SSA value.
@@ -406,8 +407,11 @@ def _emit_node(
         comp = ctx.resolve_index(node._component)
         v = _memref_load(ctx.coords_val, [pt, comp], ctx.f64)  # type: ignore[attr-defined]
     elif isinstance(node, GeometryTensorComponent):
-        assert ctx.geometry_val is not None
-        v = _memref_load(ctx.geometry_val, [ctx.resolve_index(node.packed_index)], ctx.f64)
+        if node.packed_index in ctx.geometry_components:
+            v = ctx.geometry_components[node.packed_index]
+        else:
+            assert ctx.geometry_val is not None
+            v = _memref_load(ctx.geometry_val, [ctx.resolve_index(node.packed_index)], ctx.f64)
     elif isinstance(node, ArrayEntry):
         mem = ctx.global_val[node.array]
         idx = [ctx.resolve_index(i) for i in node.index]
@@ -599,10 +603,82 @@ def _emit_zero_init(
         Operation.create("scf.yield")
 
 
+def _emit_affine_tetrahedron_geometry_values(coords, indices: dict[int, Value], f64) -> list[Value]:
+    """Emit and return packed ``G = abs(det(J)) inv(J) inv(J).T`` values."""
+    # For the reference tetrahedron, J[:, j] = x[j + 1] - x[0].
+    jacobian = [
+        [
+            _op2(
+                "arith.subf",
+                f64,
+                _memref_load(coords, [indices[column + 1], indices[row]], f64),
+                _memref_load(coords, [indices[0], indices[row]], f64),
+            )
+            for column in range(3)
+        ]
+        for row in range(3)
+    ]
+    (a, b, c), (d, e, f), (g, h, i) = jacobian
+
+    def product_difference(x, y, z, w):
+        return _op2(
+            "arith.subf",
+            f64,
+            _op2("arith.mulf", f64, x, y),
+            _op2("arith.mulf", f64, z, w),
+        )
+
+    adjugate = [
+        [
+            product_difference(e, i, f, h),
+            product_difference(c, h, b, i),
+            product_difference(b, f, c, e),
+        ],
+        [
+            product_difference(f, g, d, i),
+            product_difference(a, i, c, g),
+            product_difference(c, d, a, f),
+        ],
+        [
+            product_difference(d, h, e, g),
+            product_difference(b, g, a, h),
+            product_difference(a, e, b, d),
+        ],
+    ]
+    determinant = _op2(
+        "arith.addf",
+        f64,
+        _op2(
+            "arith.addf",
+            f64,
+            _op2("arith.mulf", f64, a, adjugate[0][0]),
+            _op2("arith.mulf", f64, b, adjugate[1][0]),
+        ),
+        _op2("arith.mulf", f64, c, adjugate[2][0]),
+    )
+    absolute_determinant = _op1("math.absf", f64, determinant)
+    inverse = [[_op2("arith.divf", f64, value, determinant) for value in row] for row in adjugate]
+
+    values = []
+    packed_components = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
+    for row, column in packed_components:
+        products = [
+            _op2("arith.mulf", f64, inverse[row][axis], inverse[column][axis]) for axis in range(3)
+        ]
+        dot = _op2(
+            "arith.addf",
+            f64,
+            _op2("arith.addf", f64, products[0], products[1]),
+            products[2],
+        )
+        values.append(_op2("arith.mulf", f64, absolute_determinant, dot))
+    return values
+
+
 def _emit_affine_tetrahedron_geometry_function(
     kernel_name: str, geometry_ty, coords_ty, f64, index_t
 ) -> None:
-    """Emit ``G = abs(det(J)) inv(J) inv(J).T`` in packed symmetric form."""
+    """Emit the separately callable affine-tetrahedron geometry function."""
     func_ty = FunctionType.get([geometry_ty, coords_ty], [])
     func_op = Operation.create(
         "func.func",
@@ -624,82 +700,20 @@ def _emit_affine_tetrahedron_geometry_function(
             ).results[0]
             for i in range(6)
         }
-
-        # For the reference tetrahedron, J[:, j] = x[j + 1] - x[0].
-        jacobian = [
-            [
-                _op2(
-                    "arith.subf",
-                    f64,
-                    _memref_load(coords, [indices[column + 1], indices[row]], f64),
-                    _memref_load(coords, [indices[0], indices[row]], f64),
-                )
-                for column in range(3)
-            ]
-            for row in range(3)
-        ]
-        (a, b, c), (d, e, f), (g, h, i) = jacobian
-
-        def product_difference(x, y, z, w):
-            return _op2(
-                "arith.subf",
-                f64,
-                _op2("arith.mulf", f64, x, y),
-                _op2("arith.mulf", f64, z, w),
-            )
-
-        adjugate = [
-            [
-                product_difference(e, i, f, h),
-                product_difference(c, h, b, i),
-                product_difference(b, f, c, e),
-            ],
-            [
-                product_difference(f, g, d, i),
-                product_difference(a, i, c, g),
-                product_difference(c, d, a, f),
-            ],
-            [
-                product_difference(d, h, e, g),
-                product_difference(b, g, a, h),
-                product_difference(a, e, b, d),
-            ],
-        ]
-        determinant = _op2(
-            "arith.addf",
-            f64,
-            _op2(
-                "arith.addf",
-                f64,
-                _op2("arith.mulf", f64, a, adjugate[0][0]),
-                _op2("arith.mulf", f64, b, adjugate[1][0]),
-            ),
-            _op2("arith.mulf", f64, c, adjugate[2][0]),
-        )
-        absolute_determinant = _op1("math.absf", f64, determinant)
-        inverse = [
-            [_op2("arith.divf", f64, value, determinant) for value in row] for row in adjugate
-        ]
-
-        packed_components = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
-        for packed_index, (row, column) in enumerate(packed_components):
-            products = [
-                _op2("arith.mulf", f64, inverse[row][axis], inverse[column][axis])
-                for axis in range(3)
-            ]
-            dot = _op2(
-                "arith.addf",
-                f64,
-                _op2("arith.addf", f64, products[0], products[1]),
-                products[2],
-            )
-            value = _op2("arith.mulf", f64, absolute_determinant, dot)
+        values = _emit_affine_tetrahedron_geometry_values(coords, indices, f64)
+        for packed_index, value in enumerate(values):
             _memref_store(value, geometry, [indices[packed_index]])
-
         Operation.create("func.return")
 
 
-def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellType) -> Module:
+def generate_mlir_module(
+    form,
+    degree: int,
+    kernel_name: str,
+    cell: basix.CellType,
+    *,
+    inline_geometry: bool = False,
+) -> Module:
     """Generate a self-contained MLIR module for a UFLx form's tabulate_tensor kernel.
 
     Built via the Python op-builder API rather than parsing MLIR text.
@@ -709,6 +723,9 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
         degree: The polynomial degree used to size the quadrature rule.
         kernel_name: The symbol name to give the generated `func.func`.
         cell: The reference cell the form is integrated over.
+        inline_geometry: Compute extracted geometry directly in the assembly
+            function when true. The standalone geometry function is still
+            emitted, but the assembly function does not call it.
 
     Returns:
         The built `mlir.ir.Module` (already verified with
@@ -794,19 +811,28 @@ def generate_mlir_module(form, degree: int, kernel_name: str, cell: basix.CellTy
 
                 if geometry is not None:
                     assert geometry_ty is not None
-                    ctx.geometry_val = Operation.create(
-                        "memref.alloca", results=[geometry_ty]
-                    ).results[0]
-                    Operation.create(
-                        "func.call",
-                        operands=[
-                            ctx.geometry_val,
-                            ctx.coords_val,  # type: ignore[attr-defined]
-                        ],
-                        attributes={
-                            "callee": FlatSymbolRefAttr.get(geometry_kernel_name(kernel_name))
-                        },
-                    )
+                    if inline_geometry:
+                        coords_val = ctx.coords_val  # type: ignore[attr-defined]
+                        values = _emit_affine_tetrahedron_geometry_values(
+                            coords_val,
+                            ctx.index_const,
+                            f64,
+                        )
+                        ctx.geometry_components.update(enumerate(values))
+                    else:
+                        ctx.geometry_val = Operation.create(
+                            "memref.alloca", results=[geometry_ty]
+                        ).results[0]
+                        Operation.create(
+                            "func.call",
+                            operands=[
+                                ctx.geometry_val,
+                                ctx.coords_val,  # type: ignore[attr-defined]
+                            ],
+                            attributes={
+                                "callee": FlatSymbolRefAttr.get(geometry_kernel_name(kernel_name))
+                            },
+                        )
 
                 for name in sorted(tables):
                     ctx.global_val[name] = Operation.create(

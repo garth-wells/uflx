@@ -40,6 +40,10 @@ existing public signature, calls this geometry function once per cell,
 and consumes the six resulting values in its reference-gradient
 contraction. `geometry_kernel_name(kernel_name)` returns the exported
 symbol name for clients that want to invoke the geometry kernel directly.
+Passing `inline_geometry=True` to `generate_mlir_module` instead computes
+the six components directly in the assembly function, avoiding the call and
+temporary geometry buffer while retaining the separately callable exported
+geometry function in the module.
 
 Fission scratch buffers are stack-allocated once in the function entry
 block. When equal test and trial spaces produce expressions that differ

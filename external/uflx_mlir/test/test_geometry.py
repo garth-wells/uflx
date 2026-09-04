@@ -8,6 +8,7 @@ from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_s
 from uflx.geometry import CoordinateDofComponent
 
 from uflx_mlir.geometry import GeometryTensorComponent, geometry_kernel_name
+from uflx_mlir.hoist import compute_fission_plan, reorder_quadrature_outermost, walk_loop_chain
 from uflx_mlir.lowering import lower_form
 
 
@@ -31,6 +32,16 @@ def test_affine_poisson_geometry_is_extracted_from_tabulation_graph() -> None:
     components = [node for node in graph if isinstance(node, GeometryTensorComponent)]
     assert {node.packed_index for node in components} == set(range(6))
     assert not any(isinstance(node, CoordinateDofComponent) for node in graph)
+
+
+def test_geometry_contraction_uses_three_scratch_vectors() -> None:
+    """Keep G @ grad factorised so fission scales with vector dimension, not tensor size."""
+    _, graph, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
+    chain, add_node = walk_loop_chain(graph.root)
+    chain = reorder_quadrature_outermost(chain)
+    _, groups = compute_fission_plan(add_node, [variable for _, variable in chain])
+
+    assert sum(len(group.scratch) for group in groups) == 3
 
 
 def test_unsupported_form_keeps_inline_geometry() -> None:

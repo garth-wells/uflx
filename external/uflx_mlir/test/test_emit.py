@@ -146,7 +146,8 @@ def test_alpha_signature_matches_equal_dof_expressions() -> None:
 
 
 @pytest.mark.parametrize("degree", [1, 2])
-def test_stiffness_matches_quadrature_reference(degree: int) -> None:
+@pytest.mark.parametrize("inline_geometry", [False, True])
+def test_stiffness_matches_quadrature_reference(degree: int, inline_geometry: bool) -> None:
     """Check generate_mlir_module's op-builder output against an independent reference.
 
     Builds the kernel, JITs it, calls it, and compares against a
@@ -155,11 +156,15 @@ def test_stiffness_matches_quadrature_reference(degree: int) -> None:
     kernel_name = f"tabulate_tensor_p{degree}_stiffness_test"
     form, ndofs = _build_stiffness_form(degree)
     module = generate_mlir_module(
-        form, degree=degree, kernel_name=kernel_name, cell=basix.CellType.tetrahedron
+        form,
+        degree=degree,
+        kernel_name=kernel_name,
+        cell=basix.CellType.tetrahedron,
+        inline_geometry=inline_geometry,
     )
     module_text = str(module)
     assert f"func.func @{geometry_kernel_name(kernel_name)}" in module_text
-    assert f"call @{geometry_kernel_name(kernel_name)}" in module_text
+    assert (f"call @{geometry_kernel_name(kernel_name)}" in module_text) is not inline_geometry
     assert "memref.alloc" not in module_text.replace("memref.alloca", "")
     assert "memref<4x3xf64>" in module_text
     assert "memref<12x3xf64>" not in module_text
@@ -185,7 +190,11 @@ def test_geometry_kernel_matches_numpy_reference() -> None:
     kernel_name = "tabulate_tensor_geometry_test"
     form, _ = _build_stiffness_form(1)
     module = generate_mlir_module(
-        form, degree=1, kernel_name=kernel_name, cell=basix.CellType.tetrahedron
+        form,
+        degree=1,
+        kernel_name=kernel_name,
+        cell=basix.CellType.tetrahedron,
+        inline_geometry=True,
     )
 
     coords = np.array(

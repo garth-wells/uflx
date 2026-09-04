@@ -106,10 +106,14 @@ def _poisson_metric_contraction(node: GraphNode):
     grad_right = right.second.expand_geometry()
     assert isinstance(grad_left, AbstractExpression)
     assert isinstance(grad_right, AbstractExpression)
+    # Preserve the matrix-vector factorisation instead of flattening this
+    # immediately into nine scalar terms. The code generator can then
+    # precompute the three components of G @ grad_right once per trial dof,
+    # rather than materialising one scratch vector per tensor entry.
     return expression_sum(
-        grad_left.component(i) * GeometryTensorComponent(i, j) * grad_right.component(j)
+        grad_left.component(i)
+        * expression_sum(GeometryTensorComponent(i, j) * grad_right.component(j) for j in range(3))
         for i in range(3)
-        for j in range(3)
     )
 
 
