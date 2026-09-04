@@ -188,6 +188,11 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
     def point(self) -> AbstractPoint:
         """The point at which the function is evaluated."""
 
+    @property
+    @abstractmethod
+    def derivative(self) -> tuple[int, ...]:
+        """The number of derivatives in each coordinate direction."""
+
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
         from uflx.geometry import ReferenceToPhysical

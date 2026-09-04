@@ -3,6 +3,7 @@
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
 from uflx.functions import AbstractFunction, AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs.algorithms import pull_back_to_reference
+from uflx.integrals import Integral
 
 
 def test_mass_matrix(lagrange_element):
@@ -15,6 +16,7 @@ def test_mass_matrix(lagrange_element):
     form = inner(u, v) * dx
 
     pulled_form = pull_back_to_reference(form.graph).root
+    assert isinstance(pulled_form, Integral)
 
     functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
     pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]
@@ -38,6 +40,7 @@ def test_stuffness_matrix(lagrange_element):
     form = inner(grad(u), grad(v)) * dx
 
     pulled_form = pull_back_to_reference(form.graph).root
+    assert isinstance(pulled_form, Integral)
 
     functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
     pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]
@@ -60,6 +63,7 @@ def test_linear_form(lagrange_element):
     form = v * dx
 
     pulled_form = pull_back_to_reference(form.graph).root
+    assert isinstance(pulled_form, Integral)
 
     functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
     pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]

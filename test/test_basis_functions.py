@@ -1,7 +1,12 @@
 """Test forms."""
 
 from uflx import coordinate_element, function_space
-from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
+from uflx.basis_functions import (
+    AbstractEvaluatedPhysicalBasisFunction,
+    AbstractEvaluatedReferenceBasisFunction,
+    EvaluatedPhysicalBasisFunction,
+    EvaluatedReferenceBasisFunction,
+)
 from uflx.expressions import RealScalar
 from uflx.points import Point
 
@@ -20,9 +25,15 @@ def test_physical_basis_function(lagrange_element):
     assert phys_f.domain_size == 2
     assert phys_f.value_shape == ()
 
-    assert phys_f.diff(1).derivative == (0, 1)
-    assert phys_f.diff(1).diff(1).derivative == (0, 2)
-    assert phys_f.diff(1).diff(0).diff(1).derivative == (1, 2)
+    d1 = phys_f.diff(1)
+    d11 = phys_f.diff(1).diff(1)
+    d101 = phys_f.diff(1).diff(0).diff(1)
+    assert isinstance(d1, AbstractEvaluatedPhysicalBasisFunction)
+    assert isinstance(d11, AbstractEvaluatedPhysicalBasisFunction)
+    assert isinstance(d101, AbstractEvaluatedPhysicalBasisFunction)
+    assert d1.derivative == (0, 1)
+    assert d11.derivative == (0, 2)
+    assert d101.derivative == (1, 2)
 
 
 def test_reference_basis_function(lagrange_element):
@@ -36,6 +47,12 @@ def test_reference_basis_function(lagrange_element):
     assert ref_f.domain_size == 2
     assert ref_f.value_shape == ()
 
-    assert ref_f.diff(1).derivative == (0, 1)
-    assert ref_f.diff(1).diff(1).derivative == (0, 2)
-    assert ref_f.diff(1).diff(0).diff(1).derivative == (1, 2)
+    d1 = ref_f.diff(1)
+    d11 = ref_f.diff(1).diff(1)
+    d101 = ref_f.diff(1).diff(0).diff(1)
+    assert isinstance(d1, AbstractEvaluatedReferenceBasisFunction)
+    assert isinstance(d11, AbstractEvaluatedReferenceBasisFunction)
+    assert isinstance(d101, AbstractEvaluatedReferenceBasisFunction)
+    assert d1.derivative == (0, 1)
+    assert d11.derivative == (0, 2)
+    assert d101.derivative == (1, 2)
