@@ -196,9 +196,14 @@ the build above to actually exercise the generator end to end.
 
 This backend originated as a prototype in a companion repo
 (`mlir-kernels`) investigating whether MLIR could replace FFCx's
-C-codegen backend for FEM kernel generation. That repo also has a
-text-emission variant of this same generator and a broader FFCx
-comparison harness; this package carries over only the op-builder-based
-generator (`generate_mlir_module`) and its loop-hoisting analysis
-(`hoist.py`), to keep one supported code path here rather than two
-behaviourally-equivalent generators.
+C-codegen backend for FEM kernel generation. That repo's text-emission
+variant of this same generator was never carried over -- only the
+op-builder-based generator (`generate_mlir_module`) and its loop-hoisting
+analysis (`hoist.py`) were, to keep one supported code path here rather
+than two behaviourally-equivalent generators. The rest of `mlir-kernels`
+(the hand-written/basix-generated quadrature-loop kernels it started
+from, and the FFCx comparison harness built around them) has since been
+brought over too, under `demo/` -- see that folder's own README. Two of
+those scripts (`demo/ffcx_compare.py`, `demo/ffcx_compare_uflx.py`) need
+the optional `fenics-ffcx` dependency, which is why they live in `demo/`
+rather than as part of this package's own installable surface.
