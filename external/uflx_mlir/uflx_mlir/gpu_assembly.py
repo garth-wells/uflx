@@ -37,16 +37,26 @@ hoist.compute_fission_plan to recognize a thread-bound gap variable and
 skip fissioning it entirely is a natural follow-up, kept out of this
 change to keep the diff reviewable.
 
-This module uses `scf.while`, `scf.if`, and
-`memref.generic_atomic_rmw`/`memref.atomic_yield` -- none of which
-anything else in this codebase has used before (emit.py sticks to
-`scf.for`, `arith`, and `memref.load/store/alloca/global`). It was
-written without access to a real `mlir.ir` build to verify against; the
-`scf.while`/`scf.if` region wiring and the dynamic-memref-shape
-construction (`ShapedType.get_dynamic_size()`) are the parts most likely
-to need a fix once actually run -- see the module's own test file for
-what could be checked without one (the binary-search algorithm itself,
-independent of its MLIR encoding).
+This module uses `scf.while`, `scf.if`, and `memref.atomic_rmw`
+(kind `addf`) -- none of which anything else in this codebase has used
+before (emit.py sticks to `scf.for`, `arith`, and
+`memref.load/store/alloca/global`). An earlier draft used
+`memref.generic_atomic_rmw`/`memref.atomic_yield` (a compare-and-swap
+loop) instead, on the theory that it needed no risky "kind" attribute to
+guess; running it against a real mlir build showed that reasoning was
+backwards for a float accumulator: LLVM's `cmpxchg` (what
+`generic_atomic_rmw` lowers to) only accepts integer or pointer operands,
+so it failed to compile for an f64 memref ("operand #1 must be integer or
+LLVM pointer type, but got 'f64'"). `memref.atomic_rmw`'s `addf` kind
+instead lowers to a native `llvm.atomicrmw fadd`, which NVVM/PTX
+implements as a real hardware atomic float add (`atom.add.f64`) -- both
+correct and a better match for laplacian.h's own `atomicAdd` than a
+hand-rolled CAS loop ever was. `scf.while`/`scf.if` region wiring and the
+dynamic-memref-shape construction (`ShapedType.get_dynamic_size()`) were
+the other parts flagged as least certain without a real build to test
+against; both turned out fine once actually run -- see the module's own
+test file for what could be checked without one (the binary-search
+algorithm itself, independent of its MLIR encoding).
 """
 
 from __future__ import annotations
@@ -215,17 +225,20 @@ def _binary_search_and_scatter(
                 )
             inner_else = inner_if.regions[1].blocks.append()
             with InsertionPoint(inner_else):
-                rmw = Operation.create(
-                    "memref.generic_atomic_rmw",
+                # AtomicRMWKind (arith::AtomicRMWKind, stable, long-standing
+                # ordinals): addf=0, addi=1, assign=2, maximumf=3, maxs=4,
+                # maxu=5, minimumf=6, mins=7, minu=8, mulf=9, muli=10, ori=11,
+                # andi=12, maxnumf=13, minnumf=14. Built as a raw i64
+                # IntegerAttr (confirmed against the real
+                # AtomicRMWKindAttr registration, not guessed) rather than
+                # importing the arith dialect's generated enum just for one
+                # value.
+                Operation.create(
+                    "memref.atomic_rmw",
                     results=[ctx.f64],
-                    operands=[avals, idx],
-                    regions=1,
+                    operands=[value, avals, idx],
+                    attributes={"kind": IntegerAttr.get(IntegerType.get_signless(64), 0)},
                 )
-                rmw_block = rmw.regions[0].blocks.append(ctx.f64)
-                with InsertionPoint(rmw_block):
-                    (old,) = rmw_block.arguments
-                    new = _op2("arith.addf", ctx.f64, old, value)
-                    Operation.create("memref.atomic_yield", operands=[new])
                 # Force minidx > maxidx so the while's own condition check
                 # fails next time round -- this is the C loop's "break".
                 Operation.create("scf.yield", operands=[one_i32, zero_i32])
@@ -736,3 +749,85 @@ def generate_csr_entry_gpu_module(
 
     layout = CsrEntryLayout(ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs)
     return module, layout
+
+
+def lower_module_to_nvvm(
+    module: Module,
+    *,
+    cubin_chip: str = "sm_80",
+    cubin_format: str = "isa",
+) -> None:
+    """Lower a gpu.module-containing module (see generate_csr_entry_gpu_module)
+    all the way to compiled NVVM/PTX, in place, via MLIR's own bundled
+    `gpu-lower-to-nvvm-pipeline` (mlir/lib/Dialect/GPU/Pipelines/
+    GPUToNVVMPipeline.cpp) rather than hand-assembling the individual
+    conversion passes.
+
+    That pipeline is only compiled in when the NVPTX backend is part of
+    the build (MLIR_ENABLE_CUDA_CONVERSIONS, auto-derived in mlir's own
+    CMakeLists.txt from "NVPTX" being in LLVM_TARGETS_TO_BUILD --
+    confirmed true for the mlir-kernels build this was written against),
+    and is registered automatically the moment `mlir.ir` is imported
+    (mlirRegisterAllPasses() runs on module load -- see
+    lib/Bindings/Python/RegisterEverything.cpp), so no separate
+    registration call is needed here.
+
+    cubin_format defaults to "isa" (plain PTX assembly text) rather than
+    the pipeline's own default "fatbin": producing an actual cubin/fatbin
+    requires shelling out to NVIDIA's `ptxas` (part of the CUDA Toolkit,
+    found via $PATH or NVVM::getCUDAToolkitPath()'s env vars), which a
+    plain development machine -- e.g. the Mac this was developed on --
+    won't have installed; PTX text only needs LLVM's own compiled-in
+    NVPTX backend, already confirmed present. Switch to "fatbin"/"bin" on
+    a machine with the CUDA Toolkit installed to get an actually loadable
+    binary rather than assembly text (see ModuleToBinary.cpp's
+    CompilationTarget::{Assembly,Binary,Fatbin,Offload} for the accepted
+    values -- both "isa"/"assembly" and "bin"/"binary"/"fatbin"/"fatbinary"
+    spellings work).
+
+    This exercises far more of the toolchain than anything else in this
+    module: real NVPTX backend codegen, not just IR construction and
+    module.operation.verify(). Running it against a real build (with
+    cubin_format="fatbin", the original default) got all the way through
+    every conversion pass -- including the arith/memref-to-llvm lowering
+    of this module's memref.atomic_rmw<addf> into a native
+    `llvm.atomicrmw fadd` -- and only failed at the very last step
+    because `ptxas` wasn't on that machine; switching to "isa" avoids
+    that step entirely. cubin_chip defaults to "sm_80" (Ampere) rather
+    than the pipeline's own stale "sm_50" default; override it to match
+    whatever GPU the compiled output is actually meant to target.
+
+    No ROCDL/AMDGPU equivalent exists yet: unlike NVVM, this LLVM
+    checkout has no bundled "gpu-lower-to-rocdl-pipeline" convenience
+    pass (mlir/lib/Dialect/GPU/Pipelines/ contains only
+    GPUToNVVMPipeline.cpp) -- an AMDGPU path would need the individual
+    convert-gpu-to-rocdl / gpu-rocdl-attach-target / gpu-module-to-binary
+    passes assembled by hand, not attempted here.
+
+    Args:
+        module: A module built by generate_csr_entry_gpu_module (or
+            anything else containing a gpu.module targeting NVVM),
+            modified in place.
+        cubin_chip: The target NVPTX chip, e.g. "sm_70", "sm_80", "sm_90".
+        cubin_format: The pipeline's `cubin-format` option -- "isa"
+            (default here; human-readable PTX assembly, no `ptxas`
+            needed), "fatbin" (the pipeline's own default) or "bin" (a
+            single cubin, no fatbin wrapper) -- the latter two need
+            `ptxas` on $PATH or findable via NVVM::getCUDAToolkitPath().
+    """
+    from mlir.passmanager import PassManager
+
+    pipeline = (
+        "builtin.module(gpu-lower-to-nvvm-pipeline{"
+        f"cubin-chip={cubin_chip} cubin-format={cubin_format}"
+        "})"
+    )
+    # generate_csr_entry_gpu_module's own `with ctx_container, ...:` block
+    # (which made ctx_container the default/current context) has already
+    # exited by the time a caller gets `module` back, so PassManager needs
+    # the context passed explicitly here rather than relying on a
+    # surrounding `with Context():` -- caught by running this against a
+    # real mlir build ("An MLIR function requires a Context but none was
+    # provided...").
+    pm = PassManager.parse(pipeline, context=module.context)
+    pm.run(module.operation)

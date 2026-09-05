@@ -176,3 +176,40 @@ def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
         pass
     else:
         raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
+
+
+def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
+    """Actually compile the GPU-wrapped P2 stiffness kernel down to NVVM/PTX.
+
+    This is the real end-to-end check: not just IR construction and
+    module.operation.verify() (already covered by
+    test_generate_csr_entry_gpu_module_verifies_for_p2_stiffness above),
+    but real NVPTX backend codegen via MLIR's bundled
+    gpu-lower-to-nvvm-pipeline. Uses lower_module_to_nvvm's default
+    cubin_format="isa" (plain PTX text) rather than "fatbin": running
+    this with "fatbin" first got all the way through every conversion
+    pass -- including this module's memref.atomic_rmw<addf> lowering to
+    a native llvm.atomicrmw fadd -- and only failed at the very last step
+    because `ptxas` (part of the CUDA Toolkit) wasn't on that machine;
+    "isa" stops one step earlier, at plain PTX assembly text, which only
+    needs LLVM's own compiled-in NVPTX backend. If this fails, the
+    traceback should say which pipeline stage it failed in; that's the
+    thing to report back.
+    """
+    from uflx_mlir.gpu_assembly import generate_csr_entry_gpu_module, lower_module_to_nvvm
+
+    form, _ = _stiffness_form(2)
+    module, _ = generate_csr_entry_gpu_module(
+        form, 2, "tabulate_tensor_csr_gpu_nvvm", basix.CellType.tetrahedron
+    )
+    lower_module_to_nvvm(module, cubin_chip="sm_80")
+
+    text = str(module)
+    # After a successful compile the original gpu.func/gpu.thread_id ops
+    # should be gone, replaced by a gpu.binary holding the serialized PTX
+    # text (real PTX assembly, e.g. mentioning the .visible .entry
+    # directive PTX uses for kernel entry points).
+    assert "gpu.binary" in text
+    assert "gpu.thread_id" not in text
+    assert "gpu.func" not in text
+    assert ".visible .entry" in text
