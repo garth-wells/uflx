@@ -901,4 +901,9 @@ def extract_ptx_text(module: Module) -> str:
         else:
             chars.append(c)
             i += 1
-    return "".join(chars)
+    # The serialized object string is null-terminated internally (an
+    # artifact of how gpu-module-to-binary stores it, not part of the
+    # actual PTX) -- confirmed by running this against a real build,
+    # which decoded a trailing "\x00" every time. Strip it so callers
+    # get exactly the PTX text, nothing else.
+    return "".join(chars).rstrip("\x00")
