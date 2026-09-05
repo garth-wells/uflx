@@ -68,6 +68,7 @@ from typing import Any
 import basix
 import numpy as np
 from mlir.dialects import gpu as gpu_d
+from mlir.dialects import memref as memref_d
 from mlir.ir import (
     Context,
     DenseElementsAttr,
@@ -88,6 +89,7 @@ from mlir.ir import (
     SymbolRefAttr,
     TypeAttr,
     UnitAttr,
+    UnrankedMemRefType,
     Value,
 )
 from uflx_codegeneration.nodes import Loop
@@ -515,6 +517,19 @@ def generate_csr_entry_gpu_module(
     gpu-module-to-binary) is a separate step not attempted here -- this
     only builds and verifies the gpu-dialect IR itself.
 
+    The host launch wrapper also brackets its gpu.launch_func call with
+    gpu.host_register/gpu.host_unregister on every memref argument.
+    Without this, real execution (as opposed to just compiling to PTX/
+    SASS -- see lower_module_to_nvvm) would be broken: gpu.launch_func's
+    own lowering hands kernelOperands' raw pointers straight to
+    mgpuLaunchKernel with no device allocation or host->device copy of
+    its own, so an ordinary host-heap buffer would be an invalid pointer
+    once dereferenced by device code. gpu.host_register maps existing
+    host memory into the device address space in place instead (see its
+    op doc in GPUOps.td) -- confirmed against GPUToLLVMConversion.cpp's
+    mgpuMemHostRegisterMemRef call, not guessed. It only accepts
+    unranked memrefs, hence the memref.cast before each call.
+
     Args/Returns/Raises: see generate_csr_entry_module -- identical, plus
     the returned module additionally contains the gpu.module (named
     gpu_module_name(kernel_name)) and the host launch wrapper (named
@@ -718,6 +733,37 @@ def generate_csr_entry_gpu_module(
                     h_cell_id,
                 ) = launch_entry.arguments
 
+                # gpu.launch_func's own lowering (GPUToLLVMConversion.cpp's
+                # LaunchFuncOpLowering) does nothing more than hand the
+                # kernelOperands' raw pointers straight to mgpuLaunchKernel
+                # -- it does NOT allocate device memory or copy host data
+                # there first. Without registering these host buffers, the
+                # kernel would dereference ordinary host malloc'd pointers
+                # from device code: undefined behaviour (illegal memory
+                # access) on a discrete GPU. gpu.host_register (lowering to
+                # mgpuMemHostRegisterMemRef, confirmed against
+                # GPUToLLVMConversion.cpp) maps existing host memory into
+                # the device address space in place instead -- no separate
+                # device allocation or explicit copy needed, and per its
+                # own op doc host writes made before this point (all of
+                # ours are, since the caller fills these buffers before
+                # invoking this function) are guaranteed visible to a
+                # kernel launched afterwards, with device writes visible
+                # back on the host once the (synchronous, no async token)
+                # gpu.launch_func below returns. It only accepts unranked
+                # memrefs (GPUOps.td's GPU_HostRegisterOp: AnyUnrankedMemRef)
+                # so each ranked argument is memref.cast to that first.
+                unranked_f64 = UnrankedMemRefType.get(f64, None)
+                unranked_i32 = UnrankedMemRefType.get(i32, None)
+                for value, unranked_ty in (
+                    (h_avals, unranked_f64),
+                    (h_acols, unranked_i32),
+                    (h_arowptr, unranked_i32),
+                    (h_geometry, unranked_f64),
+                    (h_cell_dofs, unranked_i32),
+                ):
+                    gpu_d.HostRegisterOp(memref_d.CastOp(unranked_ty, value).result)
+
                 # Fresh constants scoped to this block -- ctx.index_const's
                 # entries were built inside the gpu.func above and are not
                 # valid SSA values here.
@@ -744,6 +790,16 @@ def generate_csr_entry_gpu_module(
                     blockSizeZ=one,
                     kernelOperands=[h_avals, h_acols, h_arowptr, h_geometry, h_cell_dofs, h_cell_id],
                 )
+
+                for value, unranked_ty in (
+                    (h_avals, unranked_f64),
+                    (h_acols, unranked_i32),
+                    (h_arowptr, unranked_i32),
+                    (h_geometry, unranked_f64),
+                    (h_cell_dofs, unranked_i32),
+                ):
+                    gpu_d.HostUnregisterOp(memref_d.CastOp(unranked_ty, value).result)
+
                 Operation.create("func.return")
 
         module.operation.verify()

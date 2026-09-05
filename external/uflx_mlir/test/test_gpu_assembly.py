@@ -253,3 +253,245 @@ def test_extract_ptx_text_round_trips_real_ptx() -> None:
     # \x00 would mean extract_ptx_text's trailing-NUL strip regressed.
     assert "\\" not in ptx
     assert "\x00" not in ptx
+
+
+def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
+    """Numerically validate generate_csr_entry_module's CSR-scatter kernel.
+
+    Runs entirely on the CPU (no NVPTX/CUDA involved -- this works on any
+    machine with the mlir Python bindings, no GPU-target build needed)
+    via ExecutionEngine. Calls the generated kernel once per (tx, ty)
+    local-dof pair for a single P2 tetrahedron cell -- mirroring, from
+    Python, exactly the same per-thread computation
+    generate_csr_entry_gpu_module's kernel does via gpu.thread_id -- and
+    compares the resulting CSR matrix against test_emit._reference_stiffness,
+    an independent basix-quadrature computation of the same form (already
+    trusted: it validates generate_mlir_module's own stiffness kernel
+    elsewhere in this test suite). This is the first time
+    generate_csr_entry_module's actual arithmetic (as opposed to just its
+    IR construction/module.operation.verify()) has been checked against
+    anything.
+
+    Reuses test_emit._PIPELINE unmodified: that pipeline already lowers
+    index-typed arith ops fine (via arith-to-llvm's own built-in index
+    conversion) despite having no dedicated convert-index-to-llvm pass --
+    proven by generate_mlir_module's own kernel, which also uses `index`
+    throughout. This kernel additionally exercises scf.while/scf.if
+    (already covered by the pipeline's convert-scf-to-cf +
+    convert-cf-to-llvm) and memref.atomic_rmw (covered by
+    finalize-memref-to-llvm, the same general memref-op lowering already
+    proven to handle it correctly on the GPU/NVVM path).
+    """
+    import ctypes
+
+    import numpy as np
+    from mlir.execution_engine import ExecutionEngine
+    from mlir.passmanager import PassManager
+    from mlir.runtime import get_ranked_memref_descriptor
+
+    from test_emit import _PIPELINE, _reference_geometry, _reference_stiffness
+
+    from uflx_mlir.gpu_assembly import generate_csr_entry_module
+
+    kernel_name = "tabulate_tensor_csr_execution_test"
+    form, ndofs = _stiffness_form(2)
+    module, layout = generate_csr_entry_module(form, 2, kernel_name, basix.CellType.tetrahedron)
+    assert layout.ndofs == ndofs == 10
+
+    coords = np.array(
+        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+        dtype=np.float64,
+    )
+    geometry = _reference_geometry(coords)
+    assert geometry.shape == (layout.geometry_size,)
+
+    # Dense, identity-mapped CSR for one cell: row r's ndofs entries are
+    # exactly columns 0..ndofs-1 in order, so the kernel's own binary
+    # search always finds a match, and cell_dofs' identity local-to-global
+    # map means the (row, col) actually written is exactly the (tx, ty)
+    # pair passed in -- so Avals reshaped to (ndofs, ndofs) is directly
+    # comparable to _reference_stiffness's local matrix, no permutation
+    # needed.
+    avals = np.zeros(ndofs * ndofs, dtype=np.float64)
+    acols = np.tile(np.arange(ndofs, dtype=np.int32), ndofs)
+    arowptr = np.arange(0, ndofs * ndofs + 1, ndofs, dtype=np.int32)
+    cell_dofs = np.arange(ndofs, dtype=np.int32)
+
+    with module.context:
+        pm = PassManager.parse(_PIPELINE)
+        pm.run(module.operation)
+        engine = ExecutionEngine(module, opt_level=3)
+
+    # Raw packed-args invocation (matching test_emit._call_kernel's own
+    # style): each element of the void* array below must be the address
+    # of a variable holding exactly what the C interface wrapper expects
+    # for that argument -- a MemRefDescriptor* for memref args (hence the
+    # double ctypes.pointer(...) -- get_ranked_memref_descriptor already
+    # returns the descriptor struct, one pointer() gets to
+    # MemRefDescriptor*, a second gets the address the trampoline itself
+    # dereferences), and the scalar's own storage address for the
+    # by-value index args (a single ctypes.pointer(...)).
+    raw_fn = engine.lookup(kernel_name)
+    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
+    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
+    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
+    geometry_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometry)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+
+    for tx in range(ndofs):
+        for ty in range(ndofs):
+            cell_id_p = ctypes.pointer(ctypes.c_longlong(0))
+            tx_p = ctypes.pointer(ctypes.c_longlong(tx))
+            ty_p = ctypes.pointer(ctypes.c_longlong(ty))
+            packed = (ctypes.c_void_p * 8)(
+                ctypes.cast(avals_pp, ctypes.c_void_p).value,
+                ctypes.cast(acols_pp, ctypes.c_void_p).value,
+                ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
+                ctypes.cast(geometry_pp, ctypes.c_void_p).value,
+                ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
+                ctypes.cast(cell_id_p, ctypes.c_void_p).value,
+                ctypes.cast(tx_p, ctypes.c_void_p).value,
+                ctypes.cast(ty_p, ctypes.c_void_p).value,
+            )
+            raw_fn(packed)
+
+    a = avals.reshape(ndofs, ndofs)
+    a_ref = _reference_stiffness(coords, 2)
+    np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
+
+
+def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> None:
+    """Numerically validate the compiled GPU kernel by actually running it on a GPU.
+
+    Unlike the CPU-path test above (which calls the kernel once per
+    (tx, ty) pair from Python), a single gpu.launch_func call here
+    launches (ndofs, ndofs, 1) threads that cover every (tx, ty) pair in
+    one shot -- matching how this kernel is actually meant to run.
+
+    Needs: a real NVIDIA GPU, an MLIR build configured with
+    -DMLIR_ENABLE_CUDA_RUNNER=ON (so libmlir_cuda_runtime.so exists --
+    that's the shared lib providing mgpuModuleLoad/mgpuLaunchKernel/
+    mgpuMemHostRegisterMemRef/etc. that ExecutionEngine needs to resolve
+    the calls gpu-to-llvm conversion emits), and either the
+    MLIR_CUDA_RUNTIME_LIB environment variable pointing at that .so, or
+    it locatable by searching upward from the mlir Python package's own
+    install directory (its usual place: <build>/lib/libmlir_cuda_runtime.so,
+    a few levels above <build>/tools/mlir/python_packages/mlir_core/mlir/).
+    Skips (rather than failing) if none of that is available -- e.g. on
+    the Mac this was developed on, which has no CUDA Toolkit at all.
+
+    This is genuinely new: nothing before this has actually EXECUTED a
+    kernel from this module on a GPU, only compiled/disassembled one (see
+    test_lower_module_to_nvvm_produces_a_gpu_binary /
+    test_extract_ptx_text_round_trips_real_ptx) or run the equivalent
+    CPU-path computation (see
+    test_generate_csr_entry_module_matches_quadrature_reference above).
+    If this fails, the traceback (or a wrong/zero result) is exactly the
+    signal needed to find out what -- most likely candidates, in rough
+    order of suspicion: the assumed 64-bit ctypes width for `index`-typed
+    scalar args, gpu.host_register actually being supported/effective in
+    this environment's CUDA driver, or the shared-lib search heuristic
+    above not finding the right .so.
+    """
+    import ctypes
+    import glob
+    import os
+
+    import numpy as np
+    import pytest
+
+    pytest.importorskip("mlir.execution_engine")
+
+    from mlir.execution_engine import ExecutionEngine
+    from mlir.runtime import get_ranked_memref_descriptor
+
+    from test_emit import _reference_geometry, _reference_stiffness
+
+    from uflx_mlir.gpu_assembly import (
+        generate_csr_entry_gpu_module,
+        gpu_launch_name,
+        lower_module_to_nvvm,
+    )
+
+    cuda_runtime_lib = os.environ.get("MLIR_CUDA_RUNTIME_LIB")
+    if not cuda_runtime_lib:
+        import mlir
+
+        here = os.path.dirname(os.path.abspath(mlir.__file__))
+        found: list[str] = []
+        for _ in range(8):
+            found.extend(
+                glob.glob(os.path.join(here, "lib", "libmlir_cuda_runtime.so*"))
+            )
+            if found:
+                break
+            parent = os.path.dirname(here)
+            if parent == here:
+                break
+            here = parent
+        cuda_runtime_lib = found[0] if found else None
+    if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
+        pytest.skip(
+            "libmlir_cuda_runtime.so not found -- rebuild MLIR with "
+            "-DMLIR_ENABLE_CUDA_RUNNER=ON, or set MLIR_CUDA_RUNTIME_LIB "
+            "to its path"
+        )
+
+    kernel_name = "tabulate_tensor_csr_gpu_execution_test"
+    form, ndofs = _stiffness_form(2)
+    module, layout = generate_csr_entry_gpu_module(
+        form, 2, kernel_name, basix.CellType.tetrahedron
+    )
+    assert layout.ndofs == ndofs == 10
+    # sm_89: eng-nvidia's Ada Lovelace GPU (see gpu_assembly.py's own
+    # cubin_chip default docstring for why "sm_80" is the fallback
+    # elsewhere). "isa" (the lower_module_to_nvvm default) is plain PTX
+    # text; the real CUDA driver's module loader (cuModuleLoadDataEx,
+    # underneath mgpuModuleLoad) accepts PTX text directly and JITs it at
+    # load time, so this should be loadable without needing "fatbin"/
+    # "bin" -- but that assumption is exactly the kind of thing this test
+    # exists to check.
+    lower_module_to_nvvm(module, cubin_chip="sm_89")
+
+    coords = np.array(
+        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+        dtype=np.float64,
+    )
+    geometry = _reference_geometry(coords)
+    avals = np.zeros(ndofs * ndofs, dtype=np.float64)
+    acols = np.tile(np.arange(ndofs, dtype=np.int32), ndofs)
+    arowptr = np.arange(0, ndofs * ndofs + 1, ndofs, dtype=np.int32)
+    cell_dofs = np.arange(ndofs, dtype=np.int32)
+
+    with module.context:
+        engine = ExecutionEngine(module, opt_level=3, shared_libs=[cuda_runtime_lib])
+
+    raw_fn = engine.lookup(gpu_launch_name(kernel_name))
+    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
+    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
+    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
+    geometry_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometry)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    cell_id_p = ctypes.pointer(ctypes.c_longlong(0))
+
+    packed = (ctypes.c_void_p * 6)(
+        ctypes.cast(avals_pp, ctypes.c_void_p).value,
+        ctypes.cast(acols_pp, ctypes.c_void_p).value,
+        ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
+        ctypes.cast(geometry_pp, ctypes.c_void_p).value,
+        ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
+        ctypes.cast(cell_id_p, ctypes.c_void_p).value,
+    )
+    raw_fn(packed)
+
+    a = avals.reshape(ndofs, ndofs)
+    a_ref = _reference_stiffness(coords, 2)
+    # Each (row, col) slot is written by exactly one thread (acols has no
+    # duplicate columns within a row), so there's no cross-thread atomic
+    # accumulation to introduce order-of-operations float differences --
+    # this should match the CPU path's own precision. If this is the
+    # *only* assertion that fails (real numbers, just slightly off), the
+    # likely cause is GPU FMA contraction (fusing a mul+add the CPU path
+    # keeps separate); loosen rtol/atol rather than treating that as a
+    # correctness bug.
+    np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
