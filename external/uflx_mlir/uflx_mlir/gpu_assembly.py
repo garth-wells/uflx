@@ -655,12 +655,19 @@ def generate_csr_entry_gpu_module(
                     )
 
                 kernel_func_ty = FunctionType.get(kernel_arg_types, [])
-                gpu_func_op = gpu_d.GPUFuncOp(TypeAttr.get(kernel_func_ty))
-                gpu_func_op.attributes["sym_name"] = StringAttr.get(kernel_name)
-                # See GPUBase.td's getKernelFuncAttrName(): a gpu.func's
-                # "kernel" keyword in textual IR is exactly this unit
-                # attribute, not a constructor parameter.
-                gpu_func_op.attributes["gpu.kernel"] = UnitAttr.get()
+                # GPUFuncOp's generated Python constructor (like
+                # GPUModuleOp's, see this function's docstring) now takes
+                # sym_name directly rather than requiring it be set via
+                # .attributes[...] afterward -- confirmed via the real
+                # ValueError this raised without it ("sym_name must be a
+                # string or a StringAttr") on eng-nvidia's rebuilt LLVM.
+                # It also now takes `kernel` as a plain bool constructor
+                # argument instead of needing the "gpu.kernel" unit
+                # attribute (see GPUBase.td's getKernelFuncAttrName())
+                # set by hand.
+                gpu_func_op = gpu_d.GPUFuncOp(
+                    TypeAttr.get(kernel_func_ty), sym_name=kernel_name, kernel=True
+                )
                 entry = gpu_func_op.regions[0].blocks.append(*kernel_arg_types)
                 with InsertionPoint(entry):
                     avals, acols, arowptr, geometry_arg, cell_dofs, cell_id = entry.arguments
