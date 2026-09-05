@@ -417,18 +417,35 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
     if not cuda_runtime_lib:
         import mlir
 
-        here = os.path.dirname(os.path.abspath(mlir.__file__))
+        # mlir's __file__ can be None (it can be laid out as a PEP 420
+        # namespace package by some build/install configurations -- a
+        # plain regular package always has __file__, so this is only
+        # exercised on those configurations; caught by running this
+        # against eng-nvidia's build, which hit exactly this: an
+        # unguarded os.path.abspath(mlir.__file__) raised "expected str,
+        # bytes or os.PathLike object, not NoneType"). __path__ is set
+        # either way, so start the upward search from there instead.
+        start_dirs = []
+        for p in getattr(mlir, "__path__", []) or []:
+            start_dirs.append(os.path.abspath(p))
+        if getattr(mlir, "__file__", None):
+            start_dirs.append(os.path.dirname(os.path.abspath(mlir.__file__)))
+
         found: list[str] = []
-        for _ in range(8):
-            found.extend(
-                glob.glob(os.path.join(here, "lib", "libmlir_cuda_runtime.so*"))
-            )
+        for start in start_dirs:
+            here = start
+            for _ in range(8):
+                found.extend(
+                    glob.glob(os.path.join(here, "lib", "libmlir_cuda_runtime.so*"))
+                )
+                if found:
+                    break
+                parent = os.path.dirname(here)
+                if parent == here:
+                    break
+                here = parent
             if found:
                 break
-            parent = os.path.dirname(here)
-            if parent == here:
-                break
-            here = parent
         cuda_runtime_lib = found[0] if found else None
     if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
         pytest.skip(

@@ -607,8 +607,21 @@ def generate_csr_entry_gpu_module(
 
         with InsertionPoint(module.body):
             gmod_name = gpu_module_name(kernel_name)
-            gpu_module_op = gpu_d.GPUModuleOp()
-            gpu_module_op.attributes["sym_name"] = StringAttr.get(gmod_name)
+            # GPUModuleOp's generated Python constructor has changed
+            # across LLVM checkouts of the same release/18.x branch: an
+            # older one (what this was originally written/verified
+            # against) took no sym_name parameter at all -- set via
+            # .attributes[...] afterward, same as GPUFuncOp below -- a
+            # newer one requires it as a constructor argument outright
+            # ("missing 1 required positional argument: 'sym_name'",
+            # caught by running this against eng-nvidia's rebuilt LLVM).
+            # Handle both rather than pin to whichever this happens to
+            # be built against.
+            try:
+                gpu_module_op = gpu_d.GPUModuleOp(sym_name=StringAttr.get(gmod_name))
+            except TypeError:
+                gpu_module_op = gpu_d.GPUModuleOp()
+                gpu_module_op.attributes["sym_name"] = StringAttr.get(gmod_name)
             gpu_body = gpu_module_op.regions[0].blocks.append()
             with InsertionPoint(gpu_body):
                 # gpu.module is IsolatedFromAbove and its own SymbolTable
