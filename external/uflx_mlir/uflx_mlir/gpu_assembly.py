@@ -61,6 +61,7 @@ algorithm itself, independent of its MLIR encoding).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -831,3 +832,73 @@ def lower_module_to_nvvm(
     # provided...").
     pm = PassManager.parse(pipeline, context=module.context)
     pm.run(module.operation)
+
+
+def extract_ptx_text(module: Module) -> str:
+    """Pull the raw PTX assembly text back out of a module already
+    compiled by lower_module_to_nvvm(..., cubin_format="isa") (the
+    default), so it can be handed to a real `ptxas` on a machine that
+    actually has an NVIDIA GPU and the CUDA Toolkit -- this dev machine's
+    build only got as far as PTX text (see lower_module_to_nvvm's own
+    docstring for why).
+
+    gpu-module-to-binary attaches its compiled output as a `#gpu.object<>`
+    attribute inside a `gpu.binary` op it creates in place of the
+    original `gpu.module`. There's no dedicated Python wrapper class for
+    that attribute in this build (unlike most other GPU dialect
+    attributes), so this recovers the string by hand instead: MLIR's
+    string-attribute printer (llvm::printEscapedString, in
+    llvm/lib/Support/StringExtras.cpp -- confirmed against that source,
+    not guessed) prints every character that isn't printable-and-not-a-
+    quote as a `\\XX` two-hex-digit escape -- including a literal `"`
+    itself, which is why a plain `"([^"]*)"` regex is safe here: the
+    payload can never contain an unescaped quote to confuse the string's
+    boundary. Picks the LONGEST quoted string in the gpu.binary op's own
+    printed text (rather than assuming a fixed position among the
+    target/format/object fields) since the PTX payload is always far
+    longer than the other string attributes next to it (e.g. the "isa"
+    format tag or the "sm_80" chip name).
+
+    Args:
+        module: A module already processed by lower_module_to_nvvm.
+
+    Returns:
+        The decoded PTX assembly text.
+
+    Raises:
+        ValueError: If no gpu.binary op is found (module wasn't compiled
+            yet, or compiled with a target other than NVVM) or it
+            contains no string attribute to recover.
+    """
+    binary_op = None
+    for op in module.body:
+        if op.operation.name == "gpu.binary":
+            binary_op = op
+            break
+    if binary_op is None:
+        raise ValueError(
+            "no gpu.binary op found in this module -- call "
+            "lower_module_to_nvvm(module, ...) first"
+        )
+
+    text = str(binary_op.operation)
+    candidates = re.findall(r'"([^"]*)"', text)
+    if not candidates:
+        raise ValueError("gpu.binary op has no quoted string attribute to recover")
+    escaped = max(candidates, key=len)
+
+    chars = []
+    i = 0
+    while i < len(escaped):
+        c = escaped[i]
+        if c == "\\":
+            if escaped[i + 1] == "\\":
+                chars.append("\\")
+                i += 2
+            else:
+                chars.append(chr(int(escaped[i + 1 : i + 3], 16)))
+                i += 3
+        else:
+            chars.append(c)
+            i += 1
+    return "".join(chars)

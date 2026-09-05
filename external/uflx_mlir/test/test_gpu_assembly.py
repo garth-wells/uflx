@@ -213,3 +213,37 @@ def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
     assert "gpu.thread_id" not in text
     assert "gpu.func" not in text
     assert ".visible .entry" in text
+
+
+def test_extract_ptx_text_round_trips_real_ptx() -> None:
+    """extract_ptx_text should recover genuine, parseable PTX assembly text.
+
+    Complements test_lower_module_to_nvvm_produces_a_gpu_binary's
+    ".visible .entry" in str(module) check (that only proves the PTX
+    text is embedded *somewhere* in the module's printed form) by
+    actually decoding it via extract_ptx_text and checking the result
+    looks like a real, complete PTX file: a `.version` directive first,
+    a `.target sm_80` line matching the cubin_chip passed to
+    lower_module_to_nvvm, and no stray backslash-escape sequences left
+    over from an incomplete unescape.
+    """
+    from uflx_mlir.gpu_assembly import (
+        extract_ptx_text,
+        generate_csr_entry_gpu_module,
+        lower_module_to_nvvm,
+    )
+
+    form, _ = _stiffness_form(2)
+    module, _ = generate_csr_entry_gpu_module(
+        form, 2, "tabulate_tensor_csr_gpu_ptx", basix.CellType.tetrahedron
+    )
+    lower_module_to_nvvm(module, cubin_chip="sm_80")
+
+    ptx = extract_ptx_text(module)
+    assert ptx.strip().startswith(".version")
+    assert ".target sm_80" in ptx
+    assert ".visible .entry" in ptx
+    assert "tabulate_tensor_csr_gpu_ptx" in ptx
+    # A leftover \XX escape or doubled backslash would mean the unescape
+    # loop above didn't actually consume the whole string.
+    assert "\\" not in ptx
