@@ -665,9 +665,18 @@ def generate_csr_entry_gpu_module(
                 # argument instead of needing the "gpu.kernel" unit
                 # attribute (see GPUBase.td's getKernelFuncAttrName())
                 # set by hand.
-                gpu_func_op = gpu_d.GPUFuncOp(
-                    TypeAttr.get(kernel_func_ty), sym_name=kernel_name, kernel=True
-                )
+                # Same kind of GPUFuncOp constructor drift as
+                # GPUModuleOp above: an older generated binding takes no
+                # sym_name/kernel constructor params at all -- set via
+                # .attributes[...] afterward instead. Handle both.
+                try:
+                    gpu_func_op = gpu_d.GPUFuncOp(
+                        TypeAttr.get(kernel_func_ty), sym_name=kernel_name, kernel=True
+                    )
+                except TypeError:
+                    gpu_func_op = gpu_d.GPUFuncOp(TypeAttr.get(kernel_func_ty))
+                    gpu_func_op.attributes["sym_name"] = StringAttr.get(kernel_name)
+                    gpu_func_op.attributes["gpu.kernel"] = UnitAttr.get()
                 entry = gpu_func_op.regions[0].blocks.append(*kernel_arg_types)
                 with InsertionPoint(entry):
                     avals, acols, arowptr, geometry_arg, cell_dofs, cell_id = entry.arguments
@@ -727,7 +736,19 @@ def generate_csr_entry_gpu_module(
                     )
 
                     gpu_d.ReturnOp(operands_=[])
-                gpu_d.ModuleEndOp()
+                try:
+                    gpu_d.ModuleEndOp()
+                except AttributeError:
+                    # Confirmed (via module.operation.verify()'s own error
+                    # message on eng-nvidia's build: "unregistered operation
+                    # 'gpu.module_end' ... that does not allow unknown
+                    # operations") that this build's LLVM checkout has
+                    # dropped gpu.module_end entirely -- it isn't just a
+                    # missing Python wrapper (see GPUModuleOp/GPUFuncOp
+                    # above for that kind of drift); gpu.module itself no
+                    # longer requires an explicit terminator on this build.
+                    # Nothing to emit here in that case.
+                    pass
 
             # Host-side launch wrapper: one gpu.launch_func call, one cell
             # per launch (see this function's docstring for why).
@@ -798,18 +819,42 @@ def generate_csr_entry_gpu_module(
                     attributes={"value": IntegerAttr.get(index_t, ndofs)},
                 ).results[0]
 
-                gpu_d.LaunchFuncOp(
-                    asyncToken=None,
-                    asyncDependencies=[],
-                    kernel=SymbolRefAttr.get([gmod_name, kernel_name]),
-                    gridSizeX=one,
-                    gridSizeY=one,
-                    gridSizeZ=one,
-                    blockSizeX=ndofs_const_host,
-                    blockSizeY=ndofs_const_host,
-                    blockSizeZ=one,
-                    kernelOperands=[h_avals, h_acols, h_arowptr, h_geometry, h_cell_dofs, h_cell_id],
-                )
+                _kernel_operands = [h_avals, h_acols, h_arowptr, h_geometry, h_cell_dofs, h_cell_id]
+                try:
+                    # Raw ODS-generated LaunchFuncOp: individual
+                    # gridSizeX/Y/Z and blockSizeX/Y/Z operands, an
+                    # explicit SymbolRefAttr for `kernel`, and an explicit
+                    # `asyncToken` result-type parameter (None here: this
+                    # launch is synchronous, no async token result).
+                    gpu_d.LaunchFuncOp(
+                        asyncToken=None,
+                        asyncDependencies=[],
+                        kernel=SymbolRefAttr.get([gmod_name, kernel_name]),
+                        gridSizeX=one,
+                        gridSizeY=one,
+                        gridSizeZ=one,
+                        blockSizeX=ndofs_const_host,
+                        blockSizeY=ndofs_const_host,
+                        blockSizeZ=one,
+                        kernelOperands=_kernel_operands,
+                    )
+                except TypeError:
+                    # This build's mlir.dialects.gpu.LaunchFuncOp is the
+                    # hand-written, friendlier wrapper instead: kernel as a
+                    # plain [module_name, kernel_name] list of strings (it
+                    # builds the SymbolRefAttr itself), grid/block sizes as
+                    # 3-tuples, snake_case keyword names, and no explicit
+                    # asyncToken parameter at all -- confirmed via
+                    # inspect.signature on eng-nvidia's build, not guessed.
+                    # Same kind of GPU-dialect Python-binding drift as
+                    # GPUModuleOp/GPUFuncOp/ModuleEndOp above (see this
+                    # function's docstring).
+                    gpu_d.LaunchFuncOp(
+                        [gmod_name, kernel_name],
+                        (one, one, one),
+                        (ndofs_const_host, ndofs_const_host, one),
+                        kernel_operands=_kernel_operands,
+                    )
 
                 for value, unranked_ty in (
                     (h_avals, unranked_f64),
