@@ -202,6 +202,16 @@ def run_variant(label: str, compile_fn, degree: int, n_calls: int, A_ref: np.nda
 
     results = {}
     for variant, fast_call in fast_calls.items():
+        # A is shared across every variant in fast_calls (see
+        # _mlir_fast_calls) -- now that the UFLx kernel no longer
+        # zero-initializes itself (it's pure accumulate, matching FFCx's/
+        # UFC's tabulate_tensor convention), a variant that runs after
+        # another has already accumulated into A would otherwise fail this
+        # check against a stale, non-zero buffer. Reset here, once per
+        # variant, entirely outside the timed region below -- time_calls
+        # itself still reuses A across all n_calls without rezeroing,
+        # unchanged from before.
+        A.fill(0.0)
         fast_call()
         np.testing.assert_allclose(A, A_ref, rtol=1e-9, atol=1e-8)
         calls_s = time_calls(fast_call, n_calls)

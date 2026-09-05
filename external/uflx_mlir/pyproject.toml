@@ -20,6 +20,16 @@ docs = ["sphinx", "sphinx-autoapi", "pydata_sphinx_theme"]
 lint = ["ruff", "mypy"]
 ci = ["pytest", "pytest-xdist", "basix-uflx"]
 
+[tool.setuptools.packages.find]
+# Without this, setuptools' flat-layout auto-discovery picks up demo/ and
+# scripts/ as additional top-level packages alongside uflx_mlir/ (demo/ has
+# no __init__.py, but does contain plain .py files, which is enough to
+# trigger "Multiple top-level packages discovered in a flat-layout" and
+# fail the build outright) -- demo/ is example/comparison scripts meant to
+# be run in place (see demo/README.md), not an importable sub-package of
+# this distribution.
+include = ["uflx_mlir*"]
+
 [tool.ruff]
 line-length = 100
 indent-width = 4

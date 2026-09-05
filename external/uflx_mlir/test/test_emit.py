@@ -113,8 +113,10 @@ def _call_kernel(module: Module, kernel_name: str, a: np.ndarray, coords: np.nda
     Args:
         module: An `mlir.ir.Module` built by `generate_mlir_module`.
         kernel_name: The symbol name of the kernel function inside it.
-        a: The local tensor output buffer, written in place (the kernel
-            zero-initializes it itself).
+        a: The local tensor output buffer, written in place. The kernel is
+            pure accumulate (`A[i, j] += ...`, matching FFCx's/UFC's
+            tabulate_tensor convention) -- callers pass an already-zeroed
+            buffer, as every call site below does via `np.zeros(...)`.
         coords: The cell's coordinate dofs, read by the kernel.
     """
     with module.context:

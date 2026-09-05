@@ -15,7 +15,14 @@ own compiled kernel; after the reordering and hoisting this module
 computes, the same kernel's measured per-call time (via
 `ExecutionEngine.lookup`'s direct calling convention, on real MLIR JIT'd
 code) dropped from ~140 us/call to ~2.8 us/call -- a ~50x reduction,
-putting it ~1.8x FASTER than FFCx per call.
+putting it ~1.8x FASTER than FFCx per call at the time this was written.
+(A later ffcx release -- 0.12.0.dev0 -- closed most of that gap and pulled
+slightly ahead again at P3, ~1.107 us/call vs this module's ~1.978 us/call;
+diffing its generated C against this module's MLIR output showed FFCx
+folding the quadrature weight into its 6-entry geometric factor ONCE PER
+QUADRATURE POINT, rather than once per (dof, dof) pair the way this module
+was doing -- see distribute_shallow_factors below, added to close exactly
+that gap by performing the equivalent algebraic push-down here.)
 
 This module computes, for every node in the AddToLocalTensor body's
 expression DAG, the shallowest loop level at which it's legal to compute
@@ -34,6 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from uflx.expressions import Add, Mult, Neg, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode, NodeOrder, generate_graph
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
@@ -156,6 +164,103 @@ def compute_levels(add_node: AddToLocalTensor, loop_vars: list[str]) -> dict[Gra
     return levels
 
 
+def distribute_shallow_factors(add_node: AddToLocalTensor, loop_vars: list[str]) -> None:
+    """Push a shallow multiplicative factor down into a deeper Mul/Add tree.
+
+    Motivation: uflx_codegeneration's own form lowering places the
+    integration measure's quadrature weight as the OUTERMOST multiplicative
+    factor over the whole per-entry integrand -- add_node.body is literally
+    Mult(weight, big_expression), where `weight` depends only on the
+    quadrature loop variable but `big_expression` depends on every loop
+    variable (the quadrature point AND both dof indices). compute_levels()
+    can only ever assign nodes that already exist in the graph a legal
+    depth -- it can't change what's being multiplied by what -- so
+    Mult(weight, big_expression)'s own level is the union of both operands'
+    dependencies (everything), and it never gets hoisted even though
+    `weight` itself could, in principle, be folded into big_expression's
+    own quadrature-point-only subexpressions (e.g. a geometric factor)
+    instead of being multiplied into the full, already dof-dependent
+    result once per (dof, dof) pair.
+
+    This is exactly the algorithmic difference found (by diffing generated
+    code) between this module's output and ffcx 0.12.0.dev0's own
+    tabulate_tensor codegen at P3: FFCx pre-multiplies its 6-entry
+    geometric factor by the quadrature weight ONCE per quadrature point (6
+    scalar multiplies total per point), where this module's un-rewritten
+    output multiplied the weight in once per (dof, dof) pair (400 multiplies
+    per point) -- see hoist.py's module docstring. This function performs
+    the equivalent algebraic rewrite: wherever a Mult node has one operand
+    at a shallower computed level than the other, the shallower operand
+    gets pushed down through the deeper operand's own Add/Subtract/Neg/Mult
+    structure (distributing over Add/Subtract, commuting through Neg, and
+    at each Mult recursing into whichever of its two operands has the
+    smaller level) until it reaches a leaf or a node type it doesn't know
+    how to push through (e.g. Div, Abs), where it's finally multiplied in
+    directly.
+
+    This is always mathematically exact -- distributing a scalar factor
+    over addition/subtraction/negation, and re-associating a chain of
+    multiplications, are both exactly the identities they appear to be, not
+    approximations -- and can only ever keep or reduce the level
+    compute_levels()/compute_fission_plan() will assign to the rewritten
+    nodes relative to the original, un-rewritten Mult, since every new node
+    built here combines two operands whose levels were already <= that
+    original Mult's level. It mutates add_node.body in place; call this
+    BEFORE compute_fission_plan(), so the fission/depth analysis that
+    follows sees the already-rewritten (and now more hoistable) tree.
+
+    Only ever inspects/rewrites the TOP-level node of add_node.body -- if
+    that top node isn't itself a Mult with two differently-leveled
+    operands (e.g. a mass-matrix-style u*v*dx form has the same shape;
+    something else may not), this is a no-op.
+
+    Floating point note: this changes the ORDER subexpressions are summed
+    and multiplied in (e.g. (w*a)+(w*b) instead of w*(a+b)), which can
+    shift the last bit or two of the result versus the un-rewritten
+    computation -- not a change in which mathematical quantity gets
+    computed, just the rounding path to it. The existing rtol=1e-9-or-
+    looser reference comparisons this package's tests already run (see
+    reorder_quadrature_outermost's own docstring for the same caveat about
+    its reordering) comfortably cover a difference this small.
+
+    Args:
+        add_node: The AddToLocalTensor whose body to rewrite in place.
+        loop_vars: The loop variables enclosing add_node, outermost first
+            (see reorder_quadrature_outermost) -- same as compute_levels'
+            own loop_vars argument.
+    """
+    levels = compute_levels(add_node, loop_vars)
+
+    def push(factor, node):
+        if isinstance(node, Add):
+            return Add(push(factor, node.first), push(factor, node.second))
+        if isinstance(node, Subtract):
+            return Subtract(push(factor, node.first), push(factor, node.second))
+        if isinstance(node, Neg):
+            return Neg(push(factor, node.argument))
+        if isinstance(node, Mult):
+            if levels[node.first] <= levels[node.second]:
+                return Mult(push(factor, node.first), node.second)
+            return Mult(node.first, push(factor, node.second))
+        # Leaf (ArrayEntry, GeometryTensorComponent, CoordinateDofComponent,
+        # RealScalar, Integer, ...) or an operator not handled above (Div,
+        # Abs, ...) -- multiply here directly. Always correct (see
+        # docstring), just not always maximally hoisted.
+        return Mult(factor, node)
+
+    body = add_node.body
+    if not isinstance(body, Mult):
+        return
+    first_level = levels[body.first]
+    second_level = levels[body.second]
+    if first_level < second_level:
+        add_node.body = push(body.first, body.second)
+    elif second_level < first_level:
+        add_node.body = push(body.second, body.first)
+    # else: equal levels -- nothing to gain by pushing either way, leave
+    # add_node.body exactly as it was.
+
+
 def _prefix_depth(deps: frozenset[str], loop_vars: list[str]) -> int:
     """The largest d such that set(loop_vars[:d]) is a SUBSET of deps.
 
@@ -273,16 +378,39 @@ def compute_fission_plan(
     # A node's "signature" is None if it's an ordinary prefix-hoistable node
     # (compute_levels' notion of level applies directly, no fission needed),
     # or (depth, gap_vars) if it needs fission.
+    #
+    # ArrayEntry is special-cased out of fission below. Fission (and the
+    # alpha-equivalence scratch-sharing built on top of it, see
+    # uflx_mlir.emit._alpha_signature) exists to avoid recomputing a
+    # genuinely expensive shared subexpression (originally: geometry/
+    # Jacobian terms, see this module's docstring). A bare ArrayEntry --
+    # a table lookup with no further computation, e.g. an FE0 basis
+    # value read -- has no such cost: reloading it at the point of use
+    # costs exactly what reading a cached scratch value costs, so
+    # fissioning one only adds a pointless copy-to-alloca loop. Verified
+    # empirically (disassembly + timing A/B, correctness-checked via
+    # np.testing.assert_allclose): excluding ArrayEntry from fission
+    # dropped 250->222 instructions and gave a measured ~4% (1.0408x)
+    # per-call speedup on a P3 stiffness kernel, with zero change to the
+    # numeric result. It also matches FFCx's own generated C code, which
+    # always re-reads its static table arrays directly at each point of
+    # use rather than ever caching a plain table value.
+    #
+    # ArrayEntry nodes are pure leaves (no successors), so excluding them
+    # here cannot change any other node's `deps`/gap computation -- only
+    # this node's own signature/level assignment is affected, and forcing
+    # levels[node] = len(loop_vars) below (innermost) mirrors what a
+    # fission group would have assigned it anyway.
     signature: dict[GraphNode, tuple[int, tuple[str, ...]] | None] = {}
     levels: dict[GraphNode, int] = {}
     for node, deps in depends_on.items():
         depth = _prefix_depth(deps, loop_vars)
         gap_vars = tuple(v for v in loop_vars[depth:] if v in deps)
-        if gap_vars:
+        if gap_vars and not isinstance(node, ArrayEntry):
             signature[node] = (depth, gap_vars)
         else:
             signature[node] = None
-            levels[node] = depth
+            levels[node] = len(loop_vars) if gap_vars else depth
 
     # Reverse of `successors` (a node's own operands) -- who *uses* each
     # node -- needed to tell whether a fission candidate's value ever

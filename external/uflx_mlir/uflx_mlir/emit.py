@@ -111,6 +111,7 @@ from typing import Any
 import basix
 import numpy as np
 from mlir.ir import (
+    Attribute,
     Context,
     DenseElementsAttr,
     F64Type,
@@ -153,6 +154,7 @@ from uflx_mlir.geometry import (
 from uflx_mlir.hoist import (
     FissionGroup,
     compute_fission_plan,
+    distribute_shallow_factors,
     reorder_quadrature_outermost,
     topo_order,
     walk_loop_chain,
@@ -174,7 +176,6 @@ class _OpCtx:
     index_const: dict[int, Value] = field(default_factory=dict)  # int -> index-typed Value
     global_val: dict[str, Value] = field(default_factory=dict)  # table name -> memref Value
     index_vars: dict[str, Value] = field(default_factory=dict)  # loop var name -> index Value
-    zero_f64: Value | None = None
 
     # Fission-group scratch buffers (see hoist.compute_fission_plan). Buffers
     # are allocated in the entry block, while a node becomes a scratch_group
@@ -225,8 +226,30 @@ def _op1(name: str, result_type, operand) -> Value:
     return Operation.create(name, results=[result_type], operands=[operand]).results[0]
 
 
+# `#arith.fastmath<contract>` matches C's default FP_CONTRACT behavior --
+# the same optimization FFCx's generated C already benefits from at
+# -O2/-O3 with no special flags at all (a statement like
+# `temp_0[i]*A + temp_1[i]*B + ...` gets its mul+add pairs fused into
+# fused-multiply-add instructions by the C compiler's default contraction).
+# MLIR's arith float ops get none of this for free: they default to no
+# fast-math flags, and convert-arith-to-llvm only carries flags through to
+# the resulting llvm.fmul/llvm.fadd if the arith op itself was given some --
+# without "contract" (or "fast") present on at least the add, LLVM's
+# instruction selection will not fuse a preceding multiply into it. Setting
+# only "contract" (not "fast") deliberately mirrors plain -O2/-O3 rather
+# than -ffast-math -- it's also strictly precision-improving (a fused
+# multiply-add rounds once instead of twice), so it can only tighten, never
+# loosen, the rtol=1e-9 correctness checks already in place.
+_FASTMATH_CONTRACT_ASM = "#arith.fastmath<contract>"
+
+
 def _op2(name: str, result_type, lhs, rhs) -> Value:
-    return Operation.create(name, results=[result_type], operands=[lhs, rhs]).results[0]
+    attributes = {}
+    if name.startswith("arith."):
+        attributes["fastmath"] = Attribute.parse(_FASTMATH_CONTRACT_ASM)
+    return Operation.create(
+        name, results=[result_type], operands=[lhs, rhs], attributes=attributes
+    ).results[0]
 
 
 def _const_f64(ctx: _OpCtx, value: float) -> Value:
@@ -658,24 +681,6 @@ def _build_nest(
     del ctx.index_vars[var]
 
 
-def _emit_zero_init(
-    shape: tuple[int, ...], ctx: _OpCtx, indices: list[Value] | None = None
-) -> None:
-    indices = indices or []
-    if len(indices) == len(shape):
-        _memref_store(ctx.zero_f64, ctx.a_val, indices)  # type: ignore[attr-defined]
-        return
-    axis = len(indices)
-    lb = ctx.index_const[0]
-    ub = ctx.index_const[shape[axis]]
-    step = ctx.index_const[1]
-    for_op = Operation.create("scf.for", operands=[lb, ub, step], regions=1)
-    block = for_op.regions[0].blocks.append(ctx.index_t)
-    with InsertionPoint(block):
-        _emit_zero_init(shape, ctx, [*indices, block.arguments[0]])
-        Operation.create("scf.yield")
-
-
 def _emit_affine_tetrahedron_geometry_values(coords, indices: dict[int, Value], f64) -> list[Value]:
     """Emit and return packed ``G = abs(det(J)) inv(J) inv(J).T`` values."""
     # For the reference tetrahedron, J[:, j] = x[j + 1] - x[0].
@@ -800,6 +805,12 @@ def generate_mlir_module(
             function when true. The standalone geometry function is still
             emitted, but the assembly function does not call it.
 
+    Note:
+        The generated kernel is pure accumulate (`A[i, j] += ...`), same as
+        FFCx's/UFC's tabulate_tensor convention -- it does NOT zero its
+        output buffer itself. Callers must zero the local tensor before
+        invoking the kernel.
+
     Returns:
         The built `mlir.ir.Module` (already verified with
         `module.operation.verify()`); its owning `Context` is kept alive
@@ -811,6 +822,13 @@ def generate_mlir_module(
     chain, add_node = walk_loop_chain(root)
     chain = reorder_quadrature_outermost(chain)
     loop_vars = [v for _, v in chain]
+    # Push the quadrature weight (and any other shallow multiplicative
+    # factor sitting at the top of add_node.body) down into whatever
+    # quadrature-point-only subexpression it can be folded into for free
+    # -- see hoist.distribute_shallow_factors' docstring. Must run before
+    # compute_fission_plan() below, which analyzes whatever tree is in
+    # add_node.body at that point.
+    distribute_shallow_factors(add_node, loop_vars)
     a_shape = add_node.shape
 
     int_constants = collect_int_constants(root, a_shape)
@@ -880,7 +898,6 @@ def generate_mlir_module(
 
                 for i in sorted(int_constants):
                     ctx.index_const[i] = _const_index(ctx, i)
-                ctx.zero_f64 = _const_f64(ctx, 0.0)
 
                 if geometry is not None:
                     assert geometry_ty is not None
@@ -916,7 +933,10 @@ def generate_mlir_module(
 
                 levels, fission_groups = compute_fission_plan(add_node, loop_vars)
                 _emit_fission_scratch_allocas(fission_groups, chain, ctx)
-                _emit_zero_init(a_shape, ctx)
+                # No self-zeroing here: the emitted kernel is pure accumulate
+                # (`A[i, j] += ...`), matching FFCx's/UFC's tabulate_tensor
+                # convention -- the caller zeroes the local tensor once
+                # before calling. See generate_mlir_module's docstring.
 
                 topo = topo_order(add_node)
                 groups_by_depth: dict[int, list[FissionGroup]] = {}
