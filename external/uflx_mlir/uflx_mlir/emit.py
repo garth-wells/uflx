@@ -382,7 +382,34 @@ def _emit_node(
         cache[node] = v
         return
 
-    if use_signature_cache and _load_alpha_equivalent_scratch(node, cache, ctx):
+    if (
+        use_signature_cache
+        and not ctx.thread_bindings
+        and _load_alpha_equivalent_scratch(node, cache, ctx)
+    ):
+        # The alpha-equivalent-scratch buffer-sharing optimization (see
+        # _load_alpha_equivalent_scratch's docstring) is only sound when
+        # the producing fission group's aux "loop" actually iterated the
+        # full dof range, populating every index the OTHER (consuming)
+        # axis might read at its own, independent index. In GPU-assembly
+        # mode (ctx.thread_bindings non-empty) a thread-bound gap variable
+        # instead degenerates to storing exactly ONE entry -- at that
+        # variable's own runtime value -- inside _emit_fission_group.build().
+        # Reusing that buffer for a structurally-alpha-equivalent node on a
+        # *different* thread-bound axis (e.g. reading the test-dof's
+        # basis-tabulation buffer at the trial-dof's own index) then reads
+        # whatever uninitialized memref.alloca memory happens to sit at
+        # that other index whenever the two axes' runtime values differ --
+        # confirmed via debug_accum_only.py: only the tx==ty diagonal
+        # happened to read back the one slot that was actually populated,
+        # every off-diagonal (tx, ty) read uninitialized stack garbage.
+        # Skipping this reuse in GPU-assembly mode costs nothing here: a
+        # thread-bound axis never actually loops, so the fission-group
+        # hoisting this buffer-sharing was meant to amortize provides no
+        # benefit in this regime anyway (see the module docstring and
+        # gpu_assembly.py's own note on this being an accepted, documented
+        # efficiency trade-off) -- falling through below recomputes the
+        # node directly from its own (correct) thread-bound value instead.
         return
 
     sig = _node_signature(node, cache) if use_signature_cache else None
