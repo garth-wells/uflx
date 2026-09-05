@@ -56,6 +56,7 @@ from typing import Any
 
 import basix
 import numpy as np
+from mlir.dialects import gpu as gpu_d
 from mlir.ir import (
     Context,
     DenseElementsAttr,
@@ -73,6 +74,7 @@ from mlir.ir import (
     RankedTensorType,
     ShapedType,
     StringAttr,
+    SymbolRefAttr,
     TypeAttr,
     UnitAttr,
     Value,
@@ -445,6 +447,289 @@ def generate_csr_entry_module(
 
                 _binary_search_and_scatter(ctx, final, avals, acols, arowptr, row_i32, col_i32, i32)
 
+                Operation.create("func.return")
+
+        module.operation.verify()
+
+    layout = CsrEntryLayout(ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs)
+    return module, layout
+
+
+def gpu_module_name(kernel_name: str) -> str:
+    """Return the gpu.module symbol a GPU-wrapped kernel is nested inside."""
+    return f"{kernel_name}_gpu_module"
+
+
+def gpu_launch_name(kernel_name: str) -> str:
+    """Return the host-side gpu.launch_func wrapper's function symbol."""
+    return f"{kernel_name}_launch"
+
+
+def generate_csr_entry_gpu_module(
+    form, degree: int, kernel_name: str, cell: basix.CellType
+) -> tuple[Module, CsrEntryLayout]:
+    """Generate generate_csr_entry_module's kernel wrapped in an actual
+    gpu.func/gpu.module, with (tx, ty) derived from gpu.thread_id instead
+    of taken as plain function arguments, plus a host-side
+    gpu.launch_func wrapper -- the natural next step now that the
+    NVPTX/AMDGPU-enabled LLVM build is available to test against.
+
+    Scope, deliberately narrower than generate_csr_entry_module's own
+    (already narrow) scope: one gpu.launch_func call handles exactly ONE
+    cell (blocks in (1, 1, 1), threads in (ndofs, ndofs, 1)) -- cell_id is
+    still a plain kernel argument, not derived from gpu.block_id. Batching
+    many cells into a single launch (gridDim.x = ncells, cell_id =
+    gpu.block_id x) is future work: it would also require geometry to
+    become a full per-cell-indexed array rather than the single
+    6-element slice used here (and here reused completely unchanged from
+    generate_csr_entry_module), which is out of scope for this change --
+    see this module's other docstrings for the same "hold off on
+    batching for now" decision applied to the non-GPU-wrapped kernel.
+
+    This is new, untested against a real mlir build with GPU-dialect
+    support: gpu.func/gpu.module/gpu.launch_func construction (including
+    the sym_name/gpu.kernel attributes, set directly via
+    Operation.attributes[...] rather than through generated builder
+    keyword arguments, since GPUFuncOp/GPUModuleOp's Python builders
+    don't expose sym_name as a constructor parameter -- confirmed against
+    this build's actual generated _gpu_ops_gen.py, not guessed) has not
+    been exercised before in this codebase. module.operation.verify() is
+    called before returning, same as generate_csr_entry_module, so a
+    construction mistake should surface immediately rather than silently
+    misbuilding. Lowering this further to real NVVM/ROCDL
+    (convert-gpu-to-nvvm / convert-gpu-to-rocdl, then
+    gpu-module-to-binary) is a separate step not attempted here -- this
+    only builds and verifies the gpu-dialect IR itself.
+
+    Args/Returns/Raises: see generate_csr_entry_module -- identical, plus
+    the returned module additionally contains the gpu.module (named
+    gpu_module_name(kernel_name)) and the host launch wrapper (named
+    gpu_launch_name(kernel_name)), both taking the same
+    (Avals, Acols, Arowptr, geometry, cell_dofs, cell_id) argument list.
+    """
+    tables, graph, geometry = lower_form(form, degree, cell)
+    if geometry is None:
+        raise NotImplementedError(
+            "generate_csr_entry_gpu_module only supports forms whose geometry "
+            "uflx_mlir.geometry.extract_affine_poisson_geometry can extract "
+            "(currently: affine-tetrahedron Poisson/stiffness forms) -- see "
+            "that module for why other forms are left alone."
+        )
+    assert isinstance(geometry, GeometryKernelSpec)
+
+    root = graph.root
+    chain, add_node = walk_loop_chain(root)
+    chain = reorder_quadrature_outermost(chain)
+    if len(chain) != 3 or not isinstance(chain[0][0], QuadratureLoop):
+        raise NotImplementedError(
+            "generate_csr_entry_gpu_module only supports the standard "
+            "quadrature + two-dof-axis shape (a bilinear form with one "
+            "test and one trial function loop)."
+        )
+    (_, quad_var), (dof_a_node, dof_a_var), (dof_b_node, dof_b_var) = chain
+    assert isinstance(dof_a_node, Loop) and isinstance(dof_b_node, Loop)
+    ndofs_a, ndofs_b = dof_a_node.end, dof_b_node.end
+    # Loop.end is typed `int | str`; narrow it before relying on it as a
+    # real int (see the matching check in generate_csr_entry_module).
+    if not isinstance(ndofs_a, int) or not isinstance(ndofs_b, int):
+        raise NotImplementedError(
+            "generate_csr_entry_gpu_module only supports forms with constant "
+            f"(non-symbolic) local dof counts, got {ndofs_a!r} and {ndofs_b!r}."
+        )
+    if ndofs_a != ndofs_b:
+        raise NotImplementedError(
+            "generate_csr_entry_gpu_module only supports equal test/trial "
+            f"local dof counts (got {ndofs_a} and {ndofs_b}), matching laplacian.h."
+        )
+    ndofs = ndofs_a
+    loop_vars = [quad_var, dof_a_var, dof_b_var]
+
+    int_constants = collect_int_constants(root, add_node.shape)
+    int_constants.update(range(geometry.output_size))
+    int_constants.add(2)
+
+    ctx_container = Context()
+    with ctx_container, Location.unknown():
+        module = Module.create()
+        # gpu.launch_func requires its closest surrounding module to carry
+        # this attribute (verifier: "expected the closest surrounding
+        # module to have the 'gpu.container_module' attribute") -- caught
+        # by running this against a real mlir build.
+        module.operation.attributes["gpu.container_module"] = UnitAttr.get()
+        f64 = F64Type.get()
+        index_t = IndexType.get()
+        i32 = IntegerType.get_signless(32)
+        dyn = ShapedType.get_dynamic_size()
+
+        avals_ty = MemRefType.get([dyn], f64)
+        acols_ty = MemRefType.get([dyn], i32)
+        arowptr_ty = MemRefType.get([dyn], i32)
+        geometry_ty = MemRefType.get([geometry.output_size], f64)
+        cell_dofs_ty = MemRefType.get([dyn], i32)
+        kernel_arg_types = [avals_ty, acols_ty, arowptr_ty, geometry_ty, cell_dofs_ty, index_t]
+
+        ctx = _OpCtx(
+            a_shape=add_node.shape,
+            coords_shape=(0, 0),  # unused here: this kernel never touches coordinates
+            table_shapes={name: arr.shape for name, arr in tables.items()},
+            f64=f64,
+            index_t=index_t,
+        )
+
+        with InsertionPoint(module.body):
+            gmod_name = gpu_module_name(kernel_name)
+            gpu_module_op = gpu_d.GPUModuleOp()
+            gpu_module_op.attributes["sym_name"] = StringAttr.get(gmod_name)
+            gpu_body = gpu_module_op.regions[0].blocks.append()
+            with InsertionPoint(gpu_body):
+                # gpu.module is IsolatedFromAbove and its own SymbolTable
+                # (GPUOps.td's GPU_GPUModuleOp traits): a kernel compiled
+                # from it must be self-contained, so the FE/quadrature
+                # table globals a memref.get_global inside the kernel body
+                # resolves have to live IN HERE too, as siblings of
+                # gpu.func -- unlike generate_csr_entry_module's plain
+                # func.func, which can declare them at the outer module.
+                # (Caught by running this against a real mlir build:
+                # 'memref.get_global' op 'FE2' does not reference a valid
+                # global memref.)
+                table_types = {}
+                for name in sorted(tables):
+                    arr = tables[name]
+                    ty = MemRefType.get(list(arr.shape), f64)
+                    table_types[name] = ty
+                    tensor_ty = RankedTensorType.get(list(arr.shape), f64)
+                    dense = DenseElementsAttr.get(
+                        np.ascontiguousarray(arr, dtype=np.float64), type=tensor_ty
+                    )
+                    Operation.create(
+                        "memref.global",
+                        attributes={
+                            "sym_name": StringAttr.get(name),
+                            "sym_visibility": StringAttr.get("private"),
+                            "type": TypeAttr.get(ty),
+                            "initial_value": dense,
+                            "constant": UnitAttr.get(),
+                        },
+                    )
+
+                kernel_func_ty = FunctionType.get(kernel_arg_types, [])
+                gpu_func_op = gpu_d.GPUFuncOp(TypeAttr.get(kernel_func_ty))
+                gpu_func_op.attributes["sym_name"] = StringAttr.get(kernel_name)
+                # See GPUBase.td's getKernelFuncAttrName(): a gpu.func's
+                # "kernel" keyword in textual IR is exactly this unit
+                # attribute, not a constructor parameter.
+                gpu_func_op.attributes["gpu.kernel"] = UnitAttr.get()
+                entry = gpu_func_op.regions[0].blocks.append(*kernel_arg_types)
+                with InsertionPoint(entry):
+                    avals, acols, arowptr, geometry_arg, cell_dofs, cell_id = entry.arguments
+
+                    for i in sorted(int_constants):
+                        ctx.index_const[i] = _const_index(ctx, i)
+                    ctx.zero_f64 = _const_f64(ctx, 0.0)
+
+                    ctx.geometry_val = geometry_arg
+                    tx = gpu_d.thread_id(gpu_d.Dimension.x)
+                    ty = gpu_d.thread_id(gpu_d.Dimension.y)
+                    ctx.thread_bindings = {dof_a_var: tx, dof_b_var: ty}
+
+                    for name in sorted(tables):
+                        ctx.global_val[name] = Operation.create(
+                            "memref.get_global",
+                            results=[table_types[name]],
+                            attributes={"name": FlatSymbolRefAttr.get(name)},
+                        ).results[0]
+
+                    # Same thread-private accumulator idiom as
+                    # generate_csr_entry_module -- see there for why.
+                    accum_ty = MemRefType.get([], f64)
+                    accum = Operation.create("memref.alloca", results=[accum_ty]).results[0]
+                    _memref_store(ctx.zero_f64, accum, [])
+
+                    def _accumulate(c: _OpCtx, result: Value) -> None:
+                        old = _memref_load(accum, [], c.f64)
+                        new = _op2("arith.addf", c.f64, old, result)
+                        _memref_store(new, accum, [])
+
+                    ctx.commit = _accumulate
+
+                    levels, fission_groups = compute_fission_plan(add_node, loop_vars)
+                    _emit_fission_scratch_allocas(fission_groups, chain, ctx)
+
+                    topo = topo_order(add_node)
+                    groups_by_depth: dict[int, list[FissionGroup]] = {}
+                    for group in fission_groups:
+                        groups_by_depth.setdefault(group.depth, []).append(group)
+                    _build_nest(0, chain, levels, topo, set(), {}, ctx, add_node, groups_by_depth)
+
+                    final = _memref_load(accum, [], f64)
+
+                    ndofs_const = ctx.index_const[ndofs]
+                    row_local = _op2(
+                        "arith.addi", index_t, _op2("arith.muli", index_t, cell_id, ndofs_const), tx
+                    )
+                    col_local = _op2(
+                        "arith.addi", index_t, _op2("arith.muli", index_t, cell_id, ndofs_const), ty
+                    )
+                    row_i32 = _memref_load(cell_dofs, [row_local], i32)
+                    col_i32 = _memref_load(cell_dofs, [col_local], i32)
+
+                    _binary_search_and_scatter(
+                        ctx, final, avals, acols, arowptr, row_i32, col_i32, i32
+                    )
+
+                    gpu_d.ReturnOp(operands_=[])
+                gpu_d.ModuleEndOp()
+
+            # Host-side launch wrapper: one gpu.launch_func call, one cell
+            # per launch (see this function's docstring for why).
+            launch_name = gpu_launch_name(kernel_name)
+            launch_func_ty = FunctionType.get(kernel_arg_types, [])
+            launch_op = Operation.create(
+                "func.func",
+                attributes={
+                    "sym_name": StringAttr.get(launch_name),
+                    "function_type": TypeAttr.get(launch_func_ty),
+                    "llvm.emit_c_interface": UnitAttr.get(),
+                },
+                regions=1,
+            )
+            launch_entry = launch_op.regions[0].blocks.append(*kernel_arg_types)
+            with InsertionPoint(launch_entry):
+                (
+                    h_avals,
+                    h_acols,
+                    h_arowptr,
+                    h_geometry,
+                    h_cell_dofs,
+                    h_cell_id,
+                ) = launch_entry.arguments
+
+                # Fresh constants scoped to this block -- ctx.index_const's
+                # entries were built inside the gpu.func above and are not
+                # valid SSA values here.
+                one = Operation.create(
+                    "arith.constant",
+                    results=[index_t],
+                    attributes={"value": IntegerAttr.get(index_t, 1)},
+                ).results[0]
+                ndofs_const_host = Operation.create(
+                    "arith.constant",
+                    results=[index_t],
+                    attributes={"value": IntegerAttr.get(index_t, ndofs)},
+                ).results[0]
+
+                gpu_d.LaunchFuncOp(
+                    asyncToken=None,
+                    asyncDependencies=[],
+                    kernel=SymbolRefAttr.get([gmod_name, kernel_name]),
+                    gridSizeX=one,
+                    gridSizeY=one,
+                    gridSizeZ=one,
+                    blockSizeX=ndofs_const_host,
+                    blockSizeY=ndofs_const_host,
+                    blockSizeZ=one,
+                    kernelOperands=[h_avals, h_acols, h_arowptr, h_geometry, h_cell_dofs, h_cell_id],
+                )
                 Operation.create("func.return")
 
         module.operation.verify()

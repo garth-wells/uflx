@@ -123,3 +123,56 @@ def test_generate_csr_entry_module_rejects_unsupported_form() -> None:
         pass
     else:
         raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
+
+
+def test_generate_csr_entry_gpu_module_verifies_for_p2_stiffness() -> None:
+    """The gpu.func/gpu.module/gpu.launch_func-wrapped kernel should lower and verify.
+
+    This is the first real exercise of gpu.func/gpu.module/gpu.launch_func
+    construction in this codebase (see generate_csr_entry_gpu_module's own
+    docstring for what's new/least-certain about it) -- now that the
+    NVPTX/AMDGPU-enabled LLVM build is available. module.operation.verify()
+    is called internally; this test additionally checks that both the
+    kernel and its host launch wrapper appear in the built module, and
+    that the launch wrapper actually contains a gpu.launch_func referencing
+    the kernel by its fully-qualified (module::kernel) symbol.
+    """
+    from uflx_mlir.gpu_assembly import (
+        generate_csr_entry_gpu_module,
+        gpu_launch_name,
+        gpu_module_name,
+    )
+
+    form, ndofs = _stiffness_form(2)
+    module, layout = generate_csr_entry_gpu_module(
+        form, 2, "tabulate_tensor_csr_gpu", basix.CellType.tetrahedron
+    )
+    assert layout.ndofs == ndofs == 10
+    assert layout.geometry_size == 6
+    assert layout.cell_dofs_stride == ndofs
+
+    text = str(module)
+    assert gpu_module_name("tabulate_tensor_csr_gpu") in text
+    assert gpu_launch_name("tabulate_tensor_csr_gpu") in text
+    assert "gpu.launch_func" in text
+    assert "gpu.thread_id" in text
+    # gpu.func's custom printer renders the gpu.kernel unit attribute as
+    # the "kernel" keyword rather than the literal attribute name (caught
+    # by running this against a real mlir build -- module.operation.verify()
+    # itself already passed, confirming the attribute is set correctly;
+    # this was a wrong assumption about the printed textual form, not an
+    # IR-construction bug).
+    assert ") kernel" in text
+
+
+def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
+    """Same guard as generate_csr_entry_module, exercised on the GPU-wrapped entry point."""
+    from uflx_mlir.gpu_assembly import generate_csr_entry_gpu_module
+
+    form, _ = _mass_form(1)
+    try:
+        generate_csr_entry_gpu_module(form, 1, "tabulate_tensor_csr_gpu", basix.CellType.tetrahedron)
+    except NotImplementedError:
+        pass
+    else:
+        raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
