@@ -34,14 +34,34 @@ def test_affine_poisson_geometry_is_extracted_from_tabulation_graph() -> None:
     assert not any(isinstance(node, CoordinateDofComponent) for node in graph)
 
 
-def test_geometry_contraction_uses_three_scratch_vectors() -> None:
-    """Keep G @ grad factorised so fission scales with vector dimension, not tensor size."""
+def test_geometry_contraction_does_not_fission_bare_table_reads() -> None:
+    """G @ grad's factorisation bottoms out in bare FE0 table reads -- and a
+    bare table read shouldn't be cached via loop fission.
+
+    This used to assert the opposite (that this exact contraction produces
+    "three scratch vectors": each of the three FE0[<component>, q, trial,
+    0] reads that grad_right.component(0..2) bottoms out in, cached once
+    per trial dof instead of recomputed for every (test, trial) pair --
+    the asymptotic argument being O(ntest*ntrial*nq) versus
+    O(ntrial*nq)). A controlled, correctness-checked A/B measurement
+    (disassembly + timing, on a real P3 tetrahedron stiffness kernel --
+    see hoist.compute_fission_plan's docstring) showed that assumption
+    doesn't hold in practice for a BARE table read: recomputing one costs
+    exactly what reading it back from a cached scratch buffer costs (both
+    are a single load), so the fission machinery here was pure overhead
+    (~4% slower with it, byte-identical results either way). hoist.py's
+    compute_fission_plan now excludes ArrayEntry nodes from fission
+    entirely, so this contraction's three underlying table reads are
+    expected to stay uncached (0 scratch entries), matching what FFCx's
+    own generated code does (always re-reading its static table arrays
+    directly rather than caching them).
+    """
     _, graph, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
     chain, add_node = walk_loop_chain(graph.root)
     chain = reorder_quadrature_outermost(chain)
     _, groups = compute_fission_plan(add_node, [variable for _, variable in chain])
 
-    assert sum(len(group.scratch) for group in groups) == 3
+    assert sum(len(group.scratch) for group in groups) == 0
 
 
 def test_unsupported_form_keeps_inline_geometry() -> None:
