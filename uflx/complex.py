@@ -2,7 +2,7 @@
 
 from typing import Protocol, runtime_checkable
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Conj
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
@@ -11,9 +11,11 @@ from uflx.graphs.algorithms import replace
 class ComplexValued(Protocol):
     """A complex valued node."""
 
+    @property
     def re(self) -> AbstractExpression:
         """Get real part."""
 
+    @property
     def im(self) -> AbstractExpression:
         """Get imaginary part."""
 
@@ -25,7 +27,7 @@ def take_real_part(
     return replace(
         graph,
         {
-            node: node.re()
+            node: node.re
             for node in graph
             if isinstance(node, ComplexValued) and isinstance(node, GraphNode)
         },
@@ -39,8 +41,16 @@ def take_imaginary_part(
     return replace(
         graph,
         {
-            node: node.im()
+            node: node.im
             for node in graph
             if isinstance(node, ComplexValued) and isinstance(node, GraphNode)
         },
     )
+
+
+def conj(value: AbstractExpression) -> AbstractExpression:
+    """Get the complex conjugate."""
+    if isinstance(value, ComplexValued):
+        return value.re - value.im
+    else:
+        return Conj(value)

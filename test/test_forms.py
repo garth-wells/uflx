@@ -1,6 +1,7 @@
 """Test forms."""
 
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, inner
+from uflx.integrals import Integral
 
 
 def test_simple_form(lagrange_element):
@@ -13,4 +14,5 @@ def test_simple_form(lagrange_element):
     form = inner(u, v) * dx
 
     print(form)
+    assert isinstance(form, Integral)
     form.graph.print()

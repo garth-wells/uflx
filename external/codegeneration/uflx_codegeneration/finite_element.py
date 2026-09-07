@@ -111,6 +111,11 @@ class MixedElement(AbstractFiniteElement):
         return self._sub_elements[0].cell
 
     @property
+    def real_valued(self) -> bool:
+        """Check if this element is real-valued."""
+        return all(e.real_valued for e in self._sub_elements)
+
+    @property
     def dim(self) -> int:
         """The dimension of the finite element, ie the number of basis functions."""
         return sum(e.dim for e in self._sub_elements)
@@ -232,6 +237,11 @@ class BlockedElement(AbstractFiniteElement):
     def sub_element(self):
         """Get the scalar sub-element."""
         return self._sub_element
+
+    @property
+    def real_valued(self) -> bool:
+        """Check if this element is real-valued."""
+        return self._sub_element.real_valued
 
     def __hash__(self):
         """Hash."""

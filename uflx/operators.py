@@ -5,11 +5,12 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
+from uflx.complex import conj
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.geometry import JacobianInverseTranspose
-from uflx.graphs import GraphNode, generate_graph
+from uflx.graphs import GraphNode, as_graph
 from uflx.maps import PushedForward
 from uflx.tensors import Vector
 
@@ -56,7 +57,7 @@ class Grad(UnaryOperator):
         def extract_domain(node: GraphNode) -> AbstractDomain:
             """Extract the domain associated with a node."""
             domain: AbstractDomain | None = None
-            for i in generate_graph(node).descendants(node):
+            for i in as_graph(node).descendants(node):
                 if isinstance(i, AbstractPhysicalFunction):
                     if domain is None:
                         domain = i.function_space.domain
@@ -68,7 +69,7 @@ class Grad(UnaryOperator):
         domain = extract_domain(self)
         assert isinstance(domain, AbstractCoordinateElement)
         if isinstance(argument, PushedForward):
-            return JacobianInverseTranspose(domain) * ReferenceGrad(argument.function)
+            return JacobianInverseTranspose(domain) @ ReferenceGrad(argument.function)
         raise NotImplementedError()
 
 
@@ -98,29 +99,6 @@ class ReferenceGrad(UnaryOperator):
         return Vector([argument.diff(i) for i in range(argument.domain_size)])
 
 
-class Conj(UnaryOperator):
-    """Complex conjugate operator."""
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return self.argument.value_shape
-
-    def re(self) -> AbstractExpression:
-        """Get real part."""
-        return self.argument
-
-    def im(self) -> AbstractExpression:
-        """Get imaginary part."""
-        raise NotImplementedError()
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        if self.value_shape == ():
-            raise NotImplementedError("Cannot get a 'component' of a Grad")
-        return Conj(self.argument.component(*indices))
-
-
 def grad(a: AbstractExpression) -> Grad:
     """The gradient of an expression."""
     return Grad(a)
@@ -132,6 +110,6 @@ def inner(a: AbstractExpression, b: AbstractExpression) -> AbstractExpression:
         raise ValueError("Incompatible value shapes.")
 
     if a.value_shape == ():
-        return a * Conj(b)
+        return a * conj(b)
 
     return Inner(a, b)

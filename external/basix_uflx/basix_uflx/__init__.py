@@ -146,6 +146,10 @@ class BasixElement(AbstractFiniteElement):
         return BasixCell(self._element.cell_type)
 
     @property
+    def real_valued(self) -> bool:
+        return True
+
+    @property
     def dim(self) -> int:
         return self._element.dim
 
@@ -214,6 +218,10 @@ class QuadratureElement(AbstractFiniteElement):
         return BasixCell(self._cell_type)
 
     @property
+    def real_valued(self) -> bool:
+        return True
+
+    @property
     def dim(self) -> int:
         return self._points.shape[0]
 
@@ -268,6 +276,10 @@ class RealElement(AbstractFiniteElement):
     @property
     def cell(self) -> uflx.entities.AbstractEntity:
         return BasixCell(self._cell_type)
+
+    @property
+    def real_valued(self) -> bool:
+        return True
 
     @property
     def dim(self) -> int:

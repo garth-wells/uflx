@@ -2,7 +2,6 @@
 
 import quadraturerules
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
-from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
@@ -19,8 +18,7 @@ from uflx.geometry import (
 from uflx.graphs import (
     Graph,
     GraphNode,
-    RepresentedByGraph,
-    generate_graph,
+    as_graph,
 )
 from uflx.graphs.algorithms import pull_back_to_reference, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
@@ -168,7 +166,7 @@ def integrals_to_quadrature(
 
             updated_nodes[node] = next
 
-    new_graph = generate_graph(updated_nodes.get(graph.root, graph.root))
+    new_graph = as_graph(updated_nodes.get(graph.root, graph.root))
     new_graph = replace(new_graph, to_replace)
     return new_graph
 
@@ -213,9 +211,9 @@ def tabulate_quadrature(
 
 
 def generate(
-    form: RepresentedByGraph,
+    form: GraphNode,
     language: str = "C",
-) -> tuple[str, dict[RepresentedByGraph, str]]:
+) -> tuple[str, dict[GraphNode, str]]:
     """Generate code.
 
     Args:
@@ -228,7 +226,7 @@ def generate(
     if language != "C":
         raise NotImplementedError("Only generation of C is supported for now")
 
-    graph = form.graph
+    graph = as_graph(form)
 
     assert graph.is_dag()
 
@@ -251,7 +249,6 @@ def generate(
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
-    graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)

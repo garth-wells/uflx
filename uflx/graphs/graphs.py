@@ -84,7 +84,7 @@ class Graph(nx.DiGraph):
 
     def subgraph_of_node(self, node: GraphNode) -> Graph:
         """Get the subgraph with the input node as the root node."""
-        return generate_graph(node)
+        return as_graph(node)
 
     def ordered_nodes(self, order: NodeOrder = NodeOrder.leaves_first) -> Iterable[GraphNode]:
         """Iterate through the ordered graph nodes."""
@@ -106,6 +106,7 @@ class Graph(nx.DiGraph):
         return nx.is_directed_acyclic_graph(self)
 
 
+@runtime_checkable
 class RepresentedByGraph(Protocol):
     """An object whose construction is represented by a graph."""
 
@@ -128,3 +129,10 @@ def generate_graph(node: GraphNode) -> Graph:
         added_nodes = set().union(*[n.successors for n in added_nodes])
 
     return graph
+
+
+def as_graph(node: GraphNode) -> Graph:
+    """Convert to item to a graph."""
+    if isinstance(node, RepresentedByGraph):
+        return node.graph
+    return generate_graph(node)

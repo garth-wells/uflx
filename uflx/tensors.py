@@ -223,3 +223,10 @@ class Matrix(Tensor):
                     assert isinstance(h, AbstractExpression)
                     assert isinstance(i, AbstractExpression)
                     return a * (e * i - f * h) + b * (f * g - d * i) + c * (d * h - e * g)
+
+
+def zero(shape: tuple[int, ...]) -> RealScalar | Tensor:
+    """Create a tensor full of zeros."""
+    if shape == ():
+        return RealScalar(0.0)
+    raise NotImplementedError()

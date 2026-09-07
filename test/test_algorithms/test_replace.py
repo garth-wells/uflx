@@ -14,6 +14,7 @@ def test_replace(lagrange_element):
     v = TestFunction(space)
 
     form = u * dx
+    assert isinstance(form, Integral)
 
     replaced_graph = replace(form.graph, {u: v})
 
