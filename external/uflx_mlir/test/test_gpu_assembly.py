@@ -20,9 +20,11 @@ anything, needs fixing.
 
 from __future__ import annotations
 
+import os
 import random
 
 import basix
+import pytest
 from basix_uflx import element
 from uflx import (
     TestFunction,
@@ -32,6 +34,11 @@ from uflx import (
     function_space,
     grad,
     inner,
+)
+
+_skip_gpu_on_ci = pytest.mark.skipif(
+    os.environ.get("CI", "").lower() == "true",
+    reason="GPU tests run on dedicated GPU hosts, not generic CI runners",
 )
 
 
@@ -135,6 +142,7 @@ def test_generate_csr_entry_module_rejects_unsupported_form() -> None:
         raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
 
 
+@_skip_gpu_on_ci
 def test_generate_csr_entry_gpu_module_verifies_for_p2_stiffness() -> None:
     """The gpu.func/gpu.module/gpu.launch_func-wrapped kernel should lower and verify.
 
@@ -175,6 +183,7 @@ def test_generate_csr_entry_gpu_module_verifies_for_p2_stiffness() -> None:
     assert ") kernel" in text
 
 
+@_skip_gpu_on_ci
 def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
     """Same guard as generate_csr_entry_module, exercised on the GPU-wrapped entry point."""
     from uflx_mlir.gpu_assembly import generate_csr_entry_gpu_module
@@ -190,6 +199,7 @@ def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
         raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
 
 
+@_skip_gpu_on_ci
 def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
     """Actually compile the GPU-wrapped P2 stiffness kernel down to NVVM/PTX.
 
@@ -230,6 +240,7 @@ def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
     assert ".visible .entry" in text
 
 
+@_skip_gpu_on_ci
 def test_extract_ptx_text_round_trips_real_ptx() -> None:
     """extract_ptx_text should recover genuine, parseable PTX assembly text.
 
@@ -270,6 +281,7 @@ def test_extract_ptx_text_round_trips_real_ptx() -> None:
     assert "\x00" not in ptx
 
 
+@_skip_gpu_on_ci
 def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
     """Compile the GPU-wrapped P2 kernel through ROCDL to real AMDGCN ISA."""
     from uflx_mlir.gpu_assembly import (
@@ -300,6 +312,7 @@ def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
     assert "\x00" not in assembly
 
 
+@_skip_gpu_on_ci
 def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
     """Finish MLIR's AMDGCN output with ROCm's matching assembler/linker."""
     from pathlib import Path
@@ -330,6 +343,7 @@ def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
     assert hsaco.startswith(b"\x7fELF")
 
 
+@_skip_gpu_on_ci
 def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_hip() -> None:
     """Compile and execute the P2 CSR kernel on a real AMD GPU via HIP."""
     import ctypes
@@ -735,6 +749,7 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
 
 
+@_skip_gpu_on_ci
 def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> None:
     """Numerically validate the compiled GPU kernel by actually running it on a GPU.
 
@@ -884,6 +899,7 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
 
 
+@_skip_gpu_on_ci
 def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells() -> None:
     """Numerically validate the batched GPU kernel by actually running it on a GPU.
 
