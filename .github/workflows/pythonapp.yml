@@ -64,6 +64,7 @@ jobs:
 
       - name: Install external libraries
         run: |
+          pip -v install mlir-python-bindings -f https://llvm.github.io/eudsl
           pip -v install external/codegeneration
           pip -v install external/basix_uflx
           pip -v install external/uflx_mlir
