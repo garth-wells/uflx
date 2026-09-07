@@ -24,7 +24,15 @@ import random
 
 import basix
 from basix_uflx import element
-from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
+from uflx import (
+    TestFunction,
+    TrialFunction,
+    coordinate_element,
+    dx,
+    function_space,
+    grad,
+    inner,
+)
 
 
 def _csr_find(cols: list[int], lo: int, hi: int, target: int) -> int | None:
@@ -75,7 +83,9 @@ def test_csr_binary_search_matches_laplacian_h_convention() -> None:
             expected = cols.index(target) if target in cols else None
             assert found == expected, (cols, target, found, expected)
             if found is not None:
-                assert found <= row_end, "must never report the one-past-end slot as a match"
+                assert found <= row_end, (
+                    "must never report the one-past-end slot as a match"
+                )
 
 
 def _stiffness_form(degree: int):
@@ -101,7 +111,9 @@ def test_generate_csr_entry_module_verifies_for_p2_stiffness() -> None:
     from uflx_mlir.gpu_assembly import generate_csr_entry_module
 
     form, ndofs = _stiffness_form(2)
-    module, layout = generate_csr_entry_module(form, 2, "tabulate_tensor_csr", basix.CellType.tetrahedron)
+    module, layout = generate_csr_entry_module(
+        form, 2, "tabulate_tensor_csr", basix.CellType.tetrahedron
+    )
     assert layout.ndofs == ndofs == 10
     assert layout.geometry_size == 6
     assert layout.cell_dofs_stride == ndofs
@@ -118,11 +130,15 @@ def test_generate_csr_entry_module_rejects_unsupported_form() -> None:
 
     form, _ = _mass_form(1)
     try:
-        generate_csr_entry_module(form, 1, "tabulate_tensor_csr", basix.CellType.tetrahedron)
+        generate_csr_entry_module(
+            form, 1, "tabulate_tensor_csr", basix.CellType.tetrahedron
+        )
     except NotImplementedError:
         pass
     else:
-        raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
+        raise AssertionError(
+            "expected NotImplementedError for a non-Poisson-shaped form"
+        )
 
 
 def test_generate_csr_entry_gpu_module_verifies_for_p2_stiffness() -> None:
@@ -171,11 +187,15 @@ def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
 
     form, _ = _mass_form(1)
     try:
-        generate_csr_entry_gpu_module(form, 1, "tabulate_tensor_csr_gpu", basix.CellType.tetrahedron)
+        generate_csr_entry_gpu_module(
+            form, 1, "tabulate_tensor_csr_gpu", basix.CellType.tetrahedron
+        )
     except NotImplementedError:
         pass
     else:
-        raise AssertionError("expected NotImplementedError for a non-Poisson-shaped form")
+        raise AssertionError(
+            "expected NotImplementedError for a non-Poisson-shaped form"
+        )
 
 
 def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
@@ -196,7 +216,10 @@ def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
     traceback should say which pipeline stage it failed in; that's the
     thing to report back.
     """
-    from uflx_mlir.gpu_assembly import generate_csr_entry_gpu_module, lower_module_to_nvvm
+    from uflx_mlir.gpu_assembly import (
+        generate_csr_entry_gpu_module,
+        lower_module_to_nvvm,
+    )
 
     form, _ = _stiffness_form(2)
     module, _ = generate_csr_entry_gpu_module(
@@ -265,7 +288,9 @@ def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
 
     form, _ = _stiffness_form(2)
     kernel_name = "tabulate_tensor_csr_gpu_rocdl"
-    module, _ = generate_csr_entry_gpu_module(form, 2, kernel_name, basix.CellType.tetrahedron)
+    module, _ = generate_csr_entry_gpu_module(
+        form, 2, kernel_name, basix.CellType.tetrahedron
+    )
     # This kernel has no OCML/OCKL calls. Avoid auto-discovering a host ROCm
     # whose bitcode may have been produced by a newer LLVM than these MLIR
     # bindings; that compatibility path is exercised on eng-amd.
@@ -315,6 +340,231 @@ def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
     assert hsaco.startswith(b"\x7fELF")
 
 
+def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_hip() -> None:
+    """Compile and execute the P2 CSR kernel on a real AMD GPU via HIP."""
+    import ctypes
+    import os
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    import numpy as np
+    import pytest
+
+    from test_emit import _reference_geometry, _reference_stiffness
+
+    from uflx_mlir.gpu_assembly import (
+        assemble_amdgcn_to_hsaco,
+        extract_amdgcn_text,
+        generate_csr_entry_gpu_module,
+        lower_module_to_rocdl,
+    )
+
+    rocm_path = Path(os.environ.get("ROCM_PATH", "/opt/rocm"))
+    hip_library = rocm_path / "lib/libamdhip64.so"
+    offload_arch = rocm_path / "bin/offload-arch"
+    required = [
+        hip_library,
+        offload_arch,
+        rocm_path / "llvm/bin/clang",
+        rocm_path / "llvm/bin/ld.lld",
+    ]
+    if not all(path.is_file() for path in required):
+        pytest.skip("HIP runtime, offload-arch, clang, or ld.lld not found under ROCm")
+
+    architecture = subprocess.run(
+        [str(offload_arch)], check=True, capture_output=True, text=True
+    ).stdout.splitlines()
+    if not architecture:
+        pytest.skip("offload-arch found no AMD GPU")
+    chip = architecture[0].split(":", maxsplit=1)[0]
+
+    hip = ctypes.CDLL(str(hip_library))
+
+    def bind(name, restype, *argtypes):
+        function = getattr(hip, name)
+        function.restype = restype
+        function.argtypes = list(argtypes)
+        return function
+
+    hip_init = bind("hipInit", ctypes.c_int, ctypes.c_uint)
+    hip_get_device_count = bind(
+        "hipGetDeviceCount", ctypes.c_int, ctypes.POINTER(ctypes.c_int)
+    )
+    hip_set_device = bind("hipSetDevice", ctypes.c_int, ctypes.c_int)
+    hip_module_load = bind(
+        "hipModuleLoad", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p
+    )
+    hip_module_get_function = bind(
+        "hipModuleGetFunction",
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+    )
+    hip_malloc = bind(
+        "hipMalloc", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t
+    )
+    hip_memcpy = bind(
+        "hipMemcpy",
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_int,
+    )
+    hip_module_launch_kernel = bind(
+        "hipModuleLaunchKernel",
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    hip_device_synchronize = bind("hipDeviceSynchronize", ctypes.c_int)
+    hip_free = bind("hipFree", ctypes.c_int, ctypes.c_void_p)
+    hip_module_unload = bind("hipModuleUnload", ctypes.c_int, ctypes.c_void_p)
+    hip_get_error_string = bind("hipGetErrorString", ctypes.c_char_p, ctypes.c_int)
+
+    def error_text(code: int) -> str:
+        message = hip_get_error_string(code)
+        return message.decode() if message else f"HIP error {code}"
+
+    init_result = hip_init(0)
+    if init_result:
+        pytest.skip(f"HIP runtime is unavailable: {error_text(init_result)}")
+    device_count = ctypes.c_int()
+    count_result = hip_get_device_count(ctypes.byref(device_count))
+    if count_result or device_count.value == 0:
+        pytest.skip("HIP found no usable AMD GPU")
+
+    def check(code: int, operation: str) -> None:
+        assert code == 0, f"{operation}: {error_text(code)}"
+
+    kernel_name = "tabulate_tensor_csr_gpu_hip_execution_test"
+    form, ndofs = _stiffness_form(2)
+    module, layout = generate_csr_entry_gpu_module(
+        form, 2, kernel_name, basix.CellType.tetrahedron
+    )
+    assert layout.ndofs == ndofs == 10
+    lower_module_to_rocdl(module, chip=chip, link_device_libraries=False)
+    hsaco = assemble_amdgcn_to_hsaco(
+        extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm_path)
+    )
+
+    coords = np.array(
+        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+        dtype=np.float64,
+    )
+    host_arrays = [
+        np.zeros(ndofs * ndofs, dtype=np.float64),
+        np.tile(np.arange(ndofs, dtype=np.int32), ndofs),
+        np.arange(0, ndofs * ndofs + 1, ndofs, dtype=np.int32),
+        _reference_geometry(coords),
+        np.arange(ndofs, dtype=np.int32),
+    ]
+
+    check(hip_set_device(0), "hipSetDevice")
+    hip_module = ctypes.c_void_p()
+    hip_function = ctypes.c_void_p()
+    allocations: list[ctypes.c_void_p] = []
+    with tempfile.TemporaryDirectory(prefix="uflx-hip-test-") as directory:
+        hsaco_path = Path(directory) / "kernel.hsaco"
+        hsaco_path.write_bytes(hsaco)
+        check(
+            hip_module_load(ctypes.byref(hip_module), os.fsencode(hsaco_path)),
+            "hipModuleLoad",
+        )
+        check(
+            hip_module_get_function(
+                ctypes.byref(hip_function), hip_module, kernel_name.encode()
+            ),
+            "hipModuleGetFunction",
+        )
+
+        arguments = []
+        try:
+            for array in host_arrays:
+                device_pointer = ctypes.c_void_p()
+                check(
+                    hip_malloc(ctypes.byref(device_pointer), array.nbytes), "hipMalloc"
+                )
+                allocations.append(device_pointer)
+                check(
+                    hip_memcpy(
+                        device_pointer,
+                        ctypes.c_void_p(array.ctypes.data),
+                        array.nbytes,
+                        1,
+                    ),
+                    "hipMemcpy host-to-device",
+                )
+                # MLIR's rank-1 memref kernel ABI: allocated pointer,
+                # aligned pointer, offset, size, and stride.
+                arguments.extend(
+                    [
+                        ctypes.c_void_p(device_pointer.value),
+                        ctypes.c_void_p(device_pointer.value),
+                        ctypes.c_int64(0),
+                        ctypes.c_int64(array.size),
+                        ctypes.c_int64(1),
+                    ]
+                )
+            arguments.append(ctypes.c_int64(0))  # cell_id
+            kernel_parameters = (ctypes.c_void_p * len(arguments))(
+                *(
+                    ctypes.cast(ctypes.byref(argument), ctypes.c_void_p).value
+                    for argument in arguments
+                )
+            )
+            check(
+                hip_module_launch_kernel(
+                    hip_function,
+                    1,
+                    1,
+                    1,
+                    ndofs,
+                    ndofs,
+                    1,
+                    0,
+                    None,
+                    kernel_parameters,
+                    None,
+                ),
+                "hipModuleLaunchKernel",
+            )
+            check(hip_device_synchronize(), "hipDeviceSynchronize")
+            avals = host_arrays[0]
+            check(
+                hip_memcpy(
+                    ctypes.c_void_p(avals.ctypes.data),
+                    allocations[0],
+                    avals.nbytes,
+                    2,
+                ),
+                "hipMemcpy device-to-host",
+            )
+        finally:
+            for device_pointer in allocations:
+                check(hip_free(device_pointer), "hipFree")
+            if hip_module.value:
+                check(hip_module_unload(hip_module), "hipModuleUnload")
+
+    np.testing.assert_allclose(
+        host_arrays[0].reshape(ndofs, ndofs),
+        _reference_stiffness(coords, 2),
+        rtol=1e-9,
+        atol=1e-8,
+    )
+
+
 def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
     """Numerically validate generate_csr_entry_module's CSR-scatter kernel.
 
@@ -355,7 +605,9 @@ def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
 
     kernel_name = "tabulate_tensor_csr_execution_test"
     form, ndofs = _stiffness_form(2)
-    module, layout = generate_csr_entry_module(form, 2, kernel_name, basix.CellType.tetrahedron)
+    module, layout = generate_csr_entry_module(
+        form, 2, kernel_name, basix.CellType.tetrahedron
+    )
     assert layout.ndofs == ndofs == 10
 
     coords = np.array(
@@ -396,7 +648,9 @@ def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
     geometry_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometry)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
 
     for tx in range(ndofs):
         for ty in range(ndofs):
@@ -448,7 +702,9 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
 
     kernel_name = "tabulate_tensor_csr_assembly_execution_test"
     form, ndofs = _stiffness_form(1)
-    module, layout = generate_csr_assembly_module(form, 1, kernel_name, basix.CellType.tetrahedron)
+    module, layout = generate_csr_assembly_module(
+        form, 1, kernel_name, basix.CellType.tetrahedron
+    )
     assert layout.ndofs == ndofs == 4
     assert layout.geometry_size == 6
 
@@ -471,7 +727,9 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
 
     avals = np.zeros(ndofs_global * ndofs_global, dtype=np.float64)
     acols = np.tile(np.arange(ndofs_global, dtype=np.int32), ndofs_global)
-    arowptr = np.arange(0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32)
+    arowptr = np.arange(
+        0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32
+    )
 
     with module.context:
         pm = PassManager.parse(_PIPELINE)
@@ -482,8 +740,12 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    geometries_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(geometries))
+    )
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
@@ -509,7 +771,9 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
 
 
-def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> None:
+def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> (
+    None
+):
     """Numerically validate the compiled GPU kernel by actually running it on a GPU.
 
     Unlike the CPU-path test above (which calls the kernel once per
@@ -637,7 +901,9 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
     geometry_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometry)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
     cell_id_p = ctypes.pointer(ctypes.c_longlong(0))
 
     packed = (ctypes.c_void_p * 6)(
@@ -663,7 +929,9 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
 
 
-def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells() -> None:
+def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells() -> (
+    None
+):
     """Numerically validate the batched GPU kernel by actually running it on a GPU.
 
     Unlike test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine
@@ -769,7 +1037,9 @@ def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells
 
     avals = np.zeros(ndofs_global * ndofs_global, dtype=np.float64)
     acols = np.tile(np.arange(ndofs_global, dtype=np.int32), ndofs_global)
-    arowptr = np.arange(0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32)
+    arowptr = np.arange(
+        0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32
+    )
 
     with module.context:
         engine = ExecutionEngine(module, opt_level=3, shared_libs=[cuda_runtime_lib])
@@ -778,8 +1048,12 @@ def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    geometries_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(geometries))
+    )
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
