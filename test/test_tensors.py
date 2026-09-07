@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from uflx.expressions import Add, Div, Integer, Mult, Neg, RealScalar, Subtract
+from uflx.expressions import RealScalar
 from uflx.tensors import Matrix
 
 

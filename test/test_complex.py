@@ -1,11 +1,10 @@
 """Test complex values."""
 
-import pytest
 import numpy as np
+import pytest
 
-from uflx.expressions import to_scalar
 from uflx.complex import take_imaginary_part, take_real_part
-from uflx.expressions import ComplexScalar, Integer
+from uflx.expressions import ComplexScalar, Integer, to_scalar
 from uflx.graphs import generate_graph
 
 

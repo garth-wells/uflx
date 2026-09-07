@@ -68,7 +68,7 @@ class Grad(UnaryOperator):
         domain = extract_domain(self)
         assert isinstance(domain, AbstractCoordinateElement)
         if isinstance(argument, PushedForward):
-            return JacobianInverseTranspose(domain) * ReferenceGrad(argument.function)
+            return JacobianInverseTranspose(domain) @ ReferenceGrad(argument.function)
         raise NotImplementedError()
 
 

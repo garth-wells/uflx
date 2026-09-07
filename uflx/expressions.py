@@ -46,13 +46,21 @@ class AbstractExpression(ABC):
                 return ScalarMult(self, other)
             raise ValueError(
                 f"Cannot multiply expressions with shapes {self.value_shape} and "
-                f"{other.value_shape}. To compute a matrix-vector or matrix-matrix"
+                f"{other.value_shape}. To compute a matrix-vector or matrix-matrix "
                 "product, use the '@' operator."
             )
         try:
             return to_scalar(other) * self
         except ValueError:
             return NotImplemented
+
+    def __matmul__(self, other: Any) -> AbstractExpression:
+        """Matrix multiply."""
+        if isinstance(other, AbstractExpression):
+            if self.value_shape[-1] != other.value_shape[0]:
+                raise ValueError("Incompatible dimensions in matmul.")
+            return MatMult(self, other)
+        return NotImplemented
 
     def __rmul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
@@ -230,10 +238,10 @@ class RealScalar(AbstractScalar):
 class ComplexScalar(AbstractScalar):
     """A complex scalar."""
 
-    def __init__(self, re: AbstractScalar, im: AbstractScalar):
+    def __init__(self, real_part: AbstractScalar, imag_part: AbstractScalar):
         """Initialise."""
-        self._re = re
-        self._im = im
+        self._re = real_part
+        self._im = imag_part
 
     def __repr__(self):
         """Representation."""
@@ -262,37 +270,6 @@ class ComplexScalar(AbstractScalar):
     def as_complex(self) -> complex:
         """Convert to a complex number."""
         return self._re.as_float() + 1j * self._im.as_float()
-
-
-class ComplexScalar(AbstractScalar):
-    """A Complex scalar."""
-
-    def __init__(self, real_part: AbstractScalar, imag_part: AbstractScalar):
-        """Initialise."""
-        self._real_part = real_part
-        self._imag_part = imag_part
-
-    def __repr__(self):
-        """Representation."""
-        return f"{self._real_part}+{self._imag_part}j"
-
-    @property
-    def successors(self) -> set[GraphNode]:
-        """The successors of this node."""
-        return set()
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._real_part, self._imag_part
-
-    def re(self) -> AbstractExpression:
-        """Get real part."""
-        return self._real_part
-
-    def im(self) -> AbstractExpression:
-        """Get imaginary part."""
-        return self._imag_part
 
 
 class Integer(AbstractInteger):
@@ -495,6 +472,26 @@ class ScalarMult(BinaryOperator):
     def as_int(self) -> int:
         """Convert to an integer."""
         return self.first.as_int() * self.second.as_int()
+
+
+class MatMult(BinaryOperator):
+    """Multiplication by a matrix."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        assert self.first.value_shape[-1] == self.second.value_shape[0]
+        return self.first.value_shape[:-1] + self.second.value_shape[1:]
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        assert self.first.value_shape[-1] == self.second.value_shape[0]
+        assert len(indices) == len(self.value_shape)
+        n = len(self.first.values_shape) - 1
+        return expression_sum(
+            self.first.component(*indices[:n], i) * self.second(i, *indices[n:])
+            for i in range(self.first.shape[-1])
+        )
 
 
 class Div(BinaryOperator):
