@@ -7,34 +7,13 @@ from uflx.expressions import Add, Div, Integer, Mult, Neg, RealScalar, Subtract
 from uflx.tensors import Matrix
 
 
-def _evaluate(expr) -> float:
-    """Numerically evaluate an expression tree.
-
-    Handles trees built only from RealScalar literals and +, -, *, / --
-    enough for these tests, not a general evaluator.
-    """
-    if isinstance(expr, (RealScalar, Integer)):
-        return float(expr.value)
-    if isinstance(expr, Add):
-        return _evaluate(expr.first) + _evaluate(expr.second)
-    if isinstance(expr, Subtract):
-        return _evaluate(expr.first) - _evaluate(expr.second)
-    if isinstance(expr, Mult):
-        return _evaluate(expr.first) * _evaluate(expr.second)
-    if isinstance(expr, Div):
-        return _evaluate(expr.first) / _evaluate(expr.second)
-    if isinstance(expr, Neg):
-        return -_evaluate(expr.argument)
-    raise NotImplementedError(f"Cannot evaluate {type(expr)}")
-
-
 def _to_matrix(values: np.ndarray) -> Matrix:
     return Matrix([[RealScalar(float(v)) for v in row] for row in values])
 
 
 def _to_numpy(matrix: Matrix) -> np.ndarray:
     rows, cols = matrix.value_shape
-    return np.array([[_evaluate(matrix.component(i, j)) for j in range(cols)] for i in range(rows)])
+    return np.array([[matrix.component(i, j).as_float() for j in range(cols)] for i in range(rows)])
 
 
 @pytest.mark.parametrize("n", [1, 2, 3])
@@ -54,7 +33,7 @@ def test_compute_determinant(n):
     rng = np.random.default_rng(1)
     values = rng.uniform(0.5, 2.0, (n, n))
 
-    det = _evaluate(_to_matrix(values).compute_determinant())
+    det = _to_matrix(values).compute_determinant().as_float()
 
     np.testing.assert_allclose(det, np.linalg.det(values), rtol=1e-12)
 
