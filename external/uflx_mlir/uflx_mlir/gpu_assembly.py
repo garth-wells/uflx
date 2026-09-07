@@ -479,8 +479,9 @@ def generate_csr_entry_module(
 def generate_csr_assembly_module(
     form, degree: int, kernel_name: str, cell: basix.CellType
 ) -> tuple[Module, CsrEntryLayout]:
-    """Generate a single self-contained kernel that assembles the ENTIRE
-    global CSR matrix in one call: an outer cell loop wraps
+    """Generate a kernel that assembles the entire global CSR matrix.
+
+    In one call, an outer cell loop wraps
     generate_mlir_module's own proven quadrature-outermost, hoisted/
     fissioned q/i/j loop nest (unchanged -- see that function and
     hoist.py), now accumulating into a per-cell LOCAL scratch buffer
@@ -705,9 +706,7 @@ def generate_csr_assembly_module(
                     # Refresh geometry_slot[k] = geometries[cell_id * geometry_size + k].
                     cell_geom_base = _op2("arith.muli", index_t, cell_id, geom_size_const)
                     for k in range(geometry.output_size):
-                        src_idx = _op2(
-                            "arith.addi", index_t, cell_geom_base, ctx.index_const[k]
-                        )
+                        src_idx = _op2("arith.addi", index_t, cell_geom_base, ctx.index_const[k])
                         _memref_store(
                             _memref_load(geometries, [src_idx], f64),
                             geometry_slot,
@@ -789,9 +788,7 @@ def generate_csr_assembly_module(
 
         module.operation.verify()
 
-    layout = CsrEntryLayout(
-        ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs
-    )
+    layout = CsrEntryLayout(ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs)
     return module, layout
 
 
@@ -808,8 +805,9 @@ def gpu_launch_name(kernel_name: str) -> str:
 def generate_csr_entry_gpu_module(
     form, degree: int, kernel_name: str, cell: basix.CellType
 ) -> tuple[Module, CsrEntryLayout]:
-    """Generate generate_csr_entry_module's kernel wrapped in an actual
-    gpu.func/gpu.module, with (tx, ty) derived from gpu.thread_id instead
+    """Wrap the single-cell CSR assembly kernel in a GPU launch module.
+
+    The (tx, ty) values are derived from gpu.thread_id instead
     of taken as plain function arguments, plus a host-side
     gpu.launch_func wrapper -- the natural next step now that the
     NVPTX/AMDGPU-enabled LLVM build is available to test against.
@@ -1200,8 +1198,9 @@ def generate_csr_entry_gpu_module(
 def generate_csr_assembly_gpu_module(
     form, degree: int, kernel_name: str, cell: basix.CellType
 ) -> tuple[Module, CsrEntryLayout]:
-    """generate_csr_entry_gpu_module's batched counterpart: gridDim.x =
-    ncells (one gpu.launch_func call assembles the WHOLE mesh, one block
+    """Generate the batched GPU counterpart of the CSR entry kernel.
+
+    Here gridDim.x = ncells (one gpu.launch_func call assembles the WHOLE mesh, one block
     per cell) instead of one launch per cell -- the batching that
     function's own docstring named as future work, now built.
 
@@ -1425,9 +1424,7 @@ def generate_csr_assembly_gpu_module(
                     geom_size_const = ctx.index_const[geometry.output_size]
                     cell_geom_base = _op2("arith.muli", index_t, cell_id, geom_size_const)
                     for k in range(geometry.output_size):
-                        src_idx = _op2(
-                            "arith.addi", index_t, cell_geom_base, ctx.index_const[k]
-                        )
+                        src_idx = _op2("arith.addi", index_t, cell_geom_base, ctx.index_const[k])
                         _memref_store(
                             _memref_load(geometries, [src_idx], f64),
                             geometry_slot,
@@ -1586,8 +1583,9 @@ def lower_module_to_nvvm(
     cubin_chip: str = "sm_80",
     cubin_format: str = "isa",
 ) -> None:
-    """Lower a gpu.module-containing module (see generate_csr_entry_gpu_module)
-    all the way to compiled NVVM/PTX, in place, via MLIR's own bundled
+    """Lower a GPU module to compiled NVVM/PTX in place.
+
+    This uses MLIR's bundled
     `gpu-lower-to-nvvm-pipeline` (mlir/lib/Dialect/GPU/Pipelines/
     GPUToNVVMPipeline.cpp) rather than hand-assembling the individual
     conversion passes.
@@ -1871,8 +1869,10 @@ def assemble_amdgcn_to_hsaco(
 
 
 def extract_ptx_text(module: Module) -> str:
-    """Pull the raw PTX assembly text back out of a module already
-    compiled by lower_module_to_nvvm(..., cubin_format="isa") (the
+    r"""Extract raw PTX assembly text from a lowered module.
+
+    The module must already be compiled by
+    lower_module_to_nvvm(..., cubin_format="isa") (the
     default), so it can be handed to a real `ptxas` on a machine that
     actually has an NVIDIA GPU and the CUDA Toolkit -- this dev machine's
     build only got as far as PTX text (see lower_module_to_nvvm's own
@@ -1913,8 +1913,7 @@ def extract_ptx_text(module: Module) -> str:
             break
     if binary_op is None:
         raise ValueError(
-            "no gpu.binary op found in this module -- call "
-            "lower_module_to_nvvm(module, ...) first"
+            "no gpu.binary op found in this module -- call lower_module_to_nvvm(module, ...) first"
         )
 
     text = str(binary_op.operation)

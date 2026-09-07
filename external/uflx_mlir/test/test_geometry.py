@@ -35,8 +35,7 @@ def test_affine_poisson_geometry_is_extracted_from_tabulation_graph() -> None:
 
 
 def test_geometry_contraction_does_not_fission_bare_table_reads() -> None:
-    """G @ grad's factorisation bottoms out in bare FE0 table reads -- and a
-    bare table read shouldn't be cached via loop fission.
+    """Check that bare table reads are not cached through loop fission.
 
     This used to assert the opposite (that this exact contraction produces
     "three scratch vectors": each of the three FE0[<component>, q, trial,

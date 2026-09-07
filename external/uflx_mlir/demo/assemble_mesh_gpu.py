@@ -1,7 +1,4 @@
-"""Assemble a real global CSR stiffness matrix using uflx_mlir.gpu_assembly's
-single-call, whole-mesh CSR assembly kernel (generate_csr_assembly_module),
-on a structured tetrahedral box mesh at an arbitrary supported Lagrange
-degree (P2 by default).
+"""Assemble a global CSR stiffness matrix using CPU, CUDA, or AMD.
 
 Context: gpu_assembly.py's own tests (test_gpu_assembly.py) exercise
 generate_csr_assembly_module (the kernel used here) on only a genuine but
@@ -154,7 +151,7 @@ from uflx_mlir.gpu_assembly import (
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
-import harness as mlir_harness  # noqa: E402  (see the sys.path.insert above, matches every other demo/*.py script)
+import harness as mlir_harness
 
 CELL = basix.CellType.tetrahedron
 
@@ -170,8 +167,10 @@ LOCAL_EDGES = [(2, 3), (1, 3), (1, 2), (0, 3), (0, 2), (0, 1)]
 
 
 def _dofs_per_sec(ndofs_global: int, elapsed_seconds: float) -> float:
-    """ndofs_global / elapsed_seconds -- the throughput this module's
-    assembly functions report alongside their own wall-clock timing.
+    """Compute assembly throughput in degrees of freedom per second.
+
+    This is the throughput this module's assembly functions report
+    alongside their own wall-clock timing.
     Floors elapsed_seconds at a tiny epsilon rather than risking
     ZeroDivisionError on an implausibly-fast (sub-nanosecond) timer
     reading, which a tiny mesh's single call could in principle hit.
@@ -189,12 +188,14 @@ def _stiffness_form(degree: int):
 
 
 def _geometry_from_coords(coords: np.ndarray) -> np.ndarray:
-    """Packed affine tetrahedral Poisson metric fed to the CSR-entry
-    kernel's `geometry` argument -- mirrors
+    """Pack the affine tetrahedral Poisson metric for the CSR kernel.
+
+    This mirrors
     uflx_mlir.geometry.extract_affine_poisson_geometry / test_emit.py's
     _reference_geometry exactly (upper triangle, row-major, of
     |detJ| * Jinv @ Jinv.T). Kept duplicated here rather than imported,
-    same reasoning as _reference_stiffness_cell below."""
+    same reasoning as _reference_stiffness_cell below.
+    """
     x0, x1, x2, x3 = coords
     jacobian = np.column_stack([x1 - x0, x2 - x0, x3 - x0])
     jacobian_inv = np.linalg.inv(jacobian)
@@ -203,13 +204,13 @@ def _geometry_from_coords(coords: np.ndarray) -> np.ndarray:
 
 
 def _reference_stiffness_cell(coords: np.ndarray, degree: int) -> np.ndarray:
-    """Independent basix-quadrature reference local stiffness matrix --
-    mirrors test_emit.py's _reference_stiffness exactly. Kept duplicated
+    """Compute an independent Basix-quadrature local stiffness matrix.
+
+    This mirrors test_emit.py's _reference_stiffness exactly. Kept duplicated
     (not imported from test/) so demo/ stays free of a test/-directory
-    dependency, matching every other script in this folder."""
-    e = basix.create_element(
-        basix.ElementFamily.P, CELL, degree, basix.LagrangeVariant.equispaced
-    )
+    dependency, matching every other script in this folder.
+    """
+    e = basix.create_element(basix.ElementFamily.P, CELL, degree, basix.LagrangeVariant.equispaced)
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(CELL, qdeg)
     points = np.asarray(points, dtype=np.float64)
@@ -231,15 +232,17 @@ def _reference_stiffness_cell(coords: np.ndarray, degree: int) -> np.ndarray:
 
 
 def _kuhn_triangulate_cube():
-    """The 6 tets making up a unit cube, standard Kuhn/Freudenthal
-    decomposition: all 6 share the (0,0,0)-(1,1,1) main diagonal, one per
+    """Construct the six-tetrahedron Kuhn triangulation of a unit cube.
+
+    All six tetrahedra share the (0,0,0)-(1,1,1) main diagonal, one per
     permutation of the 3 axes. Each tet's own local vertex order (v000,
     ..., v111) becomes local dofs 0..3 in exactly that order once mapped
     to global vertex ids in build_mesh() below -- must stay consistent
     with _geometry_from_coords/_reference_stiffness_cell, which read
     `coords` as x0..x3 in this same order. Orientation (i.e. whether
     (x1-x0, x2-x0, x3-x0) is a right- or left-handed frame) is
-    deliberately not controlled for -- see this module's docstring."""
+    deliberately not controlled for -- see this module's docstring.
+    """
     v000 = (0, 0, 0)
     axes = [(1, 0, 0), (0, 1, 0), (0, 0, 1)]
     tets = []
@@ -267,12 +270,7 @@ def build_mesh(n: int) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
         return i * npts * npts + j * npts + k
 
     coords = np.array(
-        [
-            [i / n, j / n, k / n]
-            for i in range(npts)
-            for j in range(npts)
-            for k in range(npts)
-        ],
+        [[i / n, j / n, k / n] for i in range(npts) for j in range(npts) for k in range(npts)],
         dtype=np.float64,
     )
 
@@ -281,9 +279,7 @@ def build_mesh(n: int) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
         for j in range(n):
             for k in range(n):
                 for tet in _kuhn_triangulate_cube():
-                    cells.append(
-                        tuple(vid(i + dx, j + dy, k + dz) for dx, dy, dz in tet)
-                    )
+                    cells.append(tuple(vid(i + dx, j + dy, k + dz) for dx, dy, dz in tet))
     return coords, cells
 
 
@@ -353,8 +349,10 @@ def build_dofmap(
 def build_csr_pattern(
     cell_dofs: np.ndarray, ndofs: int, ncells: int, ndofs_global: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """The global sparsity pattern: row r's columns are the union, over
-    every cell touching global dof r, of that cell's other local dofs
+    """Build the global CSR sparsity pattern.
+
+    Row r's columns are the union, over every cell touching global dof r,
+    of that cell's other local dofs
     (including r itself, for the diagonal).
 
     Columns are sorted ascending within each row -- REQUIRED, not just
@@ -425,13 +423,8 @@ def assemble_global_matrix(
     degree: int,
     kernel_name: str = "tabulate_tensor_csr_assemble",
     return_timing: bool = False,
-) -> (
-    tuple[np.ndarray, np.ndarray, np.ndarray]
-    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
-):
-    """Build generate_csr_assembly_module's single whole-mesh kernel for
-    `degree` and call it exactly ONCE to assemble the full global CSR
-    stiffness matrix for the given mesh.
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Assemble the full matrix with one whole-mesh CPU kernel call.
 
     Unlike an earlier version of this function (one Python call per
     (cell, tx, ty) triple via generate_csr_entry_module), the kernel built
@@ -443,6 +436,13 @@ def assemble_global_matrix(
     left in this function at all.
 
     Args:
+        coords: Mesh vertex coordinates.
+        cells: Tetrahedral cell-to-vertex connectivity.
+        cell_dofs: Flattened cell-to-global-dof map.
+        ndofs: Number of local element degrees of freedom.
+        ndofs_global: Number of global degrees of freedom.
+        degree: Lagrange polynomial degree.
+        kernel_name: Generated MLIR function name.
         return_timing: when True, also return the single kernel call's
             own wall-clock elapsed seconds as a 4th tuple element --
             exactly the t1 - t0 this function's own print statement
@@ -487,12 +487,8 @@ def assemble_global_matrix(
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(
-        ctypes.pointer(get_ranked_memref_descriptor(geometries))
-    )
-    cell_dofs_pp = ctypes.pointer(
-        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
-    )
+    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
@@ -521,8 +517,9 @@ def assemble_global_matrix(
 
 
 def _find_cuda_runtime_lib() -> str | None:
-    """Locate libmlir_cuda_runtime.so, matching
-    test_gpu_assembly.py's own execution-engine tests' search (duplicated
+    """Locate ``libmlir_cuda_runtime.so``.
+
+    This matches test_gpu_assembly.py's execution-engine tests' search (duplicated
     here rather than imported -- see this module's own "kept duplicated"
     convention for staying free of a test/-directory dependency):
     $MLIR_CUDA_RUNTIME_LIB if set, else searched upward from the mlir
@@ -565,12 +562,10 @@ def assemble_global_matrix_gpu(
     kernel_name: str = "tabulate_tensor_csr_assembly_gpu",
     cubin_chip: str = "sm_80",
     return_timing: bool = False,
-) -> (
-    tuple[np.ndarray, np.ndarray, np.ndarray]
-    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
-):
-    """Build generate_csr_assembly_gpu_module's batched GPU kernel for
-    `degree` and call it exactly ONCE -- one real gpu.launch_func call,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Assemble the full matrix with one batched CUDA launch.
+
+    This makes one real gpu.launch_func call,
     gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
     -- to assemble the full global CSR stiffness matrix on an actual GPU.
 
@@ -590,6 +585,13 @@ def assemble_global_matrix_gpu(
     silently falling back to the CPU path.
 
     Args:
+        coords: Mesh vertex coordinates.
+        cells: Tetrahedral cell-to-vertex connectivity.
+        cell_dofs: Flattened cell-to-global-dof map.
+        ndofs: Number of local element degrees of freedom.
+        ndofs_global: Number of global degrees of freedom.
+        degree: Lagrange polynomial degree.
+        kernel_name: Generated GPU kernel name.
         cubin_chip: the target NVPTX chip generate_csr_assembly_gpu_module's
             compiled PTX targets -- e.g. "sm_89" for eng-nvidia's Ada
             Lovelace GPU (see lower_module_to_nvvm's own docstring).
@@ -651,12 +653,8 @@ def assemble_global_matrix_gpu(
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(
-        ctypes.pointer(get_ranked_memref_descriptor(geometries))
-    )
-    cell_dofs_pp = ctypes.pointer(
-        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
-    )
+    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
@@ -669,9 +667,7 @@ def assemble_global_matrix_gpu(
     )
 
     t0 = time.perf_counter()
-    raw_fn(
-        packed
-    )  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
+    raw_fn(packed)  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
     t1 = time.perf_counter()
 
     print(
@@ -696,10 +692,7 @@ def assemble_global_matrix_amd(
     chip: str | None = None,
     rocm_path: str | None = None,
     return_timing: bool = False,
-) -> (
-    tuple[np.ndarray, np.ndarray, np.ndarray]
-    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
-):
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Assemble the whole mesh in one launch on an AMD GPU through HIP.
 
     MLIR emits AMDGCN assembly through ROCDL. ROCm's own matching clang
@@ -726,9 +719,7 @@ def assemble_global_matrix_amd(
     ]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
-        raise RuntimeError(
-            f"ROCm installation is incomplete; missing: {', '.join(missing)}"
-        )
+        raise RuntimeError(f"ROCm installation is incomplete; missing: {', '.join(missing)}")
 
     if chip is None:
         architectures = subprocess.run(
@@ -742,9 +733,7 @@ def assemble_global_matrix_amd(
     if layout.ndofs != ndofs:
         raise AssertionError(f"layout.ndofs={layout.ndofs} != ndofs={ndofs}")
     lower_module_to_rocdl(module, chip=chip, link_device_libraries=False)
-    hsaco = assemble_amdgcn_to_hsaco(
-        extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm)
-    )
+    hsaco = assemble_amdgcn_to_hsaco(extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm))
 
     ncells = len(cells)
     avals, acols, arowptr = build_csr_pattern(cell_dofs, ndofs, ncells, ndofs_global)
@@ -774,9 +763,7 @@ def assemble_global_matrix_amd(
         ctypes.c_void_p,
         ctypes.c_char_p,
     )
-    hip_malloc = bind(
-        "hipMalloc", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t
-    )
+    hip_malloc = bind("hipMalloc", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t)
     hip_memcpy = bind(
         "hipMemcpy",
         ctypes.c_int,
@@ -825,9 +812,7 @@ def assemble_global_matrix_amd(
             "hipModuleLoad",
         )
         check(
-            hip_module_get_function(
-                ctypes.byref(hip_function), hip_module, kernel_name.encode()
-            ),
+            hip_module_get_function(ctypes.byref(hip_function), hip_module, kernel_name.encode()),
             "hipModuleGetFunction",
         )
 
@@ -835,9 +820,7 @@ def assemble_global_matrix_amd(
         try:
             for array in host_arrays:
                 device_pointer = ctypes.c_void_p()
-                check(
-                    hip_malloc(ctypes.byref(device_pointer), array.nbytes), "hipMalloc"
-                )
+                check(hip_malloc(ctypes.byref(device_pointer), array.nbytes), "hipMalloc")
                 allocations.append(device_pointer)
                 check(
                     hip_memcpy(
@@ -913,9 +896,7 @@ def assemble_global_matrix_amd(
 def check_small_mesh_against_reference(
     degree: int, assemble_fn=assemble_global_matrix, **assemble_kwargs
 ) -> None:
-    """Exact check on the smallest possible mesh (1 cube, 6 cells) against
-    an independent basix-quadrature reference -- see module docstring,
-    check (1).
+    """Check the smallest mesh against an independent quadrature reference.
 
     assemble_fn: assemble_global_matrix (default, CPU) or
         assemble_global_matrix_gpu -- see main() for how the requested
@@ -957,8 +938,9 @@ def patch_test(
 def check_symmetry(
     avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int
 ) -> None:
-    """A[i, j] == A[j, i] for every stored entry -- see module docstring,
-    check (3). O(nnz), fully vectorized (no per-entry Python loop): pack
+    """Check matrix symmetry for every stored entry.
+
+    This is O(nnz) and fully vectorized (no per-entry Python loop): pack
     each stored (row, col) into one int64 key (row*ndofs_global + col),
     identical to build_csr_pattern's own packing -- since acols is sorted
     ascending within each row and rows are laid out in increasing order
@@ -996,15 +978,14 @@ def check_symmetry(
 
 
 def main() -> None:
+    """Run the requested mesh-assembly backend and correctness checks."""
     degree = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 6
     backend = sys.argv[3] if len(sys.argv) > 3 else "cpu"
     target_chip = sys.argv[4] if len(sys.argv) > 4 else None
 
     if backend not in ("cpu", "gpu", "cuda", "amd"):
-        raise SystemExit(
-            f"backend must be 'cpu', 'cuda'/'gpu', or 'amd', got {backend!r}"
-        )
+        raise SystemExit(f"backend must be 'cpu', 'cuda'/'gpu', or 'amd', got {backend!r}")
 
     if backend in ("gpu", "cuda"):
         cuda_runtime_lib = _find_cuda_runtime_lib()
@@ -1028,9 +1009,7 @@ def main() -> None:
     check_small_mesh_against_reference(degree, assemble_fn, **assemble_kwargs)
 
     ncells = 6 * n**3
-    print(
-        f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells), backend={backend} ---"
-    )
+    print(f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells), backend={backend} ---")
     coords, cells = build_mesh(n)
     cell_dofs, ndofs, ndofs_global = build_dofmap(cells, len(coords), degree)
     avals, acols, arowptr = assemble_fn(

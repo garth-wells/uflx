@@ -1,5 +1,4 @@
-"""
-JIT + validate the quadrature-loop stiffness kernels from generate_kernel.py,
+"""JIT + validate the quadrature-loop stiffness kernels from generate_kernel.py,
 including the generated one-quadrature-point P1 kernel.
 
 Run (after `python3 demo/generate_kernel.py <degree>`):
@@ -14,8 +13,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-import harness as mlir_harness
 import generate_kernel
+import harness as mlir_harness
 
 
 def main():
@@ -33,9 +32,7 @@ def main():
         print(f"{kernel_path} doesn't exist -- run generate_kernel.py {degree} first")
         sys.exit(1)
 
-    engine = mlir_harness.build_engine_from(
-        kernel_path, mlir_harness.QUADRATURE_PIPELINE
-    )
+    engine = mlir_harness.build_engine_from(kernel_path, mlir_harness.QUADRATURE_PIPELINE)
     caller = mlir_harness.build_caller_for(engine, kernel_name)
 
     # A scalene tetrahedron, not a reference-aligned one -- less likely to

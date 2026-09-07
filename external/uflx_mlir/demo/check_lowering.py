@@ -1,5 +1,4 @@
-"""
-Check that a generated kernel's MLIR text parses and lowers cleanly through
+"""Check that a generated kernel's MLIR text parses and lowers cleanly through
 its pass pipeline, WITHOUT building an ExecutionEngine or JIT'ing anything --
 a pure parse+lower step (mlir.ir.Module.parse + mlir.passmanager.PassManager,
 what `mlir-opt <file> --pass-pipeline=...` does from the shell, minus the

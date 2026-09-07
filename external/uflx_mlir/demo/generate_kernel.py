@@ -1,5 +1,4 @@
-"""
-Generate a P{degree} Lagrange Laplacian-stiffness kernel (a real
+"""Generate a P{degree} Lagrange Laplacian-stiffness kernel (a real
 quadrature-point loop, using scf.for) as MLIR text, from basix's own
 reference-element tabulation -- the same quadrature points/weights and
 basis-function-gradient tables FFCx's own code generator would use for this
@@ -28,8 +27,8 @@ exactly what broke the P3 triangle comparison before the 3D rework).
 import sys
 from pathlib import Path
 
-import numpy as np
 import basix
+import numpy as np
 
 LAGRANGE_VARIANT = basix.LagrangeVariant.equispaced
 CELL = basix.CellType.tetrahedron
@@ -40,7 +39,8 @@ KERNELS_DIR = Path(__file__).parent / "kernels"
 def _make_quadrature(cell, degree):
     """basix.make_quadrature's signature has changed across versions -- try
     the plain (cell, degree) form first, fall back to the (type, cell, degree)
-    form some versions require."""
+    form some versions require.
+    """
     try:
         return basix.make_quadrature(cell, degree)
     except TypeError:
@@ -53,10 +53,9 @@ def tabulate(degree: int):
     reference tetrahedron, with defensive checks on basix's tabulate()
     output shape/derivative-ordering, since that's exactly the kind of thing
     that's easy to get subtly wrong and this script has no way to be
-    test-run before you run it."""
-    element = basix.create_element(
-        basix.ElementFamily.P, CELL, degree, LAGRANGE_VARIANT
-    )
+    test-run before you run it.
+    """
+    element = basix.create_element(basix.ElementFamily.P, CELL, degree, LAGRANGE_VARIANT)
     ndofs = element.dim
 
     # grad(phi_i).grad(phi_j) has degree 2*(degree-1) -- quadrature must be
@@ -99,7 +98,8 @@ def reference_stiffness(coords: np.ndarray, degree: int) -> np.ndarray:
     cofactor formulas the generated kernel uses), so it can validate it.
     For degree=1 this must reduce to exactly the same answer as
     harness.reference_p1_stiffness; that cross-check runs in __main__ below
-    before this function is trusted for degree>=2."""
+    before this function is trusted for degree>=2.
+    """
     weights, dphi_dx, dphi_dy, dphi_dz = tabulate(degree)
 
     x0, x1, x2, x3 = coords
@@ -351,9 +351,7 @@ def main():
     A1_general = reference_stiffness(coords, 1)
     A1_closed_form = mlir_harness.reference_p1_stiffness(coords)
     np.testing.assert_allclose(A1_general, A1_closed_form, rtol=1e-10)
-    print(
-        "Cross-check OK: general quadrature reference matches the closed-form P1 reference."
-    )
+    print("Cross-check OK: general quadrature reference matches the closed-form P1 reference.")
 
     mlir_text = generate_mlir(degree)
     out_path = KERNELS_DIR / f"p{degree}_stiffness.mlir"

@@ -1,5 +1,4 @@
-"""
-Full-pipeline comparison: UFLx form -> MLIR -> JIT'd kernel, versus
+"""Full-pipeline comparison: UFLx form -> MLIR -> JIT'd kernel, versus
 legacy-UFL form -> FFCx -> compiled kernel, for a CG-`degree` Laplacian
 stiffness kernel on a tetrahedron.
 
@@ -42,18 +41,18 @@ import tempfile
 import time
 from pathlib import Path
 
-import numpy as np
-
 import basix
 import basix.ufl
+import numpy as np
 import ufl
 from ffcx.codegeneration.jit import compile_forms
 from mlir.runtime import get_ranked_memref_descriptor
 
 sys.path.insert(0, str(Path(__file__).parent))
-import harness as mlir_harness
 import generate_kernel
+import harness as mlir_harness
 from run_uflx_stiffness import build_stiffness_form
+
 from uflx_mlir.emit import generate_mlir_module
 
 N_CALLS_DEFAULT = 20_000  # see ffcx_compare.py's docstring for the reasoning
@@ -75,9 +74,12 @@ def build_legacy_ufl_form(degree: int):
     stiffness, P1 affine coordinate map), but expressed in legacy UFL --
     what FFCx actually consumes. Must use the same Lagrange variant
     (equispaced) as the UFLx side -- see ffcx_compare.py's build_form()
-    docstring for why this matters starting at degree 3."""
+    docstring for why this matters starting at degree 3.
+    """
     element = basix.ufl.element(
-        "Lagrange", "tetrahedron", degree,
+        "Lagrange",
+        "tetrahedron",
+        degree,
         lagrange_variant=basix.LagrangeVariant.equispaced,
     )
     coord_element = basix.ufl.element("Lagrange", "tetrahedron", 1, shape=(3,))
@@ -92,12 +94,13 @@ def ffcx_compile(degree: int):
     """Returns (compile_seconds, fast_call, A). Functionally identical to
     ffcx_compare.py's ffcx_compile() -- kept self-contained here rather
     than imported, so this script doesn't couple to that one's differently
-    -scoped build_form()."""
+    -scoped build_form().
+    """
     a = build_legacy_ufl_form(degree)
     ndofs = ndofs_for_degree(degree)
     cache_dir = Path(tempfile.mkdtemp(prefix="ffcx_jit_"))
     t0 = time.perf_counter()
-    ufcx_forms, module, code = compile_forms([a], options={}, cache_dir=cache_dir)
+    ufcx_forms, module, _code = compile_forms([a], options={}, cache_dir=cache_dir)
     t1 = time.perf_counter()
 
     ffi = module.ffi
@@ -128,7 +131,8 @@ def ffcx_compile(degree: int):
 def _mlir_fast_calls(engine, kernel_name: str, ndofs: int):
     """Same dual-variant ('invoke' / 'direct_ctypes') call-builder as
     ffcx_compare.py's mlir_compile() -- factored out here since both UFLx
-    variants below need it identically."""
+    variants below need it identically.
+    """
     A = np.zeros((ndofs, ndofs), dtype=np.float64)
     A_desc = get_ranked_memref_descriptor(A)
     coords_desc = get_ranked_memref_descriptor(COORDS)
@@ -153,12 +157,14 @@ def _mlir_fast_calls(engine, kernel_name: str, ndofs: int):
 
         fast_calls["direct_ctypes"] = call_direct
     except Exception as e:
-        print(f"(direct ctypes lookup path unavailable: {e!r} -- skipping that variant)", flush=True)
+        print(
+            f"(direct ctypes lookup path unavailable: {e!r} -- skipping that variant)", flush=True
+        )
 
     return fast_calls, A
 
 
-def uflx_compile(degree: int, pipeline: str = None):
+def uflx_compile(degree: int, pipeline: str | None = None):
     """Full pipeline, direct-from-module: UFLx form -> generate_mlir_module's
     in-memory Module -> JIT, with no MLIR-text round-trip at all.
     compile_seconds covers all of that -- the UFLx-side equivalent of
@@ -168,14 +174,19 @@ def uflx_compile(degree: int, pipeline: str = None):
     conversion, no optimization passes); pass
     mlir_harness.UFLX_OPTIMIZED_PIPELINE to additionally run
     canonicalize/cse/loop-invariant-code-motion first -- see that
-    constant's docstring for why."""
+    constant's docstring for why.
+    """
     pipeline = pipeline if pipeline is not None else mlir_harness.UFLX_PIPELINE
     form, ndofs = build_stiffness_form(degree)
     kernel_name = f"tabulate_tensor_p{degree}_stiffness_uflx"
 
     t0 = time.perf_counter()
     module = generate_mlir_module(
-        form, degree=degree, kernel_name=kernel_name, cell=basix.CellType.tetrahedron, inline_geometry=True
+        form,
+        degree=degree,
+        kernel_name=kernel_name,
+        cell=basix.CellType.tetrahedron,
+        inline_geometry=True,
     )
     engine = mlir_harness.build_engine_from_module(module, pipeline)
     t1 = time.perf_counter()
@@ -195,7 +206,8 @@ def time_calls(fast_call, n):
 def run_variant(label: str, compile_fn, degree: int, n_calls: int, A_ref: np.ndarray):
     """Runs one 'compile, validate, time steady-state calls' pass -- shared
     by FFCx and the UFLx compile path below. Returns
-    (compile_seconds, best_us_per_call, best_total_seconds, best_variant_name)."""
+    (compile_seconds, best_us_per_call, best_total_seconds, best_variant_name).
+    """
     print(f"--- {label} ---", flush=True)
     compile_s, fast_calls, A = compile_fn(degree)
     print(f"compile: {compile_s * 1e3:.3f} ms", flush=True)
@@ -256,7 +268,10 @@ def main():
     print(f"compile: {ffcx_compile_s * 1e3:.3f} ms  (validated: MATCH)", flush=True)
     ffcx_calls_s = time_calls(ffcx_call, n_calls)
     ffcx_us_per_call = ffcx_calls_s / n_calls * 1e6
-    print(f"{n_calls} calls: {ffcx_calls_s * 1e3:.3f} ms -> {ffcx_us_per_call:.3f} us/call", flush=True)
+    print(
+        f"{n_calls} calls: {ffcx_calls_s * 1e3:.3f} ms -> {ffcx_us_per_call:.3f} us/call",
+        flush=True,
+    )
     ffcx_total_s = ffcx_compile_s + ffcx_calls_s
     print(f"compile + {n_calls} calls, cold start: {ffcx_total_s * 1e3:.3f} ms", flush=True)
     print(flush=True)
@@ -298,11 +313,24 @@ def main():
         )
     print(flush=True)
     print("compile time here covers the WHOLE UFLx side of the pipeline (form ->", flush=True)
-    print("quadrature/geometry/tabulation lowering -> MLIR generation -> JIT) -- the fair", flush=True)
-    print("comparison against FFCx's compile_forms() (UFL analysis + C codegen + C compile).", flush=True)
-    print("Per-call numbers reuse pre-built buffers/descriptors on both sides throughout,", flush=True)
-    print("same methodology as ffcx_compare.py. [baseline] uses UFLX_PIPELINE (plain dialect", flush=True)
-    print("conversion); [licm] additionally runs canonicalize/cse/loop-invariant-code-motion", flush=True)
+    print(
+        "quadrature/geometry/tabulation lowering -> MLIR generation -> JIT) -- the fair", flush=True
+    )
+    print(
+        "comparison against FFCx's compile_forms() (UFL analysis + C codegen + C compile).",
+        flush=True,
+    )
+    print(
+        "Per-call numbers reuse pre-built buffers/descriptors on both sides throughout,", flush=True
+    )
+    print(
+        "same methodology as ffcx_compare.py. [baseline] uses UFLX_PIPELINE (plain dialect",
+        flush=True,
+    )
+    print(
+        "conversion); [licm] additionally runs canonicalize/cse/loop-invariant-code-motion",
+        flush=True,
+    )
     print("first -- compare the two rows to see whether that closes the gap.", flush=True)
 
 

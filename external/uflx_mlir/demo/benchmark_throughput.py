@@ -1,6 +1,4 @@
-"""Benchmark demo/assemble_mesh_gpu.py's single-call assembly kernel's
-throughput (dofs/sec) across a log-spaced range of mesh sizes, and plot
-the results.
+"""Benchmark assembly throughput across a log-spaced range of mesh sizes.
 
 Reuses assemble_mesh_gpu.py's own build_mesh/build_dofmap/
 assemble_global_matrix[_gpu] rather than reimplementing any of it --
@@ -37,25 +35,27 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-import assemble_mesh_gpu as amg  # noqa: E402  (see sys.path.insert above)
+import assemble_mesh_gpu as amg
 
 
 def log_spaced_mesh_sizes(n_min: int, n_max: int, num_points: int) -> list[int]:
-    """Distinct integer mesh resolutions n, log-spaced from n_min to
-    n_max inclusive. May return fewer than num_points if rounding to the
+    """Return distinct, log-spaced integer mesh resolutions.
+
+    Values range from n_min to n_max inclusive. May return fewer than
+    num_points if rounding to the
     nearest integer collapses two requested points onto the same n (more
-    likely near n_min, where geomspace's points are closest together)."""
+    likely near n_min, where geomspace's points are closest together).
+    """
     if n_min <= 0 or n_max <= 0 or n_min > n_max:
         raise ValueError(f"need 0 < n_min <= n_max, got n_min={n_min}, n_max={n_max}")
     raw = np.geomspace(n_min, n_max, num_points)
-    return sorted({int(round(x)) for x in raw})
+    return sorted({round(x) for x in raw})
 
 
-def run_backend(
-    n_values: list[int], degree: int, backend: str, cubin_chip: str
-) -> list[dict]:
-    """Run one backend across every mesh size in n_values, returning one
-    result dict per size. Mirrors main()'s own per-size sequence (build
+def run_backend(n_values: list[int], degree: int, backend: str, cubin_chip: str) -> list[dict]:
+    """Run one backend across every requested mesh size.
+
+    Returns one result dict per size. Mirrors main()'s own per-size sequence (build
     mesh, build dofmap, assemble) but keeps mesh/dofmap build timing
     separate from the single kernel call/launch timing, since only the
     latter is what "dofs/sec assembled" (the user's own framing) means --
@@ -79,7 +79,7 @@ def run_backend(
         cell_dofs, ndofs, ndofs_global = amg.build_dofmap(cells, len(coords), degree)
         t_pre1 = time.perf_counter()
 
-        avals, acols, arowptr, elapsed = assemble_fn(
+        _avals, acols, _arowptr, elapsed = assemble_fn(
             coords, cells, cell_dofs, ndofs, ndofs_global, degree, **assemble_kwargs
         )
         dofs_per_sec = amg._dofs_per_sec(ndofs_global, elapsed)
@@ -104,17 +104,20 @@ def run_backend(
 
 
 def make_plot(results: list[dict], plot_path: str) -> None:
-    """Two side-by-side log-log panels: throughput (the user's own ask)
-    and raw kernel wall-clock time (context for it), both vs global dof
+    """Plot throughput and kernel time against global degree-of-freedom count.
+
+    Two side-by-side log-log panels show throughput and raw kernel wall-clock
+    time, both vs global dof
     count -- x axis is ndofs_global rather than mesh resolution n, since
     that's the quantity the user's own "more than 1e6 dofs" framing and
     _dofs_per_sec are both defined in terms of. A vertical marker at 1e6
     dofs flags the threshold the user gave for GPU launch latency (or,
     on the CPU backend, Python/MLIR call overhead) no longer being a
-    factor."""
-    import matplotlib
+    factor.
+    """
+    import matplotlib as mpl
 
-    matplotlib.use("Agg")
+    mpl.use("Agg")
     import matplotlib.pyplot as plt
 
     fig, (ax_throughput, ax_time) = plt.subplots(1, 2, figsize=(13, 5.5))
@@ -130,12 +133,8 @@ def make_plot(results: list[dict], plot_path: str) -> None:
         dofs_per_sec = [r["dofs_per_sec"] for r in rows]
         kernel_seconds = [r["kernel_seconds"] for r in rows]
         color = colors.get(backend)
-        ax_throughput.plot(
-            ndofs, dofs_per_sec, marker="o", label=backend.upper(), color=color
-        )
-        ax_time.plot(
-            ndofs, kernel_seconds, marker="o", label=backend.upper(), color=color
-        )
+        ax_throughput.plot(ndofs, dofs_per_sec, marker="o", label=backend.upper(), color=color)
+        ax_time.plot(ndofs, kernel_seconds, marker="o", label=backend.upper(), color=color)
 
     for ax in (ax_throughput, ax_time):
         ax.set_xscale("log")
@@ -165,6 +164,7 @@ def make_plot(results: list[dict], plot_path: str) -> None:
 
 
 def main() -> None:
+    """Run the mesh-size sweep and write its CSV data and plot."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--degree", type=int, default=2)
     parser.add_argument("--backend", choices=["cpu", "gpu", "both"], default="cpu")

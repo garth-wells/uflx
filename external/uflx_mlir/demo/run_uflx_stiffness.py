@@ -50,22 +50,31 @@ section for the one-time setup):
 import sys
 from pathlib import Path
 
-import numpy as np
-
 import basix
+import numpy as np
 from basix_uflx import element
-from uflx import coordinate_element, dx, function_space, TestFunction, TrialFunction, grad, inner  # noqa: F401
+from uflx import (
+    TestFunction,
+    TrialFunction,
+    coordinate_element,
+    dx,
+    function_space,
+    grad,
+    inner,
+)
 
 sys.path.insert(0, str(Path(__file__).parent))
-import harness as mlir_harness
 import generate_kernel
+import harness as mlir_harness
+
 from uflx_mlir.emit import generate_mlir_module
 
 
 def build_stiffness_form(degree: int):
     """inner(grad(u), grad(v)) * dx on a P{degree} Lagrange tetrahedron
     space. The coordinate map is always P1 (affine), independent of the
-    solution degree -- see module docstring. Returns (form, ndofs)."""
+    solution degree -- see module docstring. Returns (form, ndofs).
+    """
     e = element("Lagrange", "tetrahedron", degree, lagrange_variant="equispaced")
     domain = coordinate_element(element("Lagrange", "tetrahedron", 1, shape=(3,)))
     space = function_space(domain, e)
@@ -86,9 +95,15 @@ def main():
     kernel_name = f"tabulate_tensor_p{degree}_stiffness_uflx"
     form, ndofs = build_stiffness_form(degree)
 
-    print(f"Lowering UFLx P{degree} form ({ndofs} dofs) and building MLIR via the op-builder API...")
+    print(
+        f"Lowering UFLx P{degree} form ({ndofs} dofs) and building MLIR via the op-builder API..."
+    )
     module = generate_mlir_module(
-        form, degree=degree, kernel_name=kernel_name, cell=basix.CellType.tetrahedron, inline_geometry=True
+        form,
+        degree=degree,
+        kernel_name=kernel_name,
+        cell=basix.CellType.tetrahedron,
+        inline_geometry=True,
     )
     print("OK -- module built and verified (module.operation.verify() passed)")
 

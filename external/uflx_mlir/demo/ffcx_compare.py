@@ -1,5 +1,4 @@
-"""
-Side-by-side FFCx-vs-MLIR comparison for a CG-`degree` Laplacian stiffness
+"""Side-by-side FFCx-vs-MLIR comparison for a CG-`degree` Laplacian stiffness
 kernel: every degree uses a basix-generated quadrature-loop kernel from
 generate_kernel.py (run that first).
 
@@ -26,9 +25,8 @@ import tempfile
 import time
 from pathlib import Path
 
-import numpy as np
-
 import basix.ufl
+import numpy as np
 import ufl
 from ffcx.codegeneration.jit import compile_forms
 from mlir.runtime import get_ranked_memref_descriptor
@@ -63,7 +61,9 @@ def build_form(degree: int):
     # equispaced (1/3, 2/3 along the edge) and DOLFINx's usual default variant
     # genuinely differ, which is exactly what made FFCx and MLIR disagree here.
     element = basix.ufl.element(
-        "Lagrange", "tetrahedron", degree,
+        "Lagrange",
+        "tetrahedron",
+        degree,
         lagrange_variant=basix.LagrangeVariant.equispaced,
     )
     coord_element = basix.ufl.element("Lagrange", "tetrahedron", 1, shape=(3,))
@@ -76,12 +76,13 @@ def build_form(degree: int):
 
 def ffcx_compile(degree: int):
     """Returns (compile_seconds, fast_call, A). fast_call() reruns the kernel
-    in place into A via a minimal-overhead cffi wrapper (buffers built once)."""
+    in place into A via a minimal-overhead cffi wrapper (buffers built once).
+    """
     a = build_form(degree)
     ndofs = ndofs_for_degree(degree)
     cache_dir = Path(tempfile.mkdtemp(prefix="ffcx_jit_"))
     t0 = time.perf_counter()
-    ufcx_forms, module, code = compile_forms([a], options={}, cache_dir=cache_dir)
+    ufcx_forms, module, _code = compile_forms([a], options={}, cache_dir=cache_dir)
     t1 = time.perf_counter()
 
     ffi = module.ffi
@@ -118,7 +119,8 @@ def mlir_compile(degree: int):
       'invoke'        -- via ExecutionEngine.invoke()
       'direct_ctypes' -- via ExecutionEngine.lookup() + the packed-args
                           calling convention (bypasses invoke()'s per-call
-                          overhead; see harness.build_caller_for)."""
+                          overhead; see harness.build_caller_for).
+    """
     kernel_path = Path(__file__).parent / "kernels" / f"p{degree}_stiffness.mlir"
     if not kernel_path.exists():
         hint = f" -- run `python3 demo/generate_kernel.py {degree}` first"
@@ -155,7 +157,9 @@ def mlir_compile(degree: int):
 
         fast_calls["direct_ctypes"] = call_direct
     except Exception as e:
-        print(f"(direct ctypes lookup path unavailable: {e!r} -- skipping that variant)", flush=True)
+        print(
+            f"(direct ctypes lookup path unavailable: {e!r} -- skipping that variant)", flush=True
+        )
 
     return t1 - t0, fast_calls, A
 
@@ -189,7 +193,10 @@ def main():
     print(f"compile: {ffcx_compile_s * 1e3:.3f} ms  (validated: MATCH)", flush=True)
     ffcx_calls_s = time_calls(ffcx_call, n_calls)
     ffcx_us_per_call = ffcx_calls_s / n_calls * 1e6
-    print(f"{n_calls} calls: {ffcx_calls_s * 1e3:.3f} ms -> {ffcx_us_per_call:.3f} us/call", flush=True)
+    print(
+        f"{n_calls} calls: {ffcx_calls_s * 1e3:.3f} ms -> {ffcx_us_per_call:.3f} us/call",
+        flush=True,
+    )
     ffcx_total_s = ffcx_compile_s + ffcx_calls_s
     print(f"compile + {n_calls} calls, cold start: {ffcx_total_s * 1e3:.3f} ms", flush=True)
 
@@ -204,16 +211,20 @@ def main():
         calls_s = time_calls(fast_call, n_calls)
         us_per_call = calls_s / n_calls * 1e6
         total_s = mlir_compile_s + calls_s
-        print(f"[{variant}] validated: MATCH -- {n_calls} calls: {calls_s * 1e3:.3f} ms "
-              f"-> {us_per_call:.3f} us/call; compile + calls cold start: {total_s * 1e3:.3f} ms",
-              flush=True)
+        print(
+            f"[{variant}] validated: MATCH -- {n_calls} calls: {calls_s * 1e3:.3f} ms "
+            f"-> {us_per_call:.3f} us/call; compile + calls cold start: {total_s * 1e3:.3f} ms",
+            flush=True,
+        )
         mlir_results[variant] = (us_per_call, total_s)
 
     best_variant = min(mlir_results, key=lambda k: mlir_results[k][0])
     mlir_us_per_call, mlir_total_s = mlir_results[best_variant]
 
-    print(f"\n--- Summary (degree={degree}, N={n_calls}, MLIR best variant: {best_variant}) ---",
-          flush=True)
+    print(
+        f"\n--- Summary (degree={degree}, N={n_calls}, MLIR best variant: {best_variant}) ---",
+        flush=True,
+    )
     print(f"compile time,  FFCx / MLIR: {ffcx_compile_s / mlir_compile_s:.3f}x", flush=True)
     print(f"per-call time, FFCx / MLIR: {ffcx_us_per_call / mlir_us_per_call:.3f}x", flush=True)
     print(f"cold total,    FFCx / MLIR: {ffcx_total_s / mlir_total_s:.3f}x", flush=True)

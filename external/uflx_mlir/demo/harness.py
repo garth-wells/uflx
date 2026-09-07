@@ -1,5 +1,4 @@
-"""
-JIT harness for the P1 stiffness kernel.
+"""JIT harness for the P1 stiffness kernel.
 
 Prereqs (after building LLVM/MLIR with Python bindings enabled -- see the
 package README's "Building LLVM/MLIR with Python bindings" section):
@@ -15,10 +14,9 @@ import time
 from pathlib import Path
 
 import numpy as np
-
+from mlir.execution_engine import ExecutionEngine
 from mlir.ir import Context, Module
 from mlir.passmanager import PassManager
-from mlir.execution_engine import ExecutionEngine
 from mlir.runtime import get_ranked_memref_descriptor
 
 KERNEL_PATH = Path(__file__).parent / "kernels" / "p1_stiffness.mlir"
@@ -127,7 +125,8 @@ def build_engine_from_text(
     passes in `pipeline`) -- e.g. loop-invariant code motion, vectorization.
     Explicit 3 here rather than relying on whatever ExecutionEngine's default
     is, since FFCx's cffi-compiled C code gets real optimization by default
-    via the system compiler and this should get a fair comparison too."""
+    via the system compiler and this should get a fair comparison too.
+    """
     with Context():
         module = Module.parse(mlir_text)
         pm = PassManager.parse(pipeline)
@@ -144,7 +143,8 @@ def build_engine_from(
     """General entry point: build an ExecutionEngine for any kernel file /
     pipeline pair. build_engine() below is the P1-specific convenience
     wrapper kept for backward compatibility. Thin wrapper around
-    build_engine_from_text() -- see that docstring for the opt_level note."""
+    build_engine_from_text() -- see that docstring for the opt_level note.
+    """
     return build_engine_from_text(kernel_path.read_text(), pipeline, opt_level)
 
 
@@ -182,7 +182,8 @@ def check_lowering(kernel_path: Path, pipeline: str = PIPELINE) -> str:
     separate binary invocation needed. A bad pipeline or invalid IR raises a
     normal Python exception here; this step was never the crash risk (that
     was ExecutionEngine.lookup()'s calling convention, a different step).
-    Returns the lowered module's text."""
+    Returns the lowered module's text.
+    """
     mlir_text = kernel_path.read_text()
     with Context():
         module = Module.parse(mlir_text)
@@ -214,9 +215,7 @@ def build_caller_for(engine: ExecutionEngine, kernel_name: str):
 
     def call(A: np.ndarray, coords: np.ndarray) -> None:
         A_desc_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(A)))
-        coords_desc_pp = ctypes.pointer(
-            ctypes.pointer(get_ranked_memref_descriptor(coords))
-        )
+        coords_desc_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(coords)))
         packed = (ctypes.c_void_p * 2)(
             ctypes.cast(A_desc_pp, ctypes.c_void_p).value,
             ctypes.cast(coords_desc_pp, ctypes.c_void_p).value,
@@ -241,14 +240,13 @@ def run_kernel(engine: ExecutionEngine, coords: np.ndarray) -> np.ndarray:
 def reference_p1_stiffness(coords: np.ndarray) -> np.ndarray:
     """Direct numpy computation for validation -- same math, independent path.
 
-    coords: 4x3 array of tetrahedron vertex coordinates (x0..x3)."""
+    coords: 4x3 array of tetrahedron vertex coordinates (x0..x3).
+    """
     x0, x1, x2, x3 = coords
     J = np.column_stack([x1 - x0, x2 - x0, x3 - x0])  # 3x3 Jacobian
     detJ = np.linalg.det(J)
     Jinv = np.linalg.inv(J)
-    ref_grads = np.array(
-        [[-1.0, -1.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    )
+    ref_grads = np.array([[-1.0, -1.0, -1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
     phys_grads = ref_grads @ Jinv  # each row: physical grad of phi_i
     volume = detJ / 6.0
     return (phys_grads @ phys_grads.T) * volume

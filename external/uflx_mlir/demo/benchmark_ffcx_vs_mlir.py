@@ -1,6 +1,4 @@
-"""Benchmark FFCx (legacy UFL) vs UFLx -> MLIR [licm] across CG degrees
-1-6 on CPU, and plot compile time and steady-state per-call runtime for
-both.
+"""Benchmark FFCx against UFLx-to-MLIR across CG degrees 1-6.
 
 Reuses demo/ffcx_compare_uflx.py's own machinery rather than
 reimplementing any of it -- imported the same way that module imports
@@ -38,15 +36,18 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
-import ffcx_compare_uflx as fcu  # noqa: E402  (see sys.path.insert above)
+import ffcx_compare_uflx as fcu
 
 
 def run_degree(degree: int, n_calls: int) -> dict:
-    """One degree's worth of ffcx_compare_uflx.py's own main(), minus the
-    printing: FFCx compile+validate+time, then UFLx->MLIR [licm]
+    """Benchmark both compilers for one polynomial degree.
+
+    This follows ffcx_compare_uflx.py's own main(), minus the printing:
+    FFCx compile+validate+time, then UFLx->MLIR [licm]
     compile+validate+time via run_variant (which also picks whichever of
     the 'invoke'/'direct_ctypes' call variants is faster -- see that
-    function's own docstring)."""
+    function's own docstring).
+    """
     print(f"=== degree {degree} ===", flush=True)
     a_ref = fcu.generate_kernel.reference_stiffness(fcu.COORDS, degree)
 
@@ -56,8 +57,7 @@ def run_degree(degree: int, n_calls: int) -> dict:
     ffcx_calls_s = fcu.time_calls(ffcx_call, n_calls)
     ffcx_us_per_call = ffcx_calls_s / n_calls * 1e6
     print(
-        f"  FFCx: compile {ffcx_compile_s * 1e3:.3f} ms, "
-        f"{ffcx_us_per_call:.3f} us/call",
+        f"  FFCx: compile {ffcx_compile_s * 1e3:.3f} ms, {ffcx_us_per_call:.3f} us/call",
         flush=True,
     )
 
@@ -86,16 +86,18 @@ def run_degree(degree: int, n_calls: int) -> dict:
 
 
 def make_plot(results: list[dict], plot_path: str) -> None:
-    """Two side-by-side panels sharing an x axis (CG degree, 1-6):
-    compile time (ms) and steady-state per-call runtime (us), each with
+    """Plot compile time and per-call runtime against polynomial degree.
+
+    The two side-by-side panels share an x axis (CG degree, 1-6), each with
     one line for FFCx and one for UFLx -> MLIR [licm]. Y axes are log
     scale -- compile time and runtime both plausibly span more than one
     order of magnitude across degree 1-6 (see ffcx_compare_uflx.py's own
     docstring: a P3 kernel alone showed a ~27x per-call gap before the
-    licm/hoisting work)."""
-    import matplotlib
+    licm/hoisting work).
+    """
+    import matplotlib as mpl
 
-    matplotlib.use("Agg")
+    mpl.use("Agg")
     import matplotlib.pyplot as plt
 
     fig, (ax_compile, ax_runtime) = plt.subplots(1, 2, figsize=(12, 5.5))
@@ -145,13 +147,14 @@ def make_plot(results: list[dict], plot_path: str) -> None:
     ax_runtime.set_ylabel("Steady-state runtime (µs/call)")
     ax_runtime.set_title("Per-call runtime: FFCx vs MLIR (licm)")
 
-    fig.suptitle("FFCx vs UFLx→MLIR (licm), CPU, degree 1–6")
+    fig.suptitle("FFCx vs UFLx→MLIR (licm), CPU, degree 1-6")
     fig.tight_layout()
     fig.savefig(plot_path)
     plt.close(fig)
 
 
 def main() -> None:
+    """Run the degree sweep and write its CSV data and plot."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--degree-min", type=int, default=1)
     parser.add_argument("--degree-max", type=int, default=6)
