@@ -6,9 +6,9 @@ These maps are uses to map function values between reference cells and physical 
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, runtime_checkable
 
+from uflx.algorithms import replace
 from uflx.expressions import AbstractExpression
 from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
 
 
 class AbstractReferenceMap(ABC):

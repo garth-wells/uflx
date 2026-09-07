@@ -4,9 +4,9 @@ from collections.abc import Hashable
 
 import numpy as np
 import numpy.typing as npt
+from uflx.algorithms import replace
 from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
 from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement

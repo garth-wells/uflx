@@ -2,9 +2,9 @@
 
 from typing import Protocol, runtime_checkable
 
+from uflx.algorithms import replace
 from uflx.expressions import AbstractExpression, Conj
 from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
 
 
 @runtime_checkable

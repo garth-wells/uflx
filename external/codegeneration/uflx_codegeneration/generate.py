@@ -1,6 +1,7 @@
 """Code generation."""
 
 import quadraturerules
+from uflx.algorithms import pull_back_to_reference, replace
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
@@ -20,7 +21,6 @@ from uflx.graphs import (
     GraphNode,
     as_graph,
 )
-from uflx.graphs.algorithms import pull_back_to_reference, replace
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure, dx
 from uflx.maps import apply_push_forwards
 from uflx.points import Point, PointComponent

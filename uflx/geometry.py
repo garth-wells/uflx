@@ -2,11 +2,11 @@
 
 from typing import Any, Protocol, runtime_checkable
 
+from uflx.algorithms import replace
 from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
 from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
 from uflx.tensors import Matrix
 

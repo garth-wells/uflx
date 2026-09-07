@@ -2,9 +2,9 @@
 
 from typing import Any
 
+from uflx.algorithms import replace
 from uflx.geometry import Jacobian, JacobianDeterminant, JacobianInverse, expand_geometry
 from uflx.graphs import Graph, GraphNode, as_graph
-from uflx.graphs.algorithms import replace
 from uflx.tensors import Matrix
 
 from uflx_codegeneration import symbols

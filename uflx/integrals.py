@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from itertools import count
 from typing import Any, cast
 
+from uflx.algorithms import replace
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.functions import (
@@ -20,7 +21,6 @@ from uflx.functions import (
 )
 from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, as_graph, generate_graph
-from uflx.graphs.algorithms import replace
 
 
 class AbstractMeasure(ABC):

@@ -2,8 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
-from uflx.graphs.algorithms.reconstruct import reconstruct_node
-from uflx.graphs.graphs import Graph, GraphNode, as_graph
+from uflx.algorithms.reconstruct import reconstruct_node
+from uflx.graphs import Graph, GraphNode, as_graph
 
 
 @runtime_checkable
