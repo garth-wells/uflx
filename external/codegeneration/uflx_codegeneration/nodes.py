@@ -93,10 +93,6 @@ class AddToLocalTensor:
 
     def generate_c(self) -> str:
         """Generate code for this object."""
-        if not isinstance(self.body, GenerateC):
-            from IPython import embed
-
-            embed()
         assert isinstance(self.body, GenerateC)
         return (
             f"{symbols.local_tensor}["
