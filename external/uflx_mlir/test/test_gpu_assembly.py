@@ -255,6 +255,66 @@ def test_extract_ptx_text_round_trips_real_ptx() -> None:
     assert "\x00" not in ptx
 
 
+def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
+    """Compile the GPU-wrapped P2 kernel through ROCDL to real AMDGCN ISA."""
+    from uflx_mlir.gpu_assembly import (
+        extract_amdgcn_text,
+        generate_csr_entry_gpu_module,
+        lower_module_to_rocdl,
+    )
+
+    form, _ = _stiffness_form(2)
+    kernel_name = "tabulate_tensor_csr_gpu_rocdl"
+    module, _ = generate_csr_entry_gpu_module(form, 2, kernel_name, basix.CellType.tetrahedron)
+    # This kernel has no OCML/OCKL calls. Avoid auto-discovering a host ROCm
+    # whose bitcode may have been produced by a newer LLVM than these MLIR
+    # bindings; that compatibility path is exercised on eng-amd.
+    lower_module_to_rocdl(module, chip="gfx90a", link_device_libraries=False)
+
+    text = str(module)
+    assert "gpu.binary" in text
+    assert "gpu.thread_id" not in text
+    assert "gpu.func" not in text
+    assert '#rocdl.target<chip = "gfx90a">' in text
+
+    assembly = extract_amdgcn_text(module)
+    assert '.amdgcn_target "amdgcn-amd-amdhsa--gfx90a"' in assembly
+    assert f".globl\t{kernel_name}" in assembly
+    assert f"{kernel_name}:" in assembly
+    assert "\\" not in assembly
+    assert "\x00" not in assembly
+
+
+def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
+    """Finish MLIR's AMDGCN output with ROCm's matching assembler/linker."""
+    from pathlib import Path
+
+    import pytest
+
+    from uflx_mlir.gpu_assembly import (
+        assemble_amdgcn_to_hsaco,
+        extract_amdgcn_text,
+        generate_csr_entry_gpu_module,
+        lower_module_to_rocdl,
+    )
+
+    rocm_path = Path("/opt/rocm")
+    required = [rocm_path / "llvm/bin/clang", rocm_path / "llvm/bin/ld.lld"]
+    if not all(path.is_file() for path in required):
+        pytest.skip("ROCm clang and ld.lld not found under /opt/rocm")
+
+    form, _ = _stiffness_form(2)
+    module, _ = generate_csr_entry_gpu_module(
+        form, 2, "tabulate_tensor_csr_gpu_hsaco", basix.CellType.tetrahedron
+    )
+    lower_module_to_rocdl(module, chip="gfx90a", link_device_libraries=False)
+    hsaco = assemble_amdgcn_to_hsaco(
+        extract_amdgcn_text(module), chip="gfx90a", toolkit_path=str(rocm_path)
+    )
+
+    assert hsaco.startswith(b"\x7fELF")
+
+
 def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
     """Numerically validate generate_csr_entry_module's CSR-scatter kernel.
 

@@ -61,8 +61,12 @@ algorithm itself, independent of its MLIR encoding).
 
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import basix
@@ -1622,12 +1626,10 @@ def lower_module_to_nvvm(
     than the pipeline's own stale "sm_50" default; override it to match
     whatever GPU the compiled output is actually meant to target.
 
-    No ROCDL/AMDGPU equivalent exists yet: unlike NVVM, this LLVM
-    checkout has no bundled "gpu-lower-to-rocdl-pipeline" convenience
-    pass (mlir/lib/Dialect/GPU/Pipelines/ contains only
-    GPUToNVVMPipeline.cpp) -- an AMDGPU path would need the individual
-    convert-gpu-to-rocdl / gpu-rocdl-attach-target / gpu-module-to-binary
-    passes assembled by hand, not attempted here.
+    The corresponding AMDGPU path is implemented by
+    :func:`lower_module_to_rocdl`. Unlike NVVM, this LLVM checkout has no
+    bundled ``gpu-lower-to-rocdl-pipeline`` convenience pass, so that
+    function assembles the individual ROCDL passes explicitly.
 
     Args:
         module: A module built by generate_csr_entry_gpu_module (or
@@ -1656,6 +1658,216 @@ def lower_module_to_nvvm(
     # provided...").
     pm = PassManager.parse(pipeline, context=module.context)
     pm.run(module.operation)
+
+
+def lower_module_to_rocdl(
+    module: Module,
+    *,
+    chip: str = "gfx90a",
+    binary_format: str = "isa",
+    toolkit_path: str | None = None,
+    link_device_libraries: bool = True,
+) -> None:
+    """Lower a GPU module to AMDGCN assembly or an AMDHSA code object.
+
+    This is the ROCDL counterpart of :func:`lower_module_to_nvvm`. This
+    LLVM checkout does not provide a ``gpu-lower-to-rocdl-pipeline``
+    convenience pipeline, so the passes are assembled here in the same
+    phases as MLIR's bundled NVVM pipeline: common host/device lowering,
+    nested ``gpu.module`` conversion to ROCDL, host launch lowering, and
+    target serialization.
+
+    ``binary_format="isa"`` produces AMDGCN assembly and needs only an
+    LLVM build containing the AMDGPU target. ``"bin"`` produces a loadable
+    ``.hsaco`` image. The latter invokes ``<toolkit_path>/llvm/bin/ld.lld``;
+    consequently, pass a ROCm installation root (normally ``/opt/rocm``)
+    unless MLIR can discover it automatically. Set
+    ``link_device_libraries=False`` for kernels with no OCML/OCKL calls when
+    ROCm's bitcode was produced by a newer LLVM than the MLIR bindings. This
+    suppresses device-library discovery and lets MLIR emit AMDGCN assembly,
+    which :func:`assemble_amdgcn_to_hsaco` can finish with ROCm's own tools.
+
+    Args:
+        module: A module built by :func:`generate_csr_entry_gpu_module`,
+            modified in place.
+        chip: AMDGPU target processor, for example ``gfx90a``, ``gfx942``,
+            or ``gfx1100``.
+        binary_format: ``"isa"`` for textual AMDGCN assembly or ``"bin"``
+            for an AMDHSA code object.
+        toolkit_path: Optional ROCm installation root used by binary
+            serialization to locate ``llvm/bin/ld.lld``.
+        link_device_libraries: Whether MLIR may discover and link ROCm's
+            OCML/OCKL bitcode. Disable only when the kernel has no references
+            to those libraries.
+    """
+    from mlir.passmanager import PassManager
+
+    def run(toolkit: str | None) -> None:
+        binary_options = f"format={binary_format}"
+        if toolkit is not None:
+            binary_options += f" toolkit={json.dumps(toolkit)}"
+
+        # This is deliberately kept structurally aligned with
+        # GPUToNVVMPipeline.cpp. Passes outside gpu.module lower the host launch
+        # wrapper; the nested passes lower the device kernel itself.
+        pipeline = (
+            "builtin.module("
+            "convert-vector-to-scf,"
+            "convert-scf-to-cf,"
+            "convert-math-to-llvm,"
+            "convert-func-to-llvm,"
+            "expand-strided-metadata,"
+            f"rocdl-attach-target{{chip={chip} triple=amdgcn-amd-amdhsa}},"
+            "lower-affine,"
+            "convert-arith-to-llvm,"
+            "convert-index-to-llvm{index-bitwidth=64},"
+            "canonicalize,"
+            "cse,"
+            "gpu.module("
+            "strip-debuginfo,"
+            f"convert-amdgpu-to-rocdl{{chipset={chip}}},"
+            f"convert-gpu-to-rocdl{{chipset={chip} runtime=HIP}},"
+            "canonicalize,"
+            "cse,"
+            "reconcile-unrealized-casts"
+            "),"
+            "gpu-to-llvm,"
+            f"gpu-module-to-binary{{{binary_options}}},"
+            "canonicalize,"
+            "cse,"
+            "reconcile-unrealized-casts"
+            ")"
+        )
+        pm = PassManager.parse(pipeline, context=module.context)
+        pm.run(module.operation)
+
+    if link_device_libraries:
+        run(toolkit_path)
+    else:
+        # The serializer only probes <toolkit>/amdgcn/bitcode. An empty,
+        # temporary toolkit root disables its compile-time/default ROCm path
+        # without relying on a magic nonexistent pathname.
+        with tempfile.TemporaryDirectory(prefix="uflx-empty-rocm-") as empty_toolkit:
+            run(empty_toolkit)
+
+
+def _extract_gpu_object_bytes(module: Module) -> bytes:
+    """Extract the serialized payload of the first ``gpu.binary`` object."""
+    binary_op = None
+    for op in module.body:
+        if op.operation.name == "gpu.binary":
+            binary_op = op
+            break
+    if binary_op is None:
+        raise ValueError("no gpu.binary op found; lower the module to a GPU target first")
+
+    candidates = re.findall(r'"([^"]*)"', str(binary_op.operation))
+    if not candidates:
+        raise ValueError("gpu.binary op has no quoted string attribute to recover")
+    escaped = max(candidates, key=len)
+
+    payload = bytearray()
+    i = 0
+    while i < len(escaped):
+        if escaped[i] != "\\":
+            payload.extend(escaped[i].encode())
+            i += 1
+        elif escaped[i + 1] == "\\":
+            payload.append(ord("\\"))
+            i += 2
+        else:
+            payload.append(int(escaped[i + 1 : i + 3], 16))
+            i += 3
+    return bytes(payload)
+
+
+def extract_amdgcn_text(module: Module) -> str:
+    """Extract AMDGCN assembly produced by ``binary_format="isa"``."""
+    return _extract_gpu_object_bytes(module).rstrip(b"\x00").decode()
+
+
+def extract_hsaco_binary(module: Module) -> bytes:
+    """Extract a loadable AMDHSA code object produced with ``"bin"``."""
+    payload = _extract_gpu_object_bytes(module)
+    if not payload.startswith(b"\x7fELF"):
+        raise ValueError("gpu.binary payload is not an ELF AMDHSA code object")
+    return payload
+
+
+def assemble_amdgcn_to_hsaco(
+    assembly: str,
+    *,
+    chip: str,
+    toolkit_path: str = "/opt/rocm",
+) -> bytes:
+    """Assemble AMDGCN text and link it into an AMDHSA code object.
+
+    This is a compatibility path for installations where the LLVM used by
+    the MLIR Python bindings and the LLVM bundled with ROCm are different
+    major versions. In that configuration, ``gpu-module-to-binary`` can
+    still emit assembly, but its in-process linker may be unable to read
+    ROCm's newer device-library bitcode or invoke the matching linker.
+
+    The assembly must come from :func:`extract_amdgcn_text`. It is assembled
+    and linked entirely by ROCm's own, mutually compatible ``clang`` and
+    ``ld.lld`` executables. Kernels that call OCML/OCKL still require device
+    libraries to have been linked during MLIR serialization; this fallback
+    is sufficient for kernels, such as the extracted-geometry CSR kernel,
+    whose generated assembly has no unresolved device-library calls.
+
+    Args:
+        assembly: AMDGCN assembly emitted for ``chip``.
+        chip: AMDGPU target processor, for example ``gfx90a`` or ``gfx1100``.
+        toolkit_path: ROCm installation root containing ``llvm/bin/clang``
+            and ``llvm/bin/ld.lld``.
+
+    Returns:
+        A loadable ELF AMDHSA code object (``.hsaco``) as bytes.
+
+    Raises:
+        FileNotFoundError: If either required ROCm executable is absent.
+        subprocess.CalledProcessError: If assembly or linking fails.
+        ValueError: If the linker output is not an ELF object.
+    """
+    llvm_bin = Path(toolkit_path) / "llvm" / "bin"
+    clang = llvm_bin / "clang"
+    linker = llvm_bin / "ld.lld"
+    for executable in (clang, linker):
+        if not executable.is_file():
+            raise FileNotFoundError(f"required ROCm executable not found: {executable}")
+
+    with tempfile.TemporaryDirectory(prefix="uflx-amdgcn-") as directory:
+        workdir = Path(directory)
+        source = workdir / "kernel.s"
+        obj = workdir / "kernel.o"
+        hsaco = workdir / "kernel.hsaco"
+        source.write_text(assembly)
+        subprocess.run(
+            [
+                str(clang),
+                "-target",
+                "amdgcn-amd-amdhsa",
+                f"-mcpu={chip}",
+                "-c",
+                str(source),
+                "-o",
+                str(obj),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            [str(linker), "-shared", str(obj), "-o", str(hsaco)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = hsaco.read_bytes()
+
+    if not payload.startswith(b"\x7fELF"):
+        raise ValueError("ROCm linker output is not an ELF AMDHSA code object")
+    return payload
 
 
 def extract_ptx_text(module: Module) -> str:

@@ -58,50 +58,69 @@ Correctness checks, both O(nnz) so they scale to a genuinely large mesh
      cheap (one pass over nnz) no matter how large the mesh gets.
   3. Symmetry: A[i, j] == A[j, i] for every stored entry (also O(nnz)).
 
-Why not the real GPU path (generate_csr_entry_gpu_module): its own test
-(test_gpu_assembly.py's
-test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine)
-needs a real NVIDIA GPU and a CUDA-enabled MLIR build, and explicitly
-skips (rather than failing) without one -- "e.g. on the Mac this was
-developed on, which has no CUDA Toolkit at all". That path is also
-currently scoped to one cell per gpu.launch_func call (see that
-function's docstring) rather than a whole mesh per launch, so even with
-CUDA available it would still mean one Python-level call per cell --
-multi-cell batching in a single launch is explicitly future work there.
-This script's CPU path, by contrast, already needs only the one call
-built by generate_csr_assembly_module below; the GPU path's remaining
-advantage over it is running the per-cell work in hardware parallel, not
-reducing how many times Python has to call into the kernel.
+GPU backend: this script can also assemble via the actual
+GPU-launched kernel (generate_csr_assembly_gpu_module) instead of
+generate_csr_assembly_module's CPU path -- pass "gpu" as this script's
+third argument (see Usage below). That kernel needs a real NVIDIA GPU
+and an MLIR build configured with -DMLIR_ENABLE_CUDA_RUNNER=ON (see
+test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells's
+own docstring in test/test_gpu_assembly.py for exactly what that means
+and how libmlir_cuda_runtime.so is located) -- not available on the Mac
+this script was originally developed on, which has no CUDA Toolkit at
+all. That kernel itself is confirmed correct on a real CUDA machine
+(eng-nvidia) at genuine two-cell scale (see test_gpu_assembly.py's own
+test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells);
+this script's own full-mesh GPU run is what actually exercises it at
+real mesh scale. Unlike generate_csr_entry_gpu_module
+(the older, one-cell-per-gpu.launch_func-call kernel this module also
+still provides -- see its own docstring; deliberately NOT wired into
+this script, since a whole mesh's worth of launches that way would be
+far slower than either backend this script does use), the batched kernel
+used here needs only ONE gpu.launch_func call regardless of mesh size:
+gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
+(one thread per local (i, j) entry, same as the older kernel) -- no
+Python-level loop over cells on the GPU backend either, matching the CPU
+backend's own single-call design.
 
 Usage:
-    python3 demo/assemble_mesh_gpu.py [degree] [n]
+    python3 demo/assemble_mesh_gpu.py [degree] [n] [backend] [cubin_chip]
 
     degree: Lagrange degree, default 2. Only 1 and 2 are supported --
-        generate_csr_assembly_module only extracts geometry for affine
-        tetrahedra (any degree), but the dof map built here only knows
-        how to place vertex dofs (P1) and vertex + edge-midpoint dofs
-        (P2); degree 3+ would additionally need face/interior dof
-        placement, not implemented in this script.
+        generate_csr_assembly_module/generate_csr_assembly_gpu_module only
+        extract geometry for affine tetrahedra (any degree), but the dof
+        map built here only knows how to place vertex dofs (P1) and
+        vertex + edge-midpoint dofs (P2); degree 3+ would additionally
+        need face/interior dof placement, not implemented in this
+        script.
     n: mesh resolution, default 6 -- n x n x n cubes, 6*n**3 tetrahedra
         (n=6 -> 1296 cells, 2197 dofs, ~55k nonzeros at P2). Assembly
-        itself is a SINGLE call into the generated kernel regardless of
-        n (see assemble_global_matrix and generate_csr_assembly_module's
-        own docstring): runtime is dominated by that kernel's internal
-        cell loop actually executing 6*n**3 cell iterations, each doing
-        ndofs**2 quadrature-weighted accumulations plus one
-        binary-search-and-atomic-add CSR scatter per (i, j) pair, not by
-        any Python-level per-call overhead -- there is no longer a
-        per-triple Python call to have overhead in the first place. This
-        script demonstrates assembly *correctness at real mesh scale*,
-        not GPU throughput -- generate_csr_entry_gpu_module (still one
-        gpu.launch_func call per cell, see its own docstring) is what
-        would move this cell loop onto actual GPU hardware, which this
-        script can't exercise here (see above).
+        itself is a SINGLE kernel call/launch regardless of n or
+        backend (see assemble_global_matrix/assemble_global_matrix_gpu
+        and generate_csr_assembly_module's/generate_csr_assembly_gpu_module's
+        own docstrings): on the CPU backend, runtime is dominated by
+        that kernel's internal cell loop actually executing 6*n**3 cell
+        iterations; on the GPU backend, those same 6*n**3 cells instead
+        run as gridDim.x blocks in real hardware parallel. Either way
+        there is no Python-level per-cell or per-triple call overhead --
+        this script demonstrates assembly *correctness at real mesh
+        scale* on whichever backend is asked for, not a throughput
+        comparison between them.
+    backend: "cpu" (default) or "gpu" -- see "GPU backend" above. "gpu"
+        needs a real NVIDIA GPU and a CUDA-enabled MLIR build; this
+        script raises a clear RuntimeError (rather than silently
+        falling back to "cpu") if that isn't available.
+    cubin_chip: the target NVPTX chip the GPU backend's compiled PTX
+        targets, default "sm_80" (Ampere, matching lower_module_to_nvvm's
+        own default) -- ignored for the "cpu" backend. Pass whatever
+        matches the actual GPU this runs on, e.g. "sm_89" for
+        eng-nvidia's Ada Lovelace GPU.
 """
 
 from __future__ import annotations
 
 import ctypes
+import glob
+import os
 import sys
 import time
 from pathlib import Path
@@ -111,7 +130,12 @@ import numpy as np
 from basix_uflx import element
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
 
-from uflx_mlir.gpu_assembly import generate_csr_assembly_module
+from uflx_mlir.gpu_assembly import (
+    generate_csr_assembly_gpu_module,
+    generate_csr_assembly_module,
+    gpu_launch_name,
+    lower_module_to_nvvm,
+)
 
 sys.path.insert(0, str(Path(__file__).parent))
 import harness as mlir_harness  # noqa: E402  (see the sys.path.insert above, matches every other demo/*.py script)
@@ -127,6 +151,16 @@ CELL = basix.CellType.tetrahedron
 #     -> dim-1 (edge) entities carry local dofs [4],[5],[6],[7],[8],[9]
 #        in that same edge order.
 LOCAL_EDGES = [(2, 3), (1, 3), (1, 2), (0, 3), (0, 2), (0, 1)]
+
+
+def _dofs_per_sec(ndofs_global: int, elapsed_seconds: float) -> float:
+    """ndofs_global / elapsed_seconds -- the throughput this module's
+    assembly functions report alongside their own wall-clock timing.
+    Floors elapsed_seconds at a tiny epsilon rather than risking
+    ZeroDivisionError on an implausibly-fast (sub-nanosecond) timer
+    reading, which a tiny mesh's single call could in principle hit.
+    """
+    return ndofs_global / max(elapsed_seconds, 1e-9)
 
 
 def _stiffness_form(degree: int):
@@ -259,18 +293,35 @@ def build_dofmap(
             "does not implement."
         )
 
-    edge_id: dict[tuple[int, int], int] = {}
-    cell_dofs = np.empty((len(cells), 10), dtype=np.int32)
-    for c, verts in enumerate(cells):
-        cell_dofs[c, 0:4] = verts
-        for local_k, (a, b) in enumerate(LOCAL_EDGES):
-            key = (verts[a], verts[b]) if verts[a] < verts[b] else (verts[b], verts[a])
-            gid = edge_id.get(key)
-            if gid is None:
-                gid = nverts + len(edge_id)
-                edge_id[key] = gid
-            cell_dofs[c, 4 + local_k] = gid
-    ndofs_global = nverts + len(edge_id)
+    # Vectorized edge numbering: for every (cell, local edge) pair, the
+    # canonicalized (lo, hi) global-vertex-pair packs into one int64 key
+    # (lo*nverts + hi -- unique since hi < nverts always), so np.unique's
+    # own return_inverse gives each distinct edge exactly one id and maps
+    # every occurrence of it (however many cells share it) back to that
+    # same id, in one vectorized pass -- no Python-level dict, unlike the
+    # per-(cell, edge) dict lookup this replaces. The actual id values
+    # differ from that dict's first-seen-order numbering (np.unique
+    # returns them in sorted-key order instead), but nothing downstream
+    # depends on which specific ids a shared edge gets, only that it gets
+    # the SAME one everywhere it's touched -- see this module's own
+    # correctness checks, all permutation-invariant in the dof numbering.
+    cells_arr = np.asarray(cells, dtype=np.int64)
+    ncells = cells_arr.shape[0]
+    cell_dofs = np.empty((ncells, 10), dtype=np.int32)
+    cell_dofs[:, 0:4] = cells_arr
+
+    local_edges = np.asarray(LOCAL_EDGES, dtype=np.int64)  # shape (6, 2)
+    edge_v0 = cells_arr[:, local_edges[:, 0]]  # shape (ncells, 6)
+    edge_v1 = cells_arr[:, local_edges[:, 1]]  # shape (ncells, 6)
+    lo = np.minimum(edge_v0, edge_v1)
+    hi = np.maximum(edge_v0, edge_v1)
+    edge_key = (lo * nverts + hi).reshape(-1)
+
+    _, inverse = np.unique(edge_key, return_inverse=True)
+    nedges = int(inverse.max()) + 1 if inverse.size else 0
+    cell_dofs[:, 4:10] = (nverts + inverse).astype(np.int32).reshape(ncells, 6)
+
+    ndofs_global = nverts + nedges
     return cell_dofs.reshape(-1), 10, ndofs_global
 
 
@@ -291,21 +342,52 @@ def build_csr_pattern(
         (avals, acols, arowptr): avals is zero-initialized float64 (one
         entry per stored (row, col) pair), acols/arowptr are int32.
     """
-    rows: list[set[int]] = [set() for _ in range(ndofs_global)]
-    cell_dofs2d = cell_dofs.reshape(ncells, ndofs)
-    for verts in cell_dofs2d:
-        verts_list = [int(v) for v in verts]
-        for a in verts_list:
-            rows[a].update(verts_list)
+    # Vectorized sparsity-pattern build: every cell contributes the full
+    # ndofs*ndofs grid of (row, col) pairs among its own local dofs (that
+    # cell's row r's columns are exactly its own dof list, for every r it
+    # owns -- same rule the old rows[a].update(verts_list) loop encoded,
+    # just built via broadcasting instead of a per-cell nested Python
+    # loop). Packing each (row, col) pair into one int64 key
+    # (row*ndofs_global + col) turns "dedupe the pairs contributed by
+    # multiple cells, then sort each row's columns ascending" into "sort
+    # the keys, then drop adjacent duplicates": sorting keys ascending
+    # sorts by row first (since row dominates the key -- col is always
+    # < ndofs_global) and column second within a row, which is exactly
+    # the CSR contract _binary_search_and_scatter needs (see this
+    # function's own docstring).
+    #
+    # Deliberately NOT np.unique(keys) here: benchmarked at ~38M keys
+    # (n=55, the >1e6-dof scale this was written to handle), plain
+    # np.unique took 25-40s on this array size in this numpy build --
+    # confirmed via a standalone repro with equivalent-size random int64
+    # data, so it's not something about these particular keys. A manual
+    # np.sort + boolean-diff dedup needs no argsort (only the deduped
+    # sorted keys are needed here, not an inverse mapping) and does the
+    # same job in a small fraction of the time -- roughly 15s at the
+    # same scale in the same environment, vs. what would likely be
+    # minutes-to-hours for the original pure-Python set-based loop.
+    #
+    # Memory scales with ncells*ndofs**2 raw (row, col) pairs before
+    # dedup (int64 keys: 8 bytes each) -- a few hundred MB at the
+    # >1e6-dof scale this was written to handle, but worth knowing if
+    # pushing to a substantially larger mesh still.
+    cell_dofs2d = cell_dofs.reshape(ncells, ndofs).astype(np.int64)
+    keys_grid = cell_dofs2d[:, :, None] * ndofs_global + cell_dofs2d[:, None, :]
+    keys = keys_grid.reshape(-1)
+
+    sorted_keys = np.sort(keys)
+    keep = np.empty(sorted_keys.shape[0], dtype=bool)
+    keep[0] = True
+    np.not_equal(sorted_keys[1:], sorted_keys[:-1], out=keep[1:])
+    unique_keys = sorted_keys[keep]
+
+    rows_u = (unique_keys // ndofs_global).astype(np.int32)
+    acols = (unique_keys % ndofs_global).astype(np.int32)
+    avals = np.zeros(unique_keys.shape[0], dtype=np.float64)
 
     arowptr = np.zeros(ndofs_global + 1, dtype=np.int32)
-    acols_list: list[int] = []
-    for r, cols in enumerate(rows):
-        sorted_cols = sorted(cols)
-        acols_list.extend(sorted_cols)
-        arowptr[r + 1] = arowptr[r] + len(sorted_cols)
-    acols = np.array(acols_list, dtype=np.int32)
-    avals = np.zeros(len(acols_list), dtype=np.float64)
+    counts = np.bincount(rows_u, minlength=ndofs_global)
+    np.cumsum(counts, out=arowptr[1:])
     return avals, acols, arowptr
 
 
@@ -317,7 +399,8 @@ def assemble_global_matrix(
     ndofs_global: int,
     degree: int,
     kernel_name: str = "tabulate_tensor_csr_assemble",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    return_timing: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Build generate_csr_assembly_module's single whole-mesh kernel for
     `degree` and call it exactly ONCE to assemble the full global CSR
     stiffness matrix for the given mesh.
@@ -331,8 +414,18 @@ def assemble_global_matrix(
     buffer reuse work. There is no host-side loop over cells or dof pairs
     left in this function at all.
 
+    Args:
+        return_timing: when True, also return the single kernel call's
+            own wall-clock elapsed seconds as a 4th tuple element --
+            exactly the t1 - t0 this function's own print statement
+            already reports, just returned numerically instead of only
+            printed, for callers (e.g. demo/benchmark_throughput.py)
+            that sweep many mesh sizes and need the number, not stdout
+            to parse.
+
     Returns:
-        (avals, acols, arowptr): the assembled CSR matrix.
+        (avals, acols, arowptr): the assembled CSR matrix, or
+        (avals, acols, arowptr, elapsed_seconds) if return_timing.
     """
     form, ndofs_check = _stiffness_form(degree)
     if ndofs_check != ndofs:
@@ -387,19 +480,185 @@ def assemble_global_matrix(
 
     print(
         f"  assembled: {ncells} cells, {ndofs_global} dofs, {len(acols)} nonzeros, "
-        f"1 kernel call in {t1 - t0:.3f}s"
+        f"1 kernel call in {t1 - t0:.3f}s "
+        f"({_dofs_per_sec(ndofs_global, t1 - t0):.3e} dofs/sec)"
     )
+    if return_timing:
+        return avals, acols, arowptr, t1 - t0
     return avals, acols, arowptr
 
 
-def check_small_mesh_against_reference(degree: int) -> None:
+def _find_cuda_runtime_lib() -> str | None:
+    """Locate libmlir_cuda_runtime.so, matching
+    test_gpu_assembly.py's own execution-engine tests' search (duplicated
+    here rather than imported -- see this module's own "kept duplicated"
+    convention for staying free of a test/-directory dependency):
+    $MLIR_CUDA_RUNTIME_LIB if set, else searched upward from the mlir
+    Python package's own install directory (its usual place:
+    <build>/lib/libmlir_cuda_runtime.so, a few levels above
+    <build>/tools/mlir/python_packages/mlir_core/mlir/).
+    """
+    cuda_runtime_lib = os.environ.get("MLIR_CUDA_RUNTIME_LIB")
+    if cuda_runtime_lib:
+        return cuda_runtime_lib
+
+    import mlir
+
+    start_dirs = []
+    for p in getattr(mlir, "__path__", []) or []:
+        start_dirs.append(os.path.abspath(p))
+    if getattr(mlir, "__file__", None):
+        start_dirs.append(os.path.dirname(os.path.abspath(mlir.__file__)))
+
+    for start in start_dirs:
+        here = start
+        for _ in range(8):
+            found = glob.glob(os.path.join(here, "lib", "libmlir_cuda_runtime.so*"))
+            if found:
+                return found[0]
+            parent = os.path.dirname(here)
+            if parent == here:
+                break
+            here = parent
+    return None
+
+
+def assemble_global_matrix_gpu(
+    coords: np.ndarray,
+    cells: list[tuple[int, int, int, int]],
+    cell_dofs: np.ndarray,
+    ndofs: int,
+    ndofs_global: int,
+    degree: int,
+    kernel_name: str = "tabulate_tensor_csr_assembly_gpu",
+    cubin_chip: str = "sm_80",
+    return_timing: bool = False,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Build generate_csr_assembly_gpu_module's batched GPU kernel for
+    `degree` and call it exactly ONCE -- one real gpu.launch_func call,
+    gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
+    -- to assemble the full global CSR stiffness matrix on an actual GPU.
+
+    See assemble_global_matrix's own docstring for what's shared with the
+    CPU path (dof-count check, CSR pattern construction, per-cell
+    geometry precompute); the differences here are all about actually
+    reaching a GPU: locating libmlir_cuda_runtime.so, compiling the
+    kernel's gpu.module down to real NVVM/PTX via lower_module_to_nvvm,
+    and looking the launch wrapper up by gpu_launch_name(kernel_name)
+    (generate_csr_assembly_gpu_module's returned module contains that
+    host-side wrapper, not the raw gpu.func symbol itself -- see that
+    function's own docstring).
+
+    Needs a real NVIDIA GPU and an MLIR build configured with
+    -DMLIR_ENABLE_CUDA_RUNNER=ON -- raises RuntimeError with a clear
+    message if libmlir_cuda_runtime.so can't be found, rather than
+    silently falling back to the CPU path.
+
+    Args:
+        cubin_chip: the target NVPTX chip generate_csr_assembly_gpu_module's
+            compiled PTX targets -- e.g. "sm_89" for eng-nvidia's Ada
+            Lovelace GPU (see lower_module_to_nvvm's own docstring).
+            Defaults to "sm_80" (Ampere), matching lower_module_to_nvvm's
+            own default; pass whatever matches the actual GPU this runs
+            on.
+        return_timing: when True, also return the single gpu.launch_func
+            call's own wall-clock elapsed seconds as a 4th tuple element
+            -- see assemble_global_matrix's own return_timing doc, same
+            reasoning.
+
+    Returns:
+        (avals, acols, arowptr): the assembled CSR matrix, or
+        (avals, acols, arowptr, elapsed_seconds) if return_timing.
+
+    Raises:
+        RuntimeError: if libmlir_cuda_runtime.so can't be found (no
+            CUDA-enabled MLIR build available).
+    """
+    form, ndofs_check = _stiffness_form(degree)
+    if ndofs_check != ndofs:
+        raise AssertionError(
+            f"local dof count mismatch: build_dofmap says {ndofs}, "
+            f"the P{degree} element says {ndofs_check}"
+        )
+
+    cuda_runtime_lib = _find_cuda_runtime_lib()
+    if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
+        raise RuntimeError(
+            "libmlir_cuda_runtime.so not found -- rebuild MLIR with "
+            "-DMLIR_ENABLE_CUDA_RUNNER=ON, or set MLIR_CUDA_RUNTIME_LIB "
+            "to its path (see test_gpu_assembly.py's own execution-engine "
+            "tests for the same check)."
+        )
+
+    module, layout = generate_csr_assembly_gpu_module(form, degree, kernel_name, CELL)
+    if layout.ndofs != ndofs:
+        raise AssertionError(f"layout.ndofs={layout.ndofs} != ndofs={ndofs}")
+
+    lower_module_to_nvvm(module, cubin_chip=cubin_chip)
+
+    ncells = len(cells)
+    avals, acols, arowptr = build_csr_pattern(cell_dofs, ndofs, ncells, ndofs_global)
+
+    # Same flat, row-major-over-cells layout as assemble_global_matrix's
+    # own geometry precompute -- see that function's docstring.
+    geometries = np.empty((ncells, layout.geometry_size), dtype=np.float64)
+    for c, verts in enumerate(cells):
+        geometries[c] = _geometry_from_coords(coords[list(verts)])
+    geometries = geometries.reshape(-1)
+
+    from mlir.execution_engine import ExecutionEngine
+    from mlir.runtime import get_ranked_memref_descriptor
+
+    with module.context:
+        engine = ExecutionEngine(module, opt_level=3, shared_libs=[cuda_runtime_lib])
+
+    raw_fn = engine.lookup(gpu_launch_name(kernel_name))
+    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
+    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
+    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
+    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
+
+    packed = (ctypes.c_void_p * 6)(
+        ctypes.cast(avals_pp, ctypes.c_void_p).value,
+        ctypes.cast(acols_pp, ctypes.c_void_p).value,
+        ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
+        ctypes.cast(geometries_pp, ctypes.c_void_p).value,
+        ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
+        ctypes.cast(ncells_p, ctypes.c_void_p).value,
+    )
+
+    t0 = time.perf_counter()
+    raw_fn(packed)  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
+    t1 = time.perf_counter()
+
+    print(
+        f"  assembled (GPU, {cubin_chip}): {ncells} cells, {ndofs_global} dofs, "
+        f"{len(acols)} nonzeros, 1 launch (gridDim.x={ncells}, "
+        f"blockDim=({ndofs},{ndofs},1)) in {t1 - t0:.3f}s "
+        f"({_dofs_per_sec(ndofs_global, t1 - t0):.3e} dofs/sec)"
+    )
+    if return_timing:
+        return avals, acols, arowptr, t1 - t0
+    return avals, acols, arowptr
+
+
+def check_small_mesh_against_reference(
+    degree: int, assemble_fn=assemble_global_matrix, **assemble_kwargs
+) -> None:
     """Exact check on the smallest possible mesh (1 cube, 6 cells) against
     an independent basix-quadrature reference -- see module docstring,
-    check (1)."""
+    check (1).
+
+    assemble_fn: assemble_global_matrix (default, CPU) or
+        assemble_global_matrix_gpu -- see main() for how the requested
+        backend picks which is passed in.
+    """
     coords, cells = build_mesh(1)
     cell_dofs, ndofs, ndofs_global = build_dofmap(cells, len(coords), degree)
-    avals, acols, arowptr = assemble_global_matrix(
-        coords, cells, cell_dofs, ndofs, ndofs_global, degree
+    avals, acols, arowptr = assemble_fn(
+        coords, cells, cell_dofs, ndofs, ndofs_global, degree, **assemble_kwargs
     )
 
     a = np.zeros((ndofs_global, ndofs_global))
@@ -429,14 +688,39 @@ def patch_test(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_
 
 def check_symmetry(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int) -> None:
     """A[i, j] == A[j, i] for every stored entry -- see module docstring,
-    check (3). O(nnz) via a dict keyed by (row, col)."""
-    entries: dict[tuple[int, int], float] = {}
-    for r in range(ndofs_global):
-        for idx in range(arowptr[r], arowptr[r + 1]):
-            entries[(r, int(acols[idx]))] = float(avals[idx])
-    max_asym = 0.0
-    for (r, c), v in entries.items():
-        max_asym = max(max_asym, abs(v - entries.get((c, r), 0.0)))
+    check (3). O(nnz), fully vectorized (no per-entry Python loop): pack
+    each stored (row, col) into one int64 key (row*ndofs_global + col),
+    identical to build_csr_pattern's own packing -- since acols is sorted
+    ascending within each row and rows are laid out in increasing order
+    (build_csr_pattern's CSR contract), the resulting `keys` array is
+    itself already sorted ascending overall, so np.searchsorted can look
+    up every entry's mirror (col, row) key directly with no separate
+    argsort needed.
+
+    build_csr_pattern's own rows[a].update(verts_list)-style construction
+    (see that function's docstring) makes the pattern symmetric by
+    construction, so every mirror key is expected to actually be present;
+    this still checks that explicitly (rather than assuming it) so a
+    future change that broke that invariant would fail loudly here
+    instead of silently reading a wrong, unrelated entry.
+    """
+    row_of_entry = np.repeat(np.arange(ndofs_global, dtype=np.int64), np.diff(arowptr))
+    cols64 = acols.astype(np.int64)
+    keys = row_of_entry * ndofs_global + cols64
+    mirror_keys = cols64 * ndofs_global + row_of_entry
+
+    mirror_idx = np.searchsorted(keys, mirror_keys)
+    in_bounds = mirror_idx < keys.shape[0]
+    found = np.zeros(mirror_idx.shape[0], dtype=bool)
+    found[in_bounds] = keys[mirror_idx[in_bounds]] == mirror_keys[in_bounds]
+    if not np.all(found):
+        raise AssertionError(
+            "sparsity pattern is not symmetric -- found a (row, col) entry "
+            "with no (col, row) counterpart; build_csr_pattern should make "
+            "this impossible, so this points at a real bug there"
+        )
+
+    max_asym = float(np.max(np.abs(avals - avals[mirror_idx])))
     print(f"  symmetry check: max |A[i,j] - A[j,i]| = {max_asym:.3e}")
     assert max_asym < 1e-8, "symmetry check failed -- assembly is wrong somewhere"
 
@@ -444,16 +728,36 @@ def check_symmetry(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, nd
 def main() -> None:
     degree = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+    backend = sys.argv[3] if len(sys.argv) > 3 else "cpu"
+    cubin_chip = sys.argv[4] if len(sys.argv) > 4 else "sm_80"
 
-    print(f"--- exact correctness check (P{degree}, 1x1x1 cube) ---")
-    check_small_mesh_against_reference(degree)
+    if backend not in ("cpu", "gpu"):
+        raise SystemExit(f"backend must be 'cpu' or 'gpu', got {backend!r}")
+
+    if backend == "gpu":
+        cuda_runtime_lib = _find_cuda_runtime_lib()
+        if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
+            print(
+                "GPU backend requested but libmlir_cuda_runtime.so was not "
+                "found -- rebuild MLIR with -DMLIR_ENABLE_CUDA_RUNNER=ON, or "
+                "set MLIR_CUDA_RUNTIME_LIB to its path. Nothing assembled."
+            )
+            return
+        assemble_fn = assemble_global_matrix_gpu
+        assemble_kwargs = {"cubin_chip": cubin_chip}
+    else:
+        assemble_fn = assemble_global_matrix
+        assemble_kwargs = {}
+
+    print(f"--- exact correctness check (P{degree}, 1x1x1 cube, backend={backend}) ---")
+    check_small_mesh_against_reference(degree, assemble_fn, **assemble_kwargs)
 
     ncells = 6 * n**3
-    print(f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells) ---")
+    print(f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells), backend={backend} ---")
     coords, cells = build_mesh(n)
     cell_dofs, ndofs, ndofs_global = build_dofmap(cells, len(coords), degree)
-    avals, acols, arowptr = assemble_global_matrix(
-        coords, cells, cell_dofs, ndofs, ndofs_global, degree
+    avals, acols, arowptr = assemble_fn(
+        coords, cells, cell_dofs, ndofs, ndofs_global, degree, **assemble_kwargs
     )
     patch_test(avals, acols, arowptr, ndofs_global)
     check_symmetry(avals, acols, arowptr, ndofs_global)
