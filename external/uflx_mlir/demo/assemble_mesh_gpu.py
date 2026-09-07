@@ -58,11 +58,12 @@ Correctness checks, both O(nnz) so they scale to a genuinely large mesh
      cheap (one pass over nnz) no matter how large the mesh gets.
   3. Symmetry: A[i, j] == A[j, i] for every stored entry (also O(nnz)).
 
-GPU backend: this script can also assemble via the actual
+GPU backends: this script can also assemble via the actual
 GPU-launched kernel (generate_csr_assembly_gpu_module) instead of
-generate_csr_assembly_module's CPU path -- pass "gpu" as this script's
-third argument (see Usage below). That kernel needs a real NVIDIA GPU
-and an MLIR build configured with -DMLIR_ENABLE_CUDA_RUNNER=ON (see
+generate_csr_assembly_module's CPU path -- pass "cuda" (or the legacy
+alias "gpu") or "amd" as this script's third argument (see Usage below).
+The CUDA path needs a real NVIDIA GPU and an MLIR build configured with
+-DMLIR_ENABLE_CUDA_RUNNER=ON (see
 test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells's
 own docstring in test/test_gpu_assembly.py for exactly what that means
 and how libmlir_cuda_runtime.so is located) -- not available on the Mac
@@ -82,8 +83,13 @@ gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
 Python-level loop over cells on the GPU backend either, matching the CPU
 backend's own single-call design.
 
+The AMD path lowers the same gpu.module through ROCDL, asks ROCm's own
+clang and ld.lld to build an HSACO code object, and launches it through
+the HIP module API. It auto-detects the GPU architecture with
+``/opt/rocm/bin/offload-arch`` unless a target chip is supplied.
+
 Usage:
-    python3 demo/assemble_mesh_gpu.py [degree] [n] [backend] [cubin_chip]
+    python3 demo/assemble_mesh_gpu.py [degree] [n] [backend] [target_chip]
 
     degree: Lagrange degree, default 2. Only 1 and 2 are supported --
         generate_csr_assembly_module/generate_csr_assembly_gpu_module only
@@ -105,15 +111,12 @@ Usage:
         this script demonstrates assembly *correctness at real mesh
         scale* on whichever backend is asked for, not a throughput
         comparison between them.
-    backend: "cpu" (default) or "gpu" -- see "GPU backend" above. "gpu"
-        needs a real NVIDIA GPU and a CUDA-enabled MLIR build; this
-        script raises a clear RuntimeError (rather than silently
-        falling back to "cpu") if that isn't available.
-    cubin_chip: the target NVPTX chip the GPU backend's compiled PTX
-        targets, default "sm_80" (Ampere, matching lower_module_to_nvvm's
-        own default) -- ignored for the "cpu" backend. Pass whatever
-        matches the actual GPU this runs on, e.g. "sm_89" for
-        eng-nvidia's Ada Lovelace GPU.
+    backend: "cpu" (default), "cuda"/"gpu", or "amd" -- see "GPU
+        backends" above. A requested accelerator backend raises a clear
+        error rather than silently falling back to CPU.
+    target_chip: optional target architecture. CUDA defaults to "sm_80";
+        AMD auto-detects it with offload-arch. Examples are "sm_89" for
+        eng-nvidia and "gfx1100" for eng-amd. Ignored by the CPU backend.
 """
 
 from __future__ import annotations
@@ -121,20 +124,33 @@ from __future__ import annotations
 import ctypes
 import glob
 import os
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import basix
 import numpy as np
 from basix_uflx import element
-from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
+from uflx import (
+    TestFunction,
+    TrialFunction,
+    coordinate_element,
+    dx,
+    function_space,
+    grad,
+    inner,
+)
 
 from uflx_mlir.gpu_assembly import (
+    assemble_amdgcn_to_hsaco,
+    extract_amdgcn_text,
     generate_csr_assembly_gpu_module,
     generate_csr_assembly_module,
     gpu_launch_name,
     lower_module_to_nvvm,
+    lower_module_to_rocdl,
 )
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -191,7 +207,9 @@ def _reference_stiffness_cell(coords: np.ndarray, degree: int) -> np.ndarray:
     mirrors test_emit.py's _reference_stiffness exactly. Kept duplicated
     (not imported from test/) so demo/ stays free of a test/-directory
     dependency, matching every other script in this folder."""
-    e = basix.create_element(basix.ElementFamily.P, CELL, degree, basix.LagrangeVariant.equispaced)
+    e = basix.create_element(
+        basix.ElementFamily.P, CELL, degree, basix.LagrangeVariant.equispaced
+    )
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(CELL, qdeg)
     points = np.asarray(points, dtype=np.float64)
@@ -249,7 +267,12 @@ def build_mesh(n: int) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
         return i * npts * npts + j * npts + k
 
     coords = np.array(
-        [[i / n, j / n, k / n] for i in range(npts) for j in range(npts) for k in range(npts)],
+        [
+            [i / n, j / n, k / n]
+            for i in range(npts)
+            for j in range(npts)
+            for k in range(npts)
+        ],
         dtype=np.float64,
     )
 
@@ -258,7 +281,9 @@ def build_mesh(n: int) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
         for j in range(n):
             for k in range(n):
                 for tet in _kuhn_triangulate_cube():
-                    cells.append(tuple(vid(i + dx, j + dy, k + dz) for dx, dy, dz in tet))
+                    cells.append(
+                        tuple(vid(i + dx, j + dy, k + dz) for dx, dy, dz in tet)
+                    )
     return coords, cells
 
 
@@ -400,7 +425,10 @@ def assemble_global_matrix(
     degree: int,
     kernel_name: str = "tabulate_tensor_csr_assemble",
     return_timing: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+) -> (
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
+):
     """Build generate_csr_assembly_module's single whole-mesh kernel for
     `degree` and call it exactly ONCE to assemble the full global CSR
     stiffness matrix for the given mesh.
@@ -459,8 +487,12 @@ def assemble_global_matrix(
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    geometries_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(geometries))
+    )
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
@@ -533,7 +565,10 @@ def assemble_global_matrix_gpu(
     kernel_name: str = "tabulate_tensor_csr_assembly_gpu",
     cubin_chip: str = "sm_80",
     return_timing: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+) -> (
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
+):
     """Build generate_csr_assembly_gpu_module's batched GPU kernel for
     `degree` and call it exactly ONCE -- one real gpu.launch_func call,
     gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
@@ -616,8 +651,12 @@ def assemble_global_matrix_gpu(
     avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
     acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
     arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    geometries_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(geometries))
+    )
+    cell_dofs_pp = ctypes.pointer(
+        ctypes.pointer(get_ranked_memref_descriptor(cell_dofs))
+    )
     ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
 
     packed = (ctypes.c_void_p * 6)(
@@ -630,7 +669,9 @@ def assemble_global_matrix_gpu(
     )
 
     t0 = time.perf_counter()
-    raw_fn(packed)  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
+    raw_fn(
+        packed
+    )  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
     t1 = time.perf_counter()
 
     print(
@@ -641,6 +682,231 @@ def assemble_global_matrix_gpu(
     )
     if return_timing:
         return avals, acols, arowptr, t1 - t0
+    return avals, acols, arowptr
+
+
+def assemble_global_matrix_amd(
+    coords: np.ndarray,
+    cells: list[tuple[int, int, int, int]],
+    cell_dofs: np.ndarray,
+    ndofs: int,
+    ndofs_global: int,
+    degree: int,
+    kernel_name: str = "tabulate_tensor_csr_assembly_amd",
+    chip: str | None = None,
+    rocm_path: str | None = None,
+    return_timing: bool = False,
+) -> (
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, np.ndarray, float]
+):
+    """Assemble the whole mesh in one launch on an AMD GPU through HIP.
+
+    MLIR emits AMDGCN assembly through ROCDL. ROCm's own matching clang
+    and ld.lld then produce an HSACO code object, which is loaded and
+    launched directly through the HIP module API. This split avoids the
+    LLVM-version mismatch that occurs on eng-amd, where the MLIR bindings
+    use LLVM 18 but ROCm 7.2's bitcode and linker use LLVM 22.
+    """
+    form, ndofs_check = _stiffness_form(degree)
+    if ndofs_check != ndofs:
+        raise AssertionError(
+            f"local dof count mismatch: build_dofmap says {ndofs}, "
+            f"the P{degree} element says {ndofs_check}"
+        )
+
+    rocm = Path(rocm_path or os.environ.get("ROCM_PATH", "/opt/rocm"))
+    hip_library = rocm / "lib/libamdhip64.so"
+    offload_arch = rocm / "bin/offload-arch"
+    required = [
+        hip_library,
+        offload_arch,
+        rocm / "llvm/bin/clang",
+        rocm / "llvm/bin/ld.lld",
+    ]
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise RuntimeError(
+            f"ROCm installation is incomplete; missing: {', '.join(missing)}"
+        )
+
+    if chip is None:
+        architectures = subprocess.run(
+            [str(offload_arch)], check=True, capture_output=True, text=True
+        ).stdout.splitlines()
+        if not architectures:
+            raise RuntimeError("offload-arch found no AMD GPU")
+        chip = architectures[0].split(":", maxsplit=1)[0]
+
+    module, layout = generate_csr_assembly_gpu_module(form, degree, kernel_name, CELL)
+    if layout.ndofs != ndofs:
+        raise AssertionError(f"layout.ndofs={layout.ndofs} != ndofs={ndofs}")
+    lower_module_to_rocdl(module, chip=chip, link_device_libraries=False)
+    hsaco = assemble_amdgcn_to_hsaco(
+        extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm)
+    )
+
+    ncells = len(cells)
+    avals, acols, arowptr = build_csr_pattern(cell_dofs, ndofs, ncells, ndofs_global)
+    geometries = np.empty((ncells, layout.geometry_size), dtype=np.float64)
+    for c, verts in enumerate(cells):
+        geometries[c] = _geometry_from_coords(coords[list(verts)])
+    geometries = geometries.reshape(-1)
+    host_arrays = [avals, acols, arowptr, geometries, cell_dofs]
+
+    hip = ctypes.CDLL(str(hip_library))
+
+    def bind(name, restype, *argtypes):
+        function = getattr(hip, name)
+        function.restype = restype
+        function.argtypes = list(argtypes)
+        return function
+
+    hip_init = bind("hipInit", ctypes.c_int, ctypes.c_uint)
+    hip_set_device = bind("hipSetDevice", ctypes.c_int, ctypes.c_int)
+    hip_module_load = bind(
+        "hipModuleLoad", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p
+    )
+    hip_module_get_function = bind(
+        "hipModuleGetFunction",
+        ctypes.c_int,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+    )
+    hip_malloc = bind(
+        "hipMalloc", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t
+    )
+    hip_memcpy = bind(
+        "hipMemcpy",
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_size_t,
+        ctypes.c_int,
+    )
+    hip_module_launch_kernel = bind(
+        "hipModuleLaunchKernel",
+        ctypes.c_int,
+        ctypes.c_void_p,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    hip_device_synchronize = bind("hipDeviceSynchronize", ctypes.c_int)
+    hip_free = bind("hipFree", ctypes.c_int, ctypes.c_void_p)
+    hip_module_unload = bind("hipModuleUnload", ctypes.c_int, ctypes.c_void_p)
+    hip_get_error_string = bind("hipGetErrorString", ctypes.c_char_p, ctypes.c_int)
+
+    def check(code: int, operation: str) -> None:
+        if code:
+            message = hip_get_error_string(code)
+            detail = message.decode() if message else f"HIP error {code}"
+            raise RuntimeError(f"{operation}: {detail}")
+
+    check(hip_init(0), "hipInit")
+    check(hip_set_device(0), "hipSetDevice")
+    hip_module = ctypes.c_void_p()
+    hip_function = ctypes.c_void_p()
+    allocations: list[ctypes.c_void_p] = []
+    elapsed = 0.0
+    with tempfile.TemporaryDirectory(prefix="uflx-hip-demo-") as directory:
+        hsaco_path = Path(directory) / "kernel.hsaco"
+        hsaco_path.write_bytes(hsaco)
+        check(
+            hip_module_load(ctypes.byref(hip_module), os.fsencode(hsaco_path)),
+            "hipModuleLoad",
+        )
+        check(
+            hip_module_get_function(
+                ctypes.byref(hip_function), hip_module, kernel_name.encode()
+            ),
+            "hipModuleGetFunction",
+        )
+
+        arguments = []
+        try:
+            for array in host_arrays:
+                device_pointer = ctypes.c_void_p()
+                check(
+                    hip_malloc(ctypes.byref(device_pointer), array.nbytes), "hipMalloc"
+                )
+                allocations.append(device_pointer)
+                check(
+                    hip_memcpy(
+                        device_pointer,
+                        ctypes.c_void_p(array.ctypes.data),
+                        array.nbytes,
+                        1,
+                    ),
+                    "hipMemcpy host-to-device",
+                )
+                # Rank-1 MLIR memref ABI: allocated pointer, aligned pointer,
+                # offset, size, and stride.
+                arguments.extend(
+                    [
+                        ctypes.c_void_p(device_pointer.value),
+                        ctypes.c_void_p(device_pointer.value),
+                        ctypes.c_int64(0),
+                        ctypes.c_int64(array.size),
+                        ctypes.c_int64(1),
+                    ]
+                )
+            kernel_parameters = (ctypes.c_void_p * len(arguments))(
+                *(
+                    ctypes.cast(ctypes.byref(argument), ctypes.c_void_p).value
+                    for argument in arguments
+                )
+            )
+            t0 = time.perf_counter()
+            check(
+                hip_module_launch_kernel(
+                    hip_function,
+                    ncells,
+                    1,
+                    1,
+                    ndofs,
+                    ndofs,
+                    1,
+                    0,
+                    None,
+                    kernel_parameters,
+                    None,
+                ),
+                "hipModuleLaunchKernel",
+            )
+            check(hip_device_synchronize(), "hipDeviceSynchronize")
+            elapsed = time.perf_counter() - t0
+            check(
+                hip_memcpy(
+                    ctypes.c_void_p(avals.ctypes.data),
+                    allocations[0],
+                    avals.nbytes,
+                    2,
+                ),
+                "hipMemcpy device-to-host",
+            )
+        finally:
+            for device_pointer in allocations:
+                check(hip_free(device_pointer), "hipFree")
+            if hip_module.value:
+                check(hip_module_unload(hip_module), "hipModuleUnload")
+
+    print(
+        f"  assembled (AMD, {chip}): {ncells} cells, {ndofs_global} dofs, "
+        f"{len(acols)} nonzeros, 1 launch (gridDim.x={ncells}, "
+        f"blockDim=({ndofs},{ndofs},1)) in {elapsed:.3f}s "
+        f"({_dofs_per_sec(ndofs_global, elapsed):.3e} dofs/sec)"
+    )
+    if return_timing:
+        return avals, acols, arowptr, elapsed
     return avals, acols, arowptr
 
 
@@ -677,7 +943,9 @@ def check_small_mesh_against_reference(
     print(f"  P{degree} exact check (1 cube, {len(cells)} cells): MATCH")
 
 
-def patch_test(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int) -> None:
+def patch_test(
+    avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int
+) -> None:
     """Row sums must vanish -- see module docstring, check (2). O(nnz)."""
     row_of_entry = np.repeat(np.arange(ndofs_global), np.diff(arowptr))
     row_sums = np.bincount(row_of_entry, weights=avals, minlength=ndofs_global)
@@ -686,7 +954,9 @@ def patch_test(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_
     assert max_abs < 1e-6, "patch test failed -- assembly is wrong somewhere"
 
 
-def check_symmetry(avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int) -> None:
+def check_symmetry(
+    avals: np.ndarray, acols: np.ndarray, arowptr: np.ndarray, ndofs_global: int
+) -> None:
     """A[i, j] == A[j, i] for every stored entry -- see module docstring,
     check (3). O(nnz), fully vectorized (no per-entry Python loop): pack
     each stored (row, col) into one int64 key (row*ndofs_global + col),
@@ -729,12 +999,14 @@ def main() -> None:
     degree = int(sys.argv[1]) if len(sys.argv) > 1 else 2
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 6
     backend = sys.argv[3] if len(sys.argv) > 3 else "cpu"
-    cubin_chip = sys.argv[4] if len(sys.argv) > 4 else "sm_80"
+    target_chip = sys.argv[4] if len(sys.argv) > 4 else None
 
-    if backend not in ("cpu", "gpu"):
-        raise SystemExit(f"backend must be 'cpu' or 'gpu', got {backend!r}")
+    if backend not in ("cpu", "gpu", "cuda", "amd"):
+        raise SystemExit(
+            f"backend must be 'cpu', 'cuda'/'gpu', or 'amd', got {backend!r}"
+        )
 
-    if backend == "gpu":
+    if backend in ("gpu", "cuda"):
         cuda_runtime_lib = _find_cuda_runtime_lib()
         if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
             print(
@@ -744,7 +1016,10 @@ def main() -> None:
             )
             return
         assemble_fn = assemble_global_matrix_gpu
-        assemble_kwargs = {"cubin_chip": cubin_chip}
+        assemble_kwargs = {"cubin_chip": target_chip or "sm_80"}
+    elif backend == "amd":
+        assemble_fn = assemble_global_matrix_amd
+        assemble_kwargs = {"chip": target_chip}
     else:
         assemble_fn = assemble_global_matrix
         assemble_kwargs = {}
@@ -753,7 +1028,9 @@ def main() -> None:
     check_small_mesh_against_reference(degree, assemble_fn, **assemble_kwargs)
 
     ncells = 6 * n**3
-    print(f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells), backend={backend} ---")
+    print(
+        f"\n--- P{degree} assembly, {n}x{n}x{n} mesh ({ncells} cells), backend={backend} ---"
+    )
     coords, cells = build_mesh(n)
     cell_dofs, ndofs, ndofs_global = build_dofmap(cells, len(coords), degree)
     avals, acols, arowptr = assemble_fn(
