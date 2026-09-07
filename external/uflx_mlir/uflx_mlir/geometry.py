@@ -6,17 +6,18 @@ from dataclasses import dataclass
 from typing import Any
 
 import basix
+from uflx.algorithms import replace
 from uflx.expressions import (
     Abs,
     AbstractExpression,
     AbstractScalar,
+    MatMult,
     MatVec,
     Mult,
     expression_sum,
 )
 from uflx.geometry import JacobianDeterminant, JacobianInverseTranspose
-from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
+from uflx.graphs import GraphNode, as_graph
 from uflx.operators import Inner, ReferenceGrad
 
 
@@ -83,7 +84,9 @@ def _poisson_metric_contraction(node: GraphNode):
 
     if not isinstance(contraction, Inner):
         return None
-    if not isinstance(contraction.first, MatVec) or not isinstance(contraction.second, MatVec):
+    if not isinstance(contraction.first, (MatMult, MatVec)) or not isinstance(
+        contraction.second, (MatMult, MatVec)
+    ):
         return None
 
     left, right = contraction.first, contraction.second
@@ -118,22 +121,22 @@ def _poisson_metric_contraction(node: GraphNode):
 
 
 def extract_affine_poisson_geometry(
-    graph: Graph, cell: basix.CellType
-) -> tuple[Graph, GeometryKernelSpec | None]:
-    """Extract the affine tetrahedral Poisson metric contraction from ``graph``.
+    expression: GraphNode, cell: basix.CellType
+) -> tuple[GraphNode, GeometryKernelSpec | None]:
+    """Extract the affine tetrahedral Poisson metric contraction from ``expression``.
 
     Unsupported expressions are deliberately left unchanged. This keeps the
     experimental path local to the one form and geometry mapping whose
     semantics are currently explicit.
     """
     if cell != basix.CellType.tetrahedron:
-        return graph, None
+        return expression, None
 
     replacements: dict[GraphNode, GraphNode] = {}
-    for node in graph.ordered_nodes():
+    for node in as_graph(expression).ordered_nodes():
         if (contraction := _poisson_metric_contraction(node)) is not None:
             replacements[node] = contraction
 
     if not replacements:
-        return graph, None
-    return replace(graph, replacements), GeometryKernelSpec()
+        return expression, None
+    return replace(expression, replacements), GeometryKernelSpec()

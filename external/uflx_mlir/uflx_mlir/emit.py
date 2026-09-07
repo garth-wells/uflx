@@ -138,6 +138,7 @@ from uflx.expressions import (
     Integer,
     Mult,
     Neg,
+    Re,
     RealScalar,
     Subtract,
 )
@@ -307,8 +308,8 @@ def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
         return (ArrayEntry, node.array, tuple(node.index))
     if isinstance(node, GeometryTensorComponent):
         return (GeometryTensorComponent, node.packed_index)
-    if isinstance(node, Neg):
-        return (Neg, id(cache[node.argument]))
+    if isinstance(node, (Neg, Re)):
+        return (type(node), id(cache[node.argument]))
     if isinstance(node, Abs):
         return (Abs, id(cache[node.argument]))
     if isinstance(node, Add):
@@ -334,7 +335,7 @@ def _alpha_signature(node: GraphNode, renamed_indices: dict[str, str]) -> Any | 
             for index in node.index
         )
         return (ArrayEntry, node.array, indices)
-    if isinstance(node, (Neg, Abs)):
+    if isinstance(node, (Neg, Abs, Re)):
         argument = _alpha_signature(node.argument, renamed_indices)
         return None if argument is None else (type(node), argument)
     if isinstance(node, (Add, Subtract, Mult, Div)):
@@ -446,6 +447,11 @@ def _emit_node(
     elif isinstance(node, Neg):
         a = cache[node.argument]
         v = _op1("arith.negf", ctx.f64, a)
+    elif isinstance(node, Re):
+        # This backend currently emits real-valued kernels. UFLx's
+        # complex lowering now leaves an explicit Re around the final
+        # real expression, which is an identity for our f64 values.
+        v = cache[node.argument]
     elif isinstance(node, Abs):
         a = cache[node.argument]
         v = _op1("math.absf", ctx.f64, a)

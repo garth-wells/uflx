@@ -3,7 +3,7 @@
 This deliberately reuses uflx_codegeneration's existing, generic pipeline
 for the actual finite-element math (quadrature selection/tabulation,
 geometry expansion, pull-back/push-forward, inner-product expansion) --
-the same functions imported below from uflx_codegeneration.generate -- with
+the same functions used by uflx_codegeneration.generate -- with
 one experimental affine-Poisson geometry-extraction pass. It replaces
 uflx_codegeneration.c's C-string-building final step with an MLIR generator
 (see emit.py). One deliberate simplification relative to
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import basix
 import numpy as np
+from uflx.algorithms import pull_back_to_reference, replace
 from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
@@ -30,20 +31,20 @@ from uflx.geometry import (
     JacobianTranspose,
     expand_geometry,
 )
-from uflx.graphs import Graph, GraphNode, NodeOrder, generate_graph
-from uflx.graphs.algorithms import replace
+from uflx.graphs import Graph, GraphNode, NodeOrder, as_graph, generate_graph
 from uflx.integrals import AbstractMeasure, dx
 from uflx.maps import apply_push_forwards
 from uflx.tensors import Matrix
 from uflx_codegeneration.algorithms import expand_inner_products, tabulate_finite_elements
-from uflx_codegeneration.generate import (
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration.quadrature import (
+    QuadratureLoop,
+    QuadratureRule,
     extract_domain,
     integrals_to_quadrature,
-    pull_back_to_reference,
+    quadrature_rule,
     tabulate_quadrature,
 )
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
-from uflx_codegeneration.quadrature import QuadratureLoop, QuadratureRule, quadrature_rule
 
 from uflx_mlir.geometry import GeometryKernelSpec, extract_affine_poisson_geometry
 
@@ -86,13 +87,13 @@ def _affine_tetrahedron_jacobian() -> Matrix:
     )
 
 
-def _expand_affine_tetrahedron_geometry(graph: Graph, cell: basix.CellType) -> Graph:
+def _expand_affine_tetrahedron_geometry(expression: GraphNode, cell: basix.CellType) -> GraphNode:
     """Expand P1 tetrahedral Jacobian nodes without a quadrature-dependent FE table."""
     if cell != basix.CellType.tetrahedron:
-        return graph
+        return expression
 
     replacements: dict[GraphNode, GraphNode] = {}
-    for node in graph:
+    for node in as_graph(expression):
         if not isinstance(
             node,
             (
@@ -125,7 +126,7 @@ def _expand_affine_tetrahedron_geometry(graph: Graph, cell: basix.CellType) -> G
             replacement = jacobian.compute_inverse().transpose()
         replacements[node] = replacement
 
-    return replace(graph, replacements) if replacements else graph
+    return replace(expression, replacements) if replacements else expression
 
 
 def lower_form(
@@ -152,8 +153,7 @@ def lower_form(
     points, weights = basix.make_quadrature(cell, qdeg)
     rules: dict[AbstractMeasure, QuadratureRule] = {dx: quadrature_rule(points, weights)}
 
-    graph = form.graph
-    assert graph.is_dag()
+    expression = form.graph.root
 
     # pull_back_to_reference/apply_push_forwards must run BEFORE
     # integrals_to_quadrature: since uflx#51 ("Move mapping of integral to
@@ -167,19 +167,19 @@ def lower_form(
     # integrals_to_quadrature first (the old order) leaves those nodes'
     # `point` permanently None, and expand_geometry's
     # `assert self.point is not None` fires downstream.
-    graph = pull_back_to_reference(graph)
-    graph = apply_push_forwards(graph)
-    graph = integrals_to_quadrature(graph, rules)
-    graph, geometry = extract_affine_poisson_geometry(graph, cell)
-    graph = _expand_affine_tetrahedron_geometry(graph, cell)
-    graph = expand_geometry(graph)
-    graph = expand_inner_products(graph)
-    graph = take_real_part(graph)
+    expression = pull_back_to_reference(expression)
+    expression = apply_push_forwards(expression)
+    expression = integrals_to_quadrature(expression, rules)
+    expression, geometry = extract_affine_poisson_geometry(expression, cell)
+    expression = _expand_affine_tetrahedron_geometry(expression, cell)
+    expression = expand_geometry(expression)
+    expression = expand_inner_products(expression)
+    expression = take_real_part(expression)
 
-    q_tables, graph = tabulate_quadrature(graph)
-    fe_tables, graph = tabulate_finite_elements(graph)
+    q_tables, expression = tabulate_quadrature(expression)
+    fe_tables, expression = tabulate_finite_elements(expression)
     tables = {**q_tables, **fe_tables}
-    return tables, graph, geometry
+    return tables, generate_graph(expression), geometry
 
 
 def collect_int_constants(root: GraphNode, a_shape: tuple[int, ...]) -> set[int]:
