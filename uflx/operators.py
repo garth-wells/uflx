@@ -10,7 +10,7 @@ from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.geometry import JacobianInverseTranspose
-from uflx.graphs import GraphNode, generate_graph
+from uflx.graphs import GraphNode, as_graph
 from uflx.maps import PushedForward
 from uflx.tensors import Vector
 
@@ -57,7 +57,7 @@ class Grad(UnaryOperator):
         def extract_domain(node: GraphNode) -> AbstractDomain:
             """Extract the domain associated with a node."""
             domain: AbstractDomain | None = None
-            for i in generate_graph(node).descendants(node):
+            for i in as_graph(node).descendants(node):
                 if isinstance(i, AbstractPhysicalFunction):
                     if domain is None:
                         domain = i.function_space.domain

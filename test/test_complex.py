@@ -5,7 +5,7 @@ import pytest
 
 from uflx.complex import take_imaginary_part, take_real_part
 from uflx.expressions import ComplexScalar, Integer, to_scalar
-from uflx.graphs import generate_graph
+from uflx.graphs import as_graph
 
 
 @pytest.fixture
@@ -13,7 +13,7 @@ def z_graph():
     """The complex number 4+6j."""
     a = Integer(4)
     b = Integer(6)
-    return generate_graph(ComplexScalar(a, b))
+    return as_graph(ComplexScalar(a, b))
 
 
 def test_real_part(z_graph):

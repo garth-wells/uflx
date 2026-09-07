@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 from uflx.graphs.algorithms.reconstruct import reconstruct_node
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs.graphs import Graph, GraphNode, as_graph
 
 
 @runtime_checkable
@@ -38,4 +38,4 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
-    return generate_graph(node_map.get(graph.root, graph.root))
+    return as_graph(node_map.get(graph.root, graph.root))
