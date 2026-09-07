@@ -297,7 +297,7 @@ def integrals_to_quadrature(
 def tabulate_quadrature(
     expression: GraphNode,
     variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, npt.NDArray(np.floating)], GraphNode]:
+) -> tuple[dict[str, npt.NDArray[np.floating]], GraphNode]:
     """Generate tables of values for quadrature rules."""
     table_map = {}
     tables = {}
