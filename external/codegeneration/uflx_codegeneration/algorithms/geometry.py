@@ -3,7 +3,7 @@
 from typing import Any
 
 from uflx.geometry import Jacobian, JacobianDeterminant, JacobianInverse, expand_geometry
-from uflx.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs import Graph, GraphNode, as_graph
 from uflx.graphs.algorithms import replace
 from uflx.tensors import Matrix
 
@@ -46,7 +46,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(generate_graph(node.component(i, j))),
+                        expand_geometry(as_graph(node.component(i, j))),
                     )
         elif isinstance(node, JacobianInverse):
             f = variable_namer.geometry_function_name()
@@ -65,7 +65,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(generate_graph(node.component(i, j))),
+                        expand_geometry(as_graph(node.component(i, j))),
                     )
 
     return functions, replace(graph, to_replace)

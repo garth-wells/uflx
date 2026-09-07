@@ -1,7 +1,7 @@
 """Form algorithms."""
 
 from uflx.expressions import AbstractExpression, expression_sum
-from uflx.graphs import Graph, GraphNode, generate_graph
+from uflx.graphs import Graph, GraphNode, as_graph
 from uflx.graphs.algorithms import reconstruct_node
 from uflx.operators import Inner
 
@@ -28,4 +28,4 @@ def expand_inner_products(graph: Graph) -> Graph:
                     raise NotImplementedError()
         else:
             new_nodes[node] = reconstruct_node(node, new_nodes)
-    return generate_graph(new_nodes[graph.root])
+    return as_graph(new_nodes[graph.root])
