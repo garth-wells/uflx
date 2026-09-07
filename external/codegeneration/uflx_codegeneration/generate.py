@@ -18,7 +18,6 @@ from uflx.geometry import (
 from uflx.graphs import (
     Graph,
     GraphNode,
-    RepresentedByGraph,
     as_graph,
 )
 from uflx.graphs.algorithms import pull_back_to_reference, replace
