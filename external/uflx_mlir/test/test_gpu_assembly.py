@@ -601,3 +601,145 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
     # keeps separate); loosen rtol/atol rather than treating that as a
     # correctness bug.
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
+
+
+def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells() -> None:
+    """Numerically validate the batched GPU kernel by actually running it on a GPU.
+
+    Unlike test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine
+    (one gpu.launch_func call per cell, single-cell mesh), this launches
+    gridDim.x = 2 blocks -- one call assembles a genuine two-cell mesh
+    (two tetrahedra sharing a face, exactly
+    test_generate_csr_assembly_module_matches_quadrature_reference_two_cells's
+    own CPU mesh) in one shot, so three of the five global P1 dofs
+    receive real cross-block atomic-add contributions from both cells --
+    the first real check that this kernel's per-block geometry refresh
+    (reading its own slice out of the flat `geometries` array via
+    `gpu.block_id x`) and cross-cell CSR accumulation both work with
+    genuine hardware parallelism across blocks, not just across threads
+    within one block.
+
+    Needs the same real GPU / CUDA-enabled MLIR build as
+    test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine
+    -- see that test's own docstring for the skip conditions and the
+    libmlir_cuda_runtime.so search, duplicated here rather than factored
+    out to keep each test independently readable.
+    """
+    import ctypes
+    import glob
+    import os
+
+    import numpy as np
+    import pytest
+
+    pytest.importorskip("mlir.execution_engine")
+
+    from mlir.execution_engine import ExecutionEngine
+    from mlir.runtime import get_ranked_memref_descriptor
+
+    from test_emit import _reference_geometry, _reference_stiffness
+
+    from uflx_mlir.gpu_assembly import (
+        generate_csr_assembly_gpu_module,
+        gpu_launch_name,
+        lower_module_to_nvvm,
+    )
+
+    cuda_runtime_lib = os.environ.get("MLIR_CUDA_RUNTIME_LIB")
+    if not cuda_runtime_lib:
+        import mlir
+
+        start_dirs = []
+        for p in getattr(mlir, "__path__", []) or []:
+            start_dirs.append(os.path.abspath(p))
+        if getattr(mlir, "__file__", None):
+            start_dirs.append(os.path.dirname(os.path.abspath(mlir.__file__)))
+
+        found: list[str] = []
+        for start in start_dirs:
+            here = start
+            for _ in range(8):
+                found.extend(
+                    glob.glob(os.path.join(here, "lib", "libmlir_cuda_runtime.so*"))
+                )
+                if found:
+                    break
+                parent = os.path.dirname(here)
+                if parent == here:
+                    break
+                here = parent
+            if found:
+                break
+        cuda_runtime_lib = found[0] if found else None
+    if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
+        pytest.skip(
+            "libmlir_cuda_runtime.so not found -- rebuild MLIR with "
+            "-DMLIR_ENABLE_CUDA_RUNNER=ON, or set MLIR_CUDA_RUNTIME_LIB "
+            "to its path"
+        )
+
+    kernel_name = "tabulate_tensor_csr_assembly_gpu_execution_test"
+    form, ndofs = _stiffness_form(1)
+    module, layout = generate_csr_assembly_gpu_module(
+        form, 1, kernel_name, basix.CellType.tetrahedron
+    )
+    assert layout.ndofs == ndofs == 4
+    assert layout.geometry_size == 6
+
+    # sm_89: eng-nvidia's Ada Lovelace GPU (see
+    # test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine).
+    lower_module_to_nvvm(module, cubin_chip="sm_89")
+
+    coords_a = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    coords_b = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.2, 0.2, -1.0]],
+        dtype=np.float64,
+    )
+    ncells = 2
+    ndofs_global = 5  # global vertices 0..3 (cell A) + 4 (cell B's own 4th vertex)
+    cell_dofs = np.array([0, 1, 2, 3, 0, 1, 2, 4], dtype=np.int32)
+
+    geometries = np.concatenate(
+        [_reference_geometry(coords_a), _reference_geometry(coords_b)]
+    ).astype(np.float64)
+    assert geometries.shape == (ncells * layout.geometry_size,)
+
+    avals = np.zeros(ndofs_global * ndofs_global, dtype=np.float64)
+    acols = np.tile(np.arange(ndofs_global, dtype=np.int32), ndofs_global)
+    arowptr = np.arange(0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32)
+
+    with module.context:
+        engine = ExecutionEngine(module, opt_level=3, shared_libs=[cuda_runtime_lib])
+
+    raw_fn = engine.lookup(gpu_launch_name(kernel_name))
+    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
+    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
+    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
+    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
+
+    packed = (ctypes.c_void_p * 6)(
+        ctypes.cast(avals_pp, ctypes.c_void_p).value,
+        ctypes.cast(acols_pp, ctypes.c_void_p).value,
+        ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
+        ctypes.cast(geometries_pp, ctypes.c_void_p).value,
+        ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
+        ctypes.cast(ncells_p, ctypes.c_void_p).value,
+    )
+    raw_fn(packed)  # ONE launch, gridDim.x=2, assembles both cells.
+
+    a = avals.reshape(ndofs_global, ndofs_global)
+
+    a_ref = np.zeros((ndofs_global, ndofs_global))
+    local_a = _reference_stiffness(coords_a, 1)
+    local_b = _reference_stiffness(coords_b, 1)
+    dofs_a = [0, 1, 2, 3]
+    dofs_b = [0, 1, 2, 4]
+    a_ref[np.ix_(dofs_a, dofs_a)] += local_a
+    a_ref[np.ix_(dofs_b, dofs_b)] += local_b
+
+    np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
