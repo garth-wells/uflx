@@ -8,7 +8,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from uflx.algorithms import replace
 from uflx.expressions import AbstractExpression
-from uflx.graphs import Graph, GraphNode
+from uflx.graphs import GraphNode, as_graph
 
 
 class AbstractReferenceMap(ABC):
@@ -212,28 +212,28 @@ class PulledBack(AbstractExpression):
 
 
 def apply_push_forwards(
-    graph: Graph,
-) -> Graph:
+    expression: GraphNode,
+) -> GraphNode:
     """Apply push forward maps to functions."""
     return replace(
-        graph,
+        expression,
         {
             node: node.apply_push_forward()
-            for node in graph
+            for node in as_graph(expression)
             if isinstance(node, IsPushedForward) and isinstance(node, GraphNode)
         },
     )
 
 
 def apply_pull_backs(
-    graph: Graph,
-) -> Graph:
+    expression: GraphNode,
+) -> GraphNode:
     """Apply pull back maps to functions."""
     return replace(
-        graph,
+        expression,
         {
             node: node.apply_pull_back()
-            for node in graph
+            for node in as_graph(expression)
             if isinstance(node, IsPulledBack) and isinstance(node, GraphNode)
         },
     )

@@ -1,5 +1,7 @@
 """Code generation."""
 
+import numpy as np
+import numpy.typing as npt
 import quadraturerules
 from uflx.algorithms import pull_back_to_reference, replace
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
@@ -62,14 +64,15 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
 
 
 def integrals_to_quadrature(
-    graph: Graph,
+    expression: GraphNode,
     rules: dict[AbstractMeasure, QuadratureRule],
     variable_namer=symbols.global_variable_namer,
-) -> Graph:
+) -> GraphNode:
     """Replace integrals with quadrature."""
     updated_nodes: dict[GraphNode, GraphNode] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
 
+    graph = as_graph(expression)
     for node in graph.ordered_nodes():
         if isinstance(node, AbstractIntegral):
             rule = rules[node.measure]
@@ -166,20 +169,18 @@ def integrals_to_quadrature(
 
             updated_nodes[node] = next
 
-    new_graph = as_graph(updated_nodes.get(graph.root, graph.root))
-    new_graph = replace(new_graph, to_replace)
-    return new_graph
+    return replace(updated_nodes.get(graph.root, graph.root), to_replace)
 
 
 def tabulate_quadrature(
-    graph,
-    variable_namer=symbols.global_variable_namer,
-):
+    expression: GraphNode,
+    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
+) -> tuple[dict[str, npt.NDArray(np.floating)], GraphNode]:
     """Generate tables of values for quadrature rules."""
     table_map = {}
     tables = {}
     to_replace: dict[GraphNode, GraphNode] = {}
-    for node in graph:
+    for node in as_graph(expression):
         if isinstance(node, QuadratureWeight):
             id = (node.rule, "weights")
             if id not in table_map:
@@ -207,7 +208,7 @@ def tabulate_quadrature(
                 ]
             )
 
-    return tables, replace(graph, to_replace)
+    return tables, replace(expression, to_replace)
 
 
 def generate(
@@ -226,10 +227,6 @@ def generate(
     if language != "C":
         raise NotImplementedError("Only generation of C is supported for now")
 
-    graph = as_graph(form)
-
-    assert graph.is_dag()
-
     # TODO: get this from somewhere
     rules: dict[AbstractMeasure, QuadratureRule] = {}
     # For now, use a degree 10 rule:
@@ -241,29 +238,30 @@ def generate(
     rules[dx] = quadrature_rule([p[1:] for p in points], 0.5 * weights)
 
     # Apply algorithms from UFLx
-    graph = pull_back_to_reference(graph)
-    graph = apply_push_forwards(graph)
+    form = pull_back_to_reference(form)
+    form = apply_push_forwards(form)
 
     # Apply codegeneration algorithms
-    graph = integrals_to_quadrature(graph, rules)
-    geometry_functions, graph = insert_geometry_functions(graph)
-    graph = expand_geometry(graph)
-    graph = expand_inner_products(graph)
+    form = integrals_to_quadrature(form, rules)
+    geometry_functions, form = insert_geometry_functions(form)
+    form = expand_geometry(form)
+    form = expand_inner_products(form)
 
-    q_tables, graph = tabulate_quadrature(graph)
-    fe_tables, graph = tabulate_finite_elements(graph)
+    # Tabulate quadrature rules and finite element functions
+    q_tables, form = tabulate_quadrature(form)
+    fe_tables, form = tabulate_finite_elements(form)
     tables = {**q_tables, **fe_tables}
 
     code = ""
-    for fname, (dtype, inputs, fgraph) in geometry_functions.items():
+    for fname, (dtype, inputs, function) in geometry_functions.items():
         code += f"{dtype} {fname}("
         code += ", ".join(f"{i._dtype} {i._variable}" for i in inputs)
         code += ") {\n"
-        ftables, fgraph = tabulate_finite_elements(fgraph)
+        ftables, function = tabulate_finite_elements(function)
         code += indented(tables_to_c(ftables), 2)
         code += "\n\n"
-        assert isinstance(fgraph.root, GenerateC)
-        code += f"  return {fgraph.root.generate_c()};\n"
+        assert isinstance(function, GenerateC)
+        code += f"  return {function.generate_c()};\n"
         code += "}\n\n"
     code += (
         "void tabulate_tensor_f64(\n"
@@ -279,8 +277,8 @@ def generate(
 
     code += indented(tables_to_c(tables), 2)
     code += "\n\n"
-    assert isinstance(graph.root, GenerateC)
-    code += indented(graph.root.generate_c(), 2)
+    assert isinstance(form, GenerateC)
+    code += indented(form.generate_c(), 2)
     code += "\n}\n"
 
     signatures = {

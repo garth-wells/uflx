@@ -2,14 +2,14 @@
 
 from uflx.algorithms import reconstruct_node
 from uflx.expressions import AbstractExpression, expression_sum
-from uflx.graphs import Graph, GraphNode, as_graph
+from uflx.graphs import GraphNode, as_graph
 from uflx.operators import Inner
 
 
-def expand_inner_products(graph: Graph) -> Graph:
+def expand_inner_products(expression: GraphNode) -> GraphNode:
     """Replace inner products with sums over products of components."""
     new_nodes: dict[GraphNode, GraphNode] = {}
-    for node in graph.ordered_nodes():
+    for node in as_graph(expression).ordered_nodes():
         if isinstance(node, Inner):
             assert node.first.value_shape == node.second.value_shape
             first = new_nodes[node.first]
@@ -28,4 +28,4 @@ def expand_inner_products(graph: Graph) -> Graph:
                     raise NotImplementedError()
         else:
             new_nodes[node] = reconstruct_node(node, new_nodes)
-    return as_graph(new_nodes[graph.root])
+    return new_nodes[expression]

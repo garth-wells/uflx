@@ -6,7 +6,7 @@ from uflx.algorithms import replace
 from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
-from uflx.graphs import Graph, GraphNode
+from uflx.graphs import GraphNode, as_graph
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
 from uflx.tensors import Matrix
 
@@ -435,13 +435,13 @@ class CoordinateDofComponent(AbstractExpression):
 
 
 def expand_geometry(
-    graph: Graph,
-) -> Graph:
+    expression: GraphNode,
+) -> GraphNode:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
     to_replace: dict[GraphNode, GraphNode] = {}
 
-    for node in graph:
+    for node in as_graph(expression):
         if isinstance(node, GraphNode) and isinstance(node, ExpandableGeometry):
             to_replace[node] = node.expand_geometry()
 
-    return replace(graph, to_replace)
+    return replace(expression, to_replace)
