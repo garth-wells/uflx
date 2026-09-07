@@ -1,29 +1,19 @@
 """Test complex values."""
 
 import numpy as np
-import pytest
 
 from uflx.complex import take_imaginary_part, take_real_part
 from uflx.expressions import ComplexScalar, Integer, to_scalar
-from uflx.graphs import as_graph
 
 
-@pytest.fixture
-def z_graph():
-    """The complex number 4+6j."""
-    a = Integer(4)
-    b = Integer(6)
-    return as_graph(ComplexScalar(a, b))
-
-
-def test_real_part(z_graph):
+def test_real_part():
     """Test taking real part."""
-    assert take_real_part(z_graph).root == 4
+    assert take_real_part(ComplexScalar(Integer(4), Integer(6))) == 4
 
 
-def test_imaginary_part(z_graph):
+def test_imaginary_part():
     """Test taking imaginary part."""
-    assert take_imaginary_part(z_graph).root == 6
+    assert take_imaginary_part(ComplexScalar(Integer(4), Integer(6))) == 6
 
 
 def test_complex_scalar_add():

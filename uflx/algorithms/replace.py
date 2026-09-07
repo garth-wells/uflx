@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 from uflx.algorithms.reconstruct import reconstruct_node
-from uflx.graphs import Graph, GraphNode, as_graph
+from uflx.graphs import GraphNode, as_graph
 
 
 @runtime_checkable
@@ -14,16 +14,17 @@ class ExtraReplacement(Protocol):
         """Get the node to replace this node with, or None if no replacement can be made."""
 
 
-def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
+def replace(expression: GraphNode, replacements: dict[GraphNode, GraphNode]) -> GraphNode:
     """Replace nodes in a graph.
 
     Args:
-        graph: The graph
+        expression: The expression to apply replacements to
         replacements: A map from nodes to the nodes they should be replaced with
 
     Returns:
         A new graph with replacements made
     """
+    graph = as_graph(expression)
     assert graph.is_dag()
 
     node_map: dict[GraphNode, GraphNode] = {}
@@ -38,4 +39,4 @@ def replace(graph: Graph, replacements: dict[GraphNode, GraphNode]) -> Graph:
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
-    return as_graph(node_map.get(graph.root, graph.root))
+    return node_map.get(graph.root, graph.root)
