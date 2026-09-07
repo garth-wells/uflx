@@ -1,19 +1,15 @@
 """Code generation."""
 
-import numpy as np
-import numpy.typing as npt
 import quadraturerules
-from uflx.algorithms import pull_back_to_reference, replace
+from uflx.algorithms import pull_back_to_reference
 from uflx.geometry import (
     expand_geometry,
 )
 from uflx.graphs import (
     GraphNode,
-    as_graph,
 )
 from uflx.integrals import AbstractMeasure, dx
 from uflx.maps import apply_push_forwards
-from uflx.points import Point
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.algorithms import (
@@ -22,54 +18,13 @@ from uflx_codegeneration.algorithms import (
     tabulate_finite_elements,
 )
 from uflx_codegeneration.c import GenerateC, tables_to_c
-from uflx_codegeneration.nodes import ArrayEntry
 from uflx_codegeneration.quadrature import (
-    QuadraturePoint,
     QuadratureRule,
-    QuadratureWeight,
     integrals_to_quadrature,
     quadrature_rule,
+    tabulate_quadrature,
 )
 from uflx_codegeneration.utils import indented
-
-
-def tabulate_quadrature(
-    expression: GraphNode,
-    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, npt.NDArray(np.floating)], GraphNode]:
-    """Generate tables of values for quadrature rules."""
-    table_map = {}
-    tables = {}
-    to_replace: dict[GraphNode, GraphNode] = {}
-    for node in as_graph(expression):
-        if isinstance(node, QuadratureWeight):
-            id = (node.rule, "weights")
-            if id not in table_map:
-                name = variable_namer.quadrature_table()
-                table_map[id] = name
-                tables[name] = node.rule.weights
-            to_replace[node] = ArrayEntry(table_map[id], (node.index,))
-        if isinstance(node, QuadraturePoint):
-            id = (node.rule, "points")
-            if id not in table_map:
-                name = variable_namer.quadrature_table()
-                table_map[id] = name
-                tables[name] = node.rule.points
-            to_replace[node] = Point(
-                [
-                    ArrayEntry(
-                        table_map[id],
-                        (
-                            node.dim * node.index + i
-                            if isinstance(node.index, int)
-                            else f"{node.dim} * {node.index} + {i}",
-                        ),
-                    )
-                    for i in range(node.dim)
-                ]
-            )
-
-    return tables, replace(expression, to_replace)
 
 
 def generate(

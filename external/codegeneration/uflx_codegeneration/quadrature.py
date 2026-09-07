@@ -22,11 +22,11 @@ from uflx.geometry import (
 )
 from uflx.graphs import Graph, GraphNode, as_graph
 from uflx.integrals import AbstractIntegral, AbstractMeasure, Measure
-from uflx.points import AbstractPoint, AbstractSetOfPoints, PointComponent
+from uflx.points import AbstractPoint, AbstractSetOfPoints, Point, PointComponent
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.c import GenerateC
-from uflx_codegeneration.nodes import AddToLocalTensor, Loop
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.utils import indented
 
 
@@ -292,3 +292,42 @@ def integrals_to_quadrature(
             updated_nodes[node] = next
 
     return replace(updated_nodes.get(graph.root, graph.root), to_replace)
+
+
+def tabulate_quadrature(
+    expression: GraphNode,
+    variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
+) -> tuple[dict[str, npt.NDArray(np.floating)], GraphNode]:
+    """Generate tables of values for quadrature rules."""
+    table_map = {}
+    tables = {}
+    to_replace: dict[GraphNode, GraphNode] = {}
+    for node in as_graph(expression):
+        if isinstance(node, QuadratureWeight):
+            id = (node.rule, "weights")
+            if id not in table_map:
+                name = variable_namer.quadrature_table()
+                table_map[id] = name
+                tables[name] = node.rule.weights
+            to_replace[node] = ArrayEntry(table_map[id], (node.index,))
+        if isinstance(node, QuadraturePoint):
+            id = (node.rule, "points")
+            if id not in table_map:
+                name = variable_namer.quadrature_table()
+                table_map[id] = name
+                tables[name] = node.rule.points
+            to_replace[node] = Point(
+                [
+                    ArrayEntry(
+                        table_map[id],
+                        (
+                            node.dim * node.index + i
+                            if isinstance(node.index, int)
+                            else f"{node.dim} * {node.index} + {i}",
+                        ),
+                    )
+                    for i in range(node.dim)
+                ]
+            )
+
+    return tables, replace(expression, to_replace)
