@@ -2,9 +2,9 @@
 
 from typing import Any
 
+from uflx.algorithms import replace
 from uflx.geometry import Jacobian, JacobianDeterminant, JacobianInverse, expand_geometry
-from uflx.graphs import Graph, GraphNode, as_graph
-from uflx.graphs.algorithms import replace
+from uflx.graphs import GraphNode, as_graph
 from uflx.tensors import Matrix
 
 from uflx_codegeneration import symbols
@@ -12,14 +12,14 @@ from uflx_codegeneration.nodes import FunctionCall, Variable
 
 
 def insert_geometry_functions(
-    graph: Graph,
+    expression: GraphNode,
     variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, tuple[str, list[Variable], Graph]], Graph]:
+) -> tuple[dict[str, tuple[str, list[Variable], GraphNode]], GraphNode]:
     """Replace geometry nodes with calls to functions that compute geometry."""
     functions = {}
     to_replace: dict[GraphNode, GraphNode] = {}
     coordinate_dofs = Variable("const double*", symbols.coordinate_dofs)
-    for node in graph:
+    for node in as_graph(expression):
         if isinstance(node, JacobianDeterminant):
             f = variable_namer.geometry_function_name()
             f_args: list[Any] = [coordinate_dofs]
@@ -28,7 +28,7 @@ def insert_geometry_functions(
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = FunctionCall(f, *f_args)
-            functions[f] = ("double", inputs, expand_geometry(graph.subgraph_of_node(node)))
+            functions[f] = ("double", inputs, expand_geometry(node))
         elif isinstance(node, Jacobian):
             f = variable_namer.geometry_function_name()
             fs = [
@@ -46,7 +46,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(as_graph(node.component(i, j))),
+                        expand_geometry(node.component(i, j)),
                     )
         elif isinstance(node, JacobianInverse):
             f = variable_namer.geometry_function_name()
@@ -65,7 +65,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(as_graph(node.component(i, j))),
+                        expand_geometry(node.component(i, j)),
                     )
 
-    return functions, replace(graph, to_replace)
+    return functions, replace(expression, to_replace)

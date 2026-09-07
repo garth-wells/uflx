@@ -1,8 +1,9 @@
 """Test map algorithms."""
 
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
+from uflx.algorithms import pull_back_to_reference
 from uflx.functions import AbstractFunction, AbstractPhysicalFunction, AbstractReferenceFunction
-from uflx.graphs.algorithms import pull_back_to_reference
+from uflx.graphs import as_graph
 from uflx.integrals import Integral
 
 
@@ -16,11 +17,13 @@ def test_mass_matrix(lagrange_element):
     form = inner(u, v) * dx
     assert isinstance(form, Integral)
 
-    pulled_form = pull_back_to_reference(form.graph).root
+    pulled_form = pull_back_to_reference(form)
     assert isinstance(pulled_form, Integral)
 
-    functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
-    pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]
+    functions = [node for node in as_graph(form) if isinstance(node, AbstractFunction)]
+    pulled_functions = [
+        node for node in as_graph(pulled_form) if isinstance(node, AbstractFunction)
+    ]
 
     assert len(functions) == 2
     assert len(pulled_functions) == 2
@@ -41,11 +44,13 @@ def test_stuffness_matrix(lagrange_element):
     form = inner(grad(u), grad(v)) * dx
     assert isinstance(form, Integral)
 
-    pulled_form = pull_back_to_reference(form.graph).root
+    pulled_form = pull_back_to_reference(form)
     assert isinstance(pulled_form, Integral)
 
-    functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
-    pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]
+    functions = [node for node in as_graph(form) if isinstance(node, AbstractFunction)]
+    pulled_functions = [
+        node for node in as_graph(pulled_form) if isinstance(node, AbstractFunction)
+    ]
 
     assert len(functions) == 2
     assert len(pulled_functions) == 2
@@ -65,11 +70,13 @@ def test_linear_form(lagrange_element):
     form = v * dx
     assert isinstance(form, Integral)
 
-    pulled_form = pull_back_to_reference(form.graph).root
+    pulled_form = pull_back_to_reference(form)
     assert isinstance(pulled_form, Integral)
 
-    functions = [node for node in form.graph if isinstance(node, AbstractFunction)]
-    pulled_functions = [node for node in pulled_form.graph if isinstance(node, AbstractFunction)]
+    functions = [node for node in as_graph(form) if isinstance(node, AbstractFunction)]
+    pulled_functions = [
+        node for node in as_graph(pulled_form) if isinstance(node, AbstractFunction)
+    ]
 
     assert len(functions) == 1
     assert len(pulled_functions) == 1

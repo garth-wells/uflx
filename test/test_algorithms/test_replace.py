@@ -1,7 +1,7 @@
 """Test replace algorithm."""
 
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space
-from uflx.graphs.algorithms import replace
+from uflx.algorithms import replace
 from uflx.integrals import Integral
 
 
@@ -16,11 +16,8 @@ def test_replace(lagrange_element):
     form = u * dx
     assert isinstance(form, Integral)
 
-    replaced_graph = replace(form.graph, {u: v})
-
-    form.graph.print()
-    replaced_graph.print()
+    replaced_form = replace(form, {u: v})
 
     assert isinstance(form.integrand, TrialFunction)
-    assert isinstance(replaced_graph.root, Integral)
-    assert isinstance(replaced_graph.root.integrand, TestFunction)
+    assert isinstance(replaced_form, Integral)
+    assert isinstance(replaced_form.integrand, TestFunction)
