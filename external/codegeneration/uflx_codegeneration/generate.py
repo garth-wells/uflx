@@ -2,7 +2,6 @@
 
 import quadraturerules
 from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
-from uflx.complex import take_real_part
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
@@ -251,7 +250,6 @@ def generate(
     geometry_functions, graph = insert_geometry_functions(graph)
     graph = expand_geometry(graph)
     graph = expand_inner_products(graph)
-    graph = take_real_part(graph)
 
     q_tables, graph = tabulate_quadrature(graph)
     fe_tables, graph = tabulate_finite_elements(graph)

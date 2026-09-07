@@ -398,6 +398,31 @@ class Im(UnaryOperator):
         return self.argument.as_complex().imag
 
 
+class Conj(UnaryOperator):
+    """Complex conjugate operator."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self.argument
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        raise NotImplementedError()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise NotImplementedError("Cannot get a 'component' of a Grad")
+        return Conj(self.argument.component(*indices))
+
+
 class BinaryOperator(AbstractExpression):
     """A binary operator.
 
@@ -427,6 +452,11 @@ class BinaryOperator(AbstractExpression):
 class Mult(BinaryOperator):
     """Componentwise multiplication operator."""
 
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape == second.value_shape
+        super().__init__(first, second)
+
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
@@ -451,6 +481,13 @@ class Mult(BinaryOperator):
 
 class ScalarMult(BinaryOperator):
     """Multiplication by a scalar."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        print(first, second)
+        assert first.value_shape == ()
+        assert second.value_shape != ()
+        super().__init__(first, second)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
@@ -477,15 +514,18 @@ class ScalarMult(BinaryOperator):
 class MatMult(BinaryOperator):
     """Multiplication by a matrix."""
 
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape[-1] == second.value_shape[0]
+        super().__init__(first, second)
+
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        assert self.first.value_shape[-1] == self.second.value_shape[0]
         return self.first.value_shape[:-1] + self.second.value_shape[1:]
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
-        assert self.first.value_shape[-1] == self.second.value_shape[0]
         assert len(indices) == len(self.value_shape)
         n = len(self.first.value_shape) - 1
         return expression_sum(
@@ -522,7 +562,11 @@ class Div(BinaryOperator):
 
     def as_int(self) -> int:
         """Convert to an integer."""
-        return self.first.as_int() / self.second.as_int()
+        a = self.first.as_int()
+        b = self.second.as_int()
+        if a % b != 0:
+            raise ValueError(f"Cannot convert {self.__class__.__name__} to int")
+        return a // b
 
 
 class Add(BinaryOperator):

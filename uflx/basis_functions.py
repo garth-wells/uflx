@@ -10,12 +10,13 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Im, Re
 from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
 from uflx.points import AbstractPoint
+from uflx.tensors import zero
 from uflx.utils import flatten
 
 
@@ -55,6 +56,22 @@ class AbstractEvaluatedReferenceBasisFunction(AbstractReferenceFunction):
     @abstractmethod
     def diff(self, index: int) -> AbstractReferenceFunction:
         """Take a derivative of this function."""
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.element.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.element.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
 
 
 class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
@@ -106,6 +123,22 @@ class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
     def diff(self, index: int) -> AbstractPhysicalFunction:
         """Take a derivative of this function."""
 
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.element.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.element.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
+
 
 class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     """A basis function evaluated at a point on the reference cell."""
@@ -155,7 +188,10 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self._element.reference_value_shape
+        if self._component is None:
+            return self._element.reference_value_shape
+        else:
+            return ()
 
     def __repr__(self):
         """Representation."""
@@ -269,7 +305,10 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self._element.physical_value_shape(self._point.dim)
+        if self._component is None:
+            return self._element.physical_value_shape(self._point.dim)
+        else:
+            return ()
 
     def __repr__(self):
         """Representation."""

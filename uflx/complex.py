@@ -2,7 +2,7 @@
 
 from typing import Protocol, runtime_checkable
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Conj
 from uflx.graphs import Graph, GraphNode
 from uflx.graphs.algorithms import replace
 
@@ -46,3 +46,11 @@ def take_imaginary_part(
             if isinstance(node, ComplexValued) and isinstance(node, GraphNode)
         },
     )
+
+
+def conj(value: AbstractExpression) -> AbstractExpression:
+    """Get the complex conjugate."""
+    if isinstance(value, ComplexValued):
+        return value.re - value.im
+    else:
+        return Conj(value)

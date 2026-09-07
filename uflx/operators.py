@@ -5,6 +5,7 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
+from uflx.complex import conj
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
@@ -98,31 +99,6 @@ class ReferenceGrad(UnaryOperator):
         return Vector([argument.diff(i) for i in range(argument.domain_size)])
 
 
-class Conj(UnaryOperator):
-    """Complex conjugate operator."""
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return self.argument.value_shape
-
-    @property
-    def re(self) -> AbstractExpression:
-        """Get real part."""
-        return self.argument
-
-    @property
-    def im(self) -> AbstractExpression:
-        """Get imaginary part."""
-        raise NotImplementedError()
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        if self.value_shape == ():
-            raise NotImplementedError("Cannot get a 'component' of a Grad")
-        return Conj(self.argument.component(*indices))
-
-
 def grad(a: AbstractExpression) -> Grad:
     """The gradient of an expression."""
     return Grad(a)
@@ -134,6 +110,6 @@ def inner(a: AbstractExpression, b: AbstractExpression) -> AbstractExpression:
         raise ValueError("Incompatible value shapes.")
 
     if a.value_shape == ():
-        return a * Conj(b)
+        return a * conj(b)
 
     return Inner(a, b)

@@ -31,6 +31,11 @@ class AbstractFunctionSpace(ABC):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the function space."""
 
+    @property
+    @abstractmethod
+    def real_valued(self) -> bool:
+        """Check if this space is real-valued."""
+
 
 class AbstractReferenceMappedFunctionSpace(AbstractFunctionSpace):
     """Abstract base class for a function space whose functions are mapped from a reference cell."""
@@ -64,6 +69,11 @@ class FunctionSpace(AbstractReferenceMappedFunctionSpace):
     def domain(self) -> AbstractDomain:
         """Domain of the function space."""
         return self._domain
+
+    @property
+    def real_valued(self) -> bool:
+        """Check if this space is real-valued."""
+        return all(e.real_valued for e in self._elements)
 
     @property
     def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
