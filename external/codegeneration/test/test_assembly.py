@@ -782,14 +782,14 @@ def test_mass_matrix(lagrange_element, code_dir, degree, expected_matrices):
     v = TestFunction(space)
     form = inner(u, v) * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
 
     cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_mass_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
@@ -1494,13 +1494,13 @@ def test_stiffness_matrix(lagrange_element, code_dir, degree, expected_matrices)
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_stiffness_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
@@ -1657,13 +1657,13 @@ def test_linear_form(lagrange_element, code_dir, degree, expected_vectors):
     x = SpatialCoordinate(2)
     form = x[0] * v * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = [[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]]
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_linear_form_degree{degree}", code)
     so = ffi.compile(code_dir)
 

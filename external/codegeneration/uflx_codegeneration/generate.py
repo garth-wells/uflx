@@ -30,7 +30,7 @@ from uflx_codegeneration.utils import indented
 def generate(
     form: GraphNode,
     language: str = "C",
-) -> tuple[str, dict[GraphNode, str]]:
+) -> tuple[str, str]:
     """Generate code.
 
     Args:
@@ -97,12 +97,10 @@ def generate(
     code += indented(form.generate_c(), 2)
     code += "\n}\n"
 
-    signatures = {
-        form: (
-            "void tabulate_tensor_f64(double* restrict, const double* restrict, "
-            "const double* restrict, const double* restrict, const int* restrict, "
-            "const uint8_t* restrict, void*);"
-        ),
-    }
+    signature = (
+        "void tabulate_tensor_f64(double* restrict, const double* restrict, "
+        "const double* restrict, const double* restrict, const int* restrict, "
+        "const uint8_t* restrict, void*);"
+    )
 
-    return code, signatures
+    return code, signature

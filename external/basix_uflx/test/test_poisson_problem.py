@@ -45,7 +45,7 @@ class FunctionSpace(NamedTuple):
 def assemble_code(form: AbstractIntegral, code_dir: str, filename: str | None = None):
     """Assemble a code kernel."""
     ffi = FFI()
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     if filename is None:
         h = hashlib.sha1(code.encode("utf-8"))
@@ -53,7 +53,7 @@ def assemble_code(form: AbstractIntegral, code_dir: str, filename: str | None = 
         while os.path.isfile(os.path.join(code_dir, f"{filename}.c")):
             filename += "_"
 
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(filename, code)
     so = ffi.compile(code_dir)
 
