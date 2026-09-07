@@ -2,6 +2,7 @@
 
 from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, inner
 from uflx.functions import Argument
+from uflx.integrals import Integral
 
 
 def test_argument_labelling(lagrange_element):
@@ -14,6 +15,9 @@ def test_argument_labelling(lagrange_element):
 
     form1 = inner(u, v) * dx
     form2 = inner(u, v) * dx
+
+    assert isinstance(form1, Integral)
+    assert isinstance(form2, Integral)
 
     assert u.integral_label is None
     assert v.integral_label is None

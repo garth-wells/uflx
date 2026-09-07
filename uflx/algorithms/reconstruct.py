@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from uflx.graphs.graphs import GraphNode
+from uflx.graphs import GraphNode
 
 
 def apply_replacements(arg: Any, replacements: dict[GraphNode, GraphNode]) -> Any:

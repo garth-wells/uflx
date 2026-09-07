@@ -14,10 +14,11 @@ from abc import abstractmethod
 from itertools import count
 from typing import Any, Self
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Im, Re
 from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
 from uflx.graphs import GraphNode
 from uflx.maps import PushedForward
+from uflx.tensors import zero
 
 
 class AbstractFunction(AbstractExpression):
@@ -60,6 +61,22 @@ class AbstractPhysicalFunction(AbstractFunction):
     def domain_size(self) -> int:
         """The size of the domain (ie the number of inputs to the function)."""
         return self.function_space.domain.cells[0].topological_dimension
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.function_space.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.function_space.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
 
 
 class AbstractReferenceFunction(AbstractFunction):
@@ -131,6 +148,22 @@ class AbstractReferenceIntegralScopedFunction(AbstractReferenceFunction):
         """The value shape of the expression."""
         assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
         return self.function_space.elements[0].reference_value_shape
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.function_space.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.function_space.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
 
 
 class Argument(AbstractIntegralScopedFunction):

@@ -188,6 +188,11 @@ class LagrangeElement(AbstractReferenceMappedFiniteElement):
         return self._cell
 
     @property
+    def real_valued(self) -> bool:
+        """Check if this element is real-valued."""
+        return True
+
+    @property
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
         if self._block_shape is None:

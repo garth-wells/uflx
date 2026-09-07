@@ -2,8 +2,8 @@
 
 from typing import Protocol, runtime_checkable
 
-from uflx.graphs.algorithms.reconstruct import reconstruct_node
-from uflx.graphs.graphs import Graph, GraphNode, generate_graph
+from uflx.algorithms.reconstruct import reconstruct_node
+from uflx.graphs import GraphNode, as_graph
 
 
 @runtime_checkable
@@ -15,14 +15,14 @@ class PullBackToReference(Protocol):
 
 
 def pull_back_to_reference(
-    graph: Graph,
-) -> Graph:
+    expression: GraphNode,
+) -> GraphNode:
     """Pull terms in integrals back to reference values."""
     node_map: dict[GraphNode, GraphNode] = {}
-    for node in graph.ordered_nodes():
+    for node in as_graph(expression).ordered_nodes():
         if isinstance(node, PullBackToReference):
             node_map[node] = node.pull_back_to_reference(node_map)
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
-    return generate_graph(node_map.get(graph.root, graph.root))
+    return node_map.get(expression, expression)

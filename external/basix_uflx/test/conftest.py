@@ -4,7 +4,12 @@ import os
 
 import pytest
 
-CODE_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
+CODE_DIRECTORY = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+    f".code-{os.environ['PYTEST_XDIST_WORKER']}"
+    if "PYTEST_XDIST_WORKER" in os.environ
+    else ".code",
+)
 
 
 @pytest.fixture

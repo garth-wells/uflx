@@ -1,6 +1,5 @@
 """Test code generation."""
 
-import os
 from typing import Any
 
 import numpy as np
@@ -19,10 +18,6 @@ from uflx import (
 )
 
 from basix_uflx import element
-
-code_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
-if not os.path.isdir(code_dir):
-    os.mkdir(code_dir)
 
 
 @pytest.mark.parametrize(
@@ -278,7 +273,7 @@ if not os.path.isdir(code_dir):
         ),
     ],
 )
-def test_mass_matrix(degree, expected_local_matrices):
+def test_mass_matrix(degree, expected_local_matrices, code_dir):
     """Test code generation for a mass matrix."""
     e = element("Lagrange", "triangle", degree)
     space = function_space(coordinate_element(element("Lagrange", "triangle", 1, shape=(2,))), e)
@@ -286,13 +281,13 @@ def test_mass_matrix(degree, expected_local_matrices):
     v = TestFunction(space)
     form = inner(u, v) * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_mass_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
@@ -573,7 +568,7 @@ def test_mass_matrix(degree, expected_local_matrices):
         ),
     ],
 )
-def test_stiffness_matrix(degree, expected_local_matrices):
+def test_stiffness_matrix(degree, expected_local_matrices, code_dir):
     """Test code generation for a stiffness matrix."""
     e = element("Lagrange", "triangle", degree)
     space = function_space(coordinate_element(element("Lagrange", "triangle", 1, shape=(2,))), e)
@@ -581,13 +576,13 @@ def test_stiffness_matrix(degree, expected_local_matrices):
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_stiffness_matrix_degree{degree}", code)
     so = ffi.compile(code_dir)
 
@@ -674,7 +669,7 @@ def test_stiffness_matrix(degree, expected_local_matrices):
         ),
     ],
 )
-def test_linear_form(degree, expected_local_vectors):
+def test_linear_form(degree, expected_local_vectors, code_dir):
     """Test code generation for a mass matrix."""
     e = element("Lagrange", "triangle", degree)
     space = function_space(coordinate_element(element("Lagrange", "triangle", 1, shape=(2,))), e)
@@ -682,13 +677,13 @@ def test_linear_form(degree, expected_local_vectors):
     x = SpatialCoordinate(2)
     form = x[0] * v * dx
 
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     pts = np.array([[0.0, 0.0], [0.3, 0.0], [1.0, 0.0], [0.0, 1.0], [0.3, 1.0], [1.0, 1.0]])
     cells = np.array([[0, 1, 3], [1, 4, 3], [1, 2, 4], [2, 5, 4]])
 
     ffi = FFI()
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(f"test_linear_form_degree{degree}", code)
     so = ffi.compile(code_dir)
 
