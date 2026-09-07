@@ -1762,7 +1762,7 @@ def _extract_gpu_object_bytes(module: Module) -> bytes:
     candidates = re.findall(r'"([^"]*)"', str(binary_op.operation))
     if not candidates:
         raise ValueError("gpu.binary op has no quoted string attribute to recover")
-    escaped = max(candidates, key=len)
+    escaped = max(candidates, key=lambda value: len(value))
 
     payload = bytearray()
     i = 0
@@ -1920,7 +1920,7 @@ def extract_ptx_text(module: Module) -> str:
     candidates = re.findall(r'"([^"]*)"', text)
     if not candidates:
         raise ValueError("gpu.binary op has no quoted string attribute to recover")
-    escaped = max(candidates, key=len)
+    escaped = max(candidates, key=lambda value: len(value))
 
     chars = []
     i = 0

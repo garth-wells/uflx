@@ -58,6 +58,8 @@ convention = "google"
 
 [tool.pyrefly]
 ignore-missing-imports = ["cffi", "networkx", "mlir", "mlir.*"]
+project-excludes = ["external/uflx_mlir/demo/**"]
+search-path = ["external/uflx_mlir/test"]
 
 [tool.pyrefly.errors]
 unused-ignore = true

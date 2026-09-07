@@ -172,6 +172,7 @@ class _OpCtx:
 
     f64: Any
     index_t: Any
+    zero_f64: Value = field(init=False)
 
     index_const: dict[int, Value] = field(default_factory=dict)  # int -> index-typed Value
     global_val: dict[str, Value] = field(default_factory=dict)  # table name -> memref Value

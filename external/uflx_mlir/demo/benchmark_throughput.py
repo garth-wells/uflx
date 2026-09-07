@@ -7,8 +7,9 @@ imported the same way that module imports its own sibling `harness`
 is a loose collection of scripts, not a package).
 
 Usage:
-    python3 demo/benchmark_throughput.py [--degree N] [--backend cpu|gpu|both]
-        [--cubin-chip CHIP] [--n-min N] [--n-max N] [--num-points N]
+    python3 demo/benchmark_throughput.py [--degree N]
+        [--backend cpu|cuda|amd|both] [--target-chip CHIP]
+        [--n-min N] [--n-max N] [--num-points N]
         [--csv PATH] [--plot PATH]
 
     Mesh sizes are log-spaced integers from --n-min to --n-max inclusive
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 import time
 from pathlib import Path
@@ -52,7 +54,9 @@ def log_spaced_mesh_sizes(n_min: int, n_max: int, num_points: int) -> list[int]:
     return sorted({round(x) for x in raw})
 
 
-def run_backend(n_values: list[int], degree: int, backend: str, cubin_chip: str) -> list[dict]:
+def run_backend(
+    n_values: list[int], degree: int, backend: str, target_chip: str | None
+) -> list[dict]:
     """Run one backend across every requested mesh size.
 
     Returns one result dict per size. Mirrors main()'s own per-size sequence (build
@@ -64,9 +68,12 @@ def run_backend(n_values: list[int], degree: int, backend: str, cubin_chip: str)
     this doesn't have to reimplement or parse-back-out either kernel
     call's own timing.
     """
-    if backend == "gpu":
+    if backend in ("gpu", "cuda"):
         assemble_fn = amg.assemble_global_matrix_gpu
-        assemble_kwargs = {"cubin_chip": cubin_chip, "return_timing": True}
+        assemble_kwargs = {"cubin_chip": target_chip or "sm_80", "return_timing": True}
+    elif backend == "amd":
+        assemble_fn = amg.assemble_global_matrix_amd
+        assemble_kwargs = {"chip": target_chip, "return_timing": True}
     else:
         assemble_fn = amg.assemble_global_matrix
         assemble_kwargs = {"return_timing": True}
@@ -123,7 +130,7 @@ def make_plot(results: list[dict], plot_path: str) -> None:
     fig, (ax_throughput, ax_time) = plt.subplots(1, 2, figsize=(13, 5.5))
 
     backends = sorted({r["backend"] for r in results})
-    colors = {"cpu": "tab:blue", "gpu": "tab:red"}
+    colors = {"cpu": "tab:blue", "gpu": "tab:red", "cuda": "tab:red", "amd": "tab:orange"}
     for backend in backends:
         rows = sorted(
             (r for r in results if r["backend"] == backend),
@@ -167,8 +174,14 @@ def main() -> None:
     """Run the mesh-size sweep and write its CSV data and plot."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--degree", type=int, default=2)
-    parser.add_argument("--backend", choices=["cpu", "gpu", "both"], default="cpu")
-    parser.add_argument("--cubin-chip", default="sm_80")
+    parser.add_argument("--backend", choices=["cpu", "gpu", "cuda", "amd", "both"], default="cpu")
+    parser.add_argument(
+        "--target-chip",
+        "--cubin-chip",
+        dest="target_chip",
+        default=None,
+        help="GPU architecture; AMD auto-detects it, CUDA defaults to sm_80",
+    )
     parser.add_argument("--n-min", type=int, default=5)
     parser.add_argument("--n-max", type=int, default=60)
     parser.add_argument("--num-points", type=int, default=12)
@@ -176,7 +189,7 @@ def main() -> None:
     parser.add_argument("--plot", default="throughput.png")
     args = parser.parse_args()
 
-    if args.backend in ("gpu", "both"):
+    if args.backend in ("gpu", "cuda"):
         cuda_runtime_lib = amg._find_cuda_runtime_lib()
         if not cuda_runtime_lib:
             raise SystemExit(
@@ -193,10 +206,18 @@ def main() -> None:
         f"for why sizes are log-spaced and what the plotted x axis is.\n"
     )
 
-    backends = ["cpu", "gpu"] if args.backend == "both" else [args.backend]
+    if args.backend == "both":
+        if amg._find_cuda_runtime_lib():
+            backends = ["cpu", "cuda"]
+        elif (Path(os.environ.get("ROCM_PATH", "/opt/rocm")) / "bin/offload-arch").is_file():
+            backends = ["cpu", "amd"]
+        else:
+            raise SystemExit("No CUDA or AMD runtime found for --backend both")
+    else:
+        backends = [args.backend]
     all_results: list[dict] = []
     for backend in backends:
-        all_results.extend(run_backend(n_values, args.degree, backend, args.cubin_chip))
+        all_results.extend(run_backend(n_values, args.degree, backend, args.target_chip))
 
     with open(args.csv, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(all_results[0].keys()))
