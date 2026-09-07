@@ -14,6 +14,7 @@ def test_mass_matrix(lagrange_element):
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(u, v) * dx
+    assert isinstance(form, Integral)
 
     pulled_form = pull_back_to_reference(form.graph).root
     assert isinstance(pulled_form, Integral)
@@ -38,6 +39,7 @@ def test_stuffness_matrix(lagrange_element):
     u = TrialFunction(space)
     v = TestFunction(space)
     form = inner(grad(u), grad(v)) * dx
+    assert isinstance(form, Integral)
 
     pulled_form = pull_back_to_reference(form.graph).root
     assert isinstance(pulled_form, Integral)
@@ -61,6 +63,7 @@ def test_linear_form(lagrange_element):
     space = function_space(domain, element)
     v = TestFunction(space)
     form = v * dx
+    assert isinstance(form, Integral)
 
     pulled_form = pull_back_to_reference(form.graph).root
     assert isinstance(pulled_form, Integral)

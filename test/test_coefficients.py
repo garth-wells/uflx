@@ -2,6 +2,7 @@
 
 from uflx import TestFunction, coordinate_element, dx, function_space, inner
 from uflx.functions import Coefficient
+from uflx.integrals import Integral
 
 
 def test_coefficient_labelling(lagrange_element):
@@ -14,6 +15,9 @@ def test_coefficient_labelling(lagrange_element):
 
     form1 = inner(w, v) * dx
     form2 = inner(w, v) * dx
+
+    assert isinstance(form1, Integral)
+    assert isinstance(form2, Integral)
 
     assert w.integral_label is None
     assert v.integral_label is None
