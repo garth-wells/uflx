@@ -487,10 +487,10 @@ class MatMult(BinaryOperator):
         """Get a component of the expression."""
         assert self.first.value_shape[-1] == self.second.value_shape[0]
         assert len(indices) == len(self.value_shape)
-        n = len(self.first.values_shape) - 1
+        n = len(self.first.value_shape) - 1
         return expression_sum(
-            self.first.component(*indices[:n], i) * self.second(i, *indices[n:])
-            for i in range(self.first.shape[-1])
+            self.first.component(*indices[:n], i) * self.second.component(i, *indices[n:])
+            for i in range(self.first.value_shape[-1])
         )
 
 
