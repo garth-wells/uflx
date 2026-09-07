@@ -360,6 +360,95 @@ def test_generate_csr_entry_module_matches_quadrature_reference() -> None:
     np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
 
 
+def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -> None:
+    """Numerically validate generate_csr_assembly_module's single-call,
+    whole-mesh CSR assembly kernel.
+
+    Unlike test_generate_csr_entry_module_matches_quadrature_reference
+    (one cell, host loops over (tx, ty) itself), this calls the kernel
+    exactly ONCE for a genuine two-cell mesh -- two tetrahedra sharing a
+    face (3 of 4 vertices) -- so three of the five global P1 dofs receive
+    real ADDED contributions from both cells; comparing the assembled
+    CSR matrix against test_emit._reference_stiffness's independent
+    quadrature computation, summed by hand over both cells, is the first
+    check that this kernel's internal cell loop, its per-cell geometry
+    refresh, and its accumulate-then-flush-once-per-(i,j) buffer reuse
+    all combine correctly across more than one cell.
+    """
+    import ctypes
+
+    import numpy as np
+    from mlir.execution_engine import ExecutionEngine
+    from mlir.passmanager import PassManager
+    from mlir.runtime import get_ranked_memref_descriptor
+
+    from test_emit import _PIPELINE, _reference_geometry, _reference_stiffness
+
+    from uflx_mlir.gpu_assembly import generate_csr_assembly_module
+
+    kernel_name = "tabulate_tensor_csr_assembly_execution_test"
+    form, ndofs = _stiffness_form(1)
+    module, layout = generate_csr_assembly_module(form, 1, kernel_name, basix.CellType.tetrahedron)
+    assert layout.ndofs == ndofs == 4
+    assert layout.geometry_size == 6
+
+    coords_a = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    coords_b = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.2, 0.2, -1.0]],
+        dtype=np.float64,
+    )
+    ncells = 2
+    ndofs_global = 5  # global vertices 0..3 (cell A) + 4 (cell B's own 4th vertex)
+    cell_dofs = np.array([0, 1, 2, 3, 0, 1, 2, 4], dtype=np.int32)
+
+    geometries = np.concatenate(
+        [_reference_geometry(coords_a), _reference_geometry(coords_b)]
+    ).astype(np.float64)
+    assert geometries.shape == (ncells * layout.geometry_size,)
+
+    avals = np.zeros(ndofs_global * ndofs_global, dtype=np.float64)
+    acols = np.tile(np.arange(ndofs_global, dtype=np.int32), ndofs_global)
+    arowptr = np.arange(0, ndofs_global * ndofs_global + 1, ndofs_global, dtype=np.int32)
+
+    with module.context:
+        pm = PassManager.parse(_PIPELINE)
+        pm.run(module.operation)
+        engine = ExecutionEngine(module, opt_level=3)
+
+    raw_fn = engine.lookup(kernel_name)
+    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
+    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
+    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
+    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
+    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
+    ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
+
+    packed = (ctypes.c_void_p * 6)(
+        ctypes.cast(avals_pp, ctypes.c_void_p).value,
+        ctypes.cast(acols_pp, ctypes.c_void_p).value,
+        ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
+        ctypes.cast(geometries_pp, ctypes.c_void_p).value,
+        ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
+        ctypes.cast(ncells_p, ctypes.c_void_p).value,
+    )
+    raw_fn(packed)  # ONE call assembles both cells.
+
+    a = avals.reshape(ndofs_global, ndofs_global)
+
+    a_ref = np.zeros((ndofs_global, ndofs_global))
+    local_a = _reference_stiffness(coords_a, 1)
+    local_b = _reference_stiffness(coords_b, 1)
+    dofs_a = [0, 1, 2, 3]
+    dofs_b = [0, 1, 2, 4]
+    a_ref[np.ix_(dofs_a, dofs_a)] += local_a
+    a_ref[np.ix_(dofs_b, dofs_b)] += local_b
+
+    np.testing.assert_allclose(a, a_ref, rtol=1e-9, atol=1e-8)
+
+
 def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> None:
     """Numerically validate the compiled GPU kernel by actually running it on a GPU.
 

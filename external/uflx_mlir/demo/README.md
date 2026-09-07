@@ -20,14 +20,16 @@ run_higher_order.py      # validates a generated P{N} kernel (from generate_kern
 run_uflx_stiffness.py    # UFLx form -> ../uflx_mlir/emit.py's op-builder API -> JIT, for any Lagrange degree
 ffcx_compare.py          # FFCx-vs-MLIR compile/call-time comparison for a basix-generated kernel (needs fenics-ffcx)
 ffcx_compare_uflx.py     # full-pipeline FFCx-vs-UFLx->MLIR comparison (needs fenics-ffcx)
+assemble_mesh_gpu.py     # assembles a real global CSR matrix (uflx_mlir.gpu_assembly) on a structured tet mesh, P1/P2
 kernels/                 # generated *.mlir files land here (gitignored)
 ```
 
 `harness.py`, `generate_kernel.py`, `check_lowering.py`, `run_higher_order.py`,
-and `run_uflx_stiffness.py` need only `uflx_mlir`'s own dependencies (basix,
-numpy, the MLIR Python bindings) -- see the package README's "Installing"
-and "Building LLVM/MLIR with Python bindings" sections. `ffcx_compare.py`
-and `ffcx_compare_uflx.py` additionally need:
+`run_uflx_stiffness.py`, and `assemble_mesh_gpu.py` need only `uflx_mlir`'s
+own dependencies (basix, numpy, the MLIR Python bindings) -- see the
+package README's "Installing" and "Building LLVM/MLIR with Python
+bindings" sections. `ffcx_compare.py` and `ffcx_compare_uflx.py`
+additionally need:
 
 ```bash
 pip install fenics-ffcx
@@ -43,6 +45,8 @@ python3 demo/check_lowering.py 3         # sanity-check it parses/lowers (no JIT
 python3 demo/run_higher_order.py 3       # JIT it, validate against basix-derived reference
 
 python3 demo/run_uflx_stiffness.py 3     # UFLx form -> MLIR (op-builder API) -> JIT, degree 3
+
+python3 demo/assemble_mesh_gpu.py 2 6     # assemble a real P2 global CSR matrix, 6x6x6 mesh (1296 cells)
 
 # needs fenics-ffcx (see above):
 python3 demo/ffcx_compare.py 3           # compile-time + call-time vs real FFCx codegen
@@ -105,10 +109,23 @@ and `ffcx_compare.py`'s `direct_ctypes` variant both use it by default.
 - Covers: generate -> lower -> JIT -> call for generalized basix-driven
   quadrature-loop kernels (P1 and up, arbitrary degree), a UFLx-form ->
   MLIR path via `../uflx_mlir/emit.py`, real FFCx-codegen comparisons for
-  both, and a programmatic (no shelled-out `mlir-opt` binary) parse+lower
-  check.
+  both, a programmatic (no shelled-out `mlir-opt` binary) parse+lower
+  check, and (`assemble_mesh_gpu.py`) assembling a real global CSR matrix
+  with a SINGLE call into `../uflx_mlir/gpu_assembly.py`'s whole-mesh
+  assembly kernel (`generate_csr_assembly_module`, which loops over every
+  cell itself) on a genuine (if modest-sized) P1/P2 tetrahedral mesh with
+  real shared dofs -- checked against an independent quadrature reference
+  on the smallest mesh, and via a patch-test (row sums vanish) plus a
+  symmetry check at whatever mesh size is asked for.
 - Doesn't cover yet: coefficients/constants arguments, facet integrals,
-  multiple cells batched in one call, or non-affine (curved) geometry.
+  multiple cells batched in one *GPU-launch* call (the CPU-callable
+  `generate_csr_assembly_module` path already batches every cell into one
+  call -- see above), non-affine (curved) geometry, or
+  (`assemble_mesh_gpu.py` specifically) degree > 2 dof placement (no
+  face/interior dofs) or actually launching the GPU-wrapped kernel
+  (`generate_csr_entry_gpu_module`) on real hardware -- that needs a
+  CUDA-capable machine this package wasn't developed against; see
+  `assemble_mesh_gpu.py`'s own docstring.
 - `generate_kernel.py`'s hand-written kernels assume positively-oriented
   tetrahedra (use `detJ` directly rather than `abs(detJ)`) -- fine for a
   hand-built test cell, not for arbitrary DOLFINx meshes, which can have

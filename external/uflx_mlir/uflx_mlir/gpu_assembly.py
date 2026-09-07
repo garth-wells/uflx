@@ -110,6 +110,7 @@ from uflx_mlir.geometry import GeometryKernelSpec
 from uflx_mlir.hoist import (
     FissionGroup,
     compute_fission_plan,
+    distribute_shallow_factors,
     reorder_quadrature_outermost,
     topo_order,
     walk_loop_chain,
@@ -468,6 +469,325 @@ def generate_csr_entry_module(
         module.operation.verify()
 
     layout = CsrEntryLayout(ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs)
+    return module, layout
+
+
+def generate_csr_assembly_module(
+    form, degree: int, kernel_name: str, cell: basix.CellType
+) -> tuple[Module, CsrEntryLayout]:
+    """Generate a single self-contained kernel that assembles the ENTIRE
+    global CSR matrix in one call: an outer cell loop wraps
+    generate_mlir_module's own proven quadrature-outermost, hoisted/
+    fissioned q/i/j loop nest (unchanged -- see that function and
+    hoist.py), now accumulating into a per-cell LOCAL scratch buffer
+    instead of a caller-owned output tensor, then flushes that buffer
+    into the global CSR matrix via the same binary-search-and-atomic-add
+    scatter generate_csr_entry_module uses, once per (cell, i, j) -- not
+    once per quadrature point, preserving that function's "only ONE
+    atomic scatter per entry" property even though there's now a real
+    loop over cells inside the same kernel.
+
+    Unlike generate_csr_entry_module (called once per (cell, i, j)
+    triple from the host) or generate_csr_entry_gpu_module (one
+    gpu.launch_func call per cell), this function's kernel takes the
+    WHOLE mesh's data -- every cell's packed geometry, the flat
+    cell-to-global-dof map, and a runtime cell count -- and needs
+    exactly one call to assemble every entry. There is no host-side loop
+    left at all.
+
+    Geometry input: `geometries` is FLAT (length `ncells *
+    geometry.output_size`), cell c's own packed geometry occupying
+    `geometries[c*geometry.output_size : (c+1)*geometry.output_size]`
+    (row-major over cells) -- unlike generate_csr_entry_module's single
+    6-element argument, since there is now one such block per cell. Each
+    cell iteration copies its own slice into a small per-cell scratch
+    buffer (a fixed, small, compile-time-constant number of plain
+    load/store pairs -- no scf.for needed) that becomes `ctx.geometry_val`
+    for that iteration; GeometryTensorComponent lookups elsewhere
+    (uflx_mlir.emit._emit_node) then see exactly the same
+    memref<{geometry.output_size}xf64> shape generate_csr_entry_module's
+    single-cell argument already provides, so nothing about how a
+    geometry component is READ changes here.
+
+    `cell_dofs` is flat exactly as generate_csr_entry_module's own
+    argument of the same name: cell c's local dof `d`'s global id is
+    `cell_dofs[c * ndofs + d]`.
+
+    Correctness of the reused q/i/j nest itself rests entirely on
+    generate_mlir_module's own (separately validated) fission/hoist
+    machinery: the only genuinely new code here is the outer cell loop,
+    the per-cell geometry refresh, the per-cell zero-init of `accum`
+    (needed because, unlike generate_mlir_module's caller-zeroed output
+    argument, `accum` is an internal scratch buffer reused across cell
+    iterations with no caller to zero it), and the flush-to-CSR loop --
+    all hand-built from the same scf.for/memref.alloca/load/store
+    primitives already used elsewhere in this module and in emit.py.
+
+    Only supports what generate_csr_entry_module supports (see that
+    function's docstring for the geometry-extraction and equal-dof-count
+    scope limits) -- same Raises.
+
+    Args:
+        form: A UFLx form (as returned by e.g. `inner(grad(u), grad(v)) * dx`).
+        degree: The polynomial degree used to size the quadrature rule.
+        kernel_name: The symbol name to give the generated `func.func`.
+        cell: The reference cell the form is integrated over.
+
+    Returns:
+        A tuple (module, layout): `module` is the built, verified
+        `mlir.ir.Module`; `layout.ndofs`/`layout.cell_dofs_stride` are as
+        in generate_csr_entry_module, and `layout.geometry_size` is the
+        PER-CELL geometry block size (`geometries`' total length is
+        `ncells * layout.geometry_size`, not `layout.geometry_size`
+        itself).
+    """
+    tables, graph, geometry = lower_form(form, degree, cell)
+    if geometry is None:
+        raise NotImplementedError(
+            "generate_csr_assembly_module only supports forms whose geometry "
+            "uflx_mlir.geometry.extract_affine_poisson_geometry can extract "
+            "(currently: affine-tetrahedron Poisson/stiffness forms) -- see "
+            "that module for why other forms are left alone."
+        )
+    assert isinstance(geometry, GeometryKernelSpec)
+
+    root = graph.root
+    chain, add_node = walk_loop_chain(root)
+    chain = reorder_quadrature_outermost(chain)
+    if len(chain) != 3 or not isinstance(chain[0][0], QuadratureLoop):
+        raise NotImplementedError(
+            "generate_csr_assembly_module only supports the standard "
+            "quadrature + two-dof-axis shape (a bilinear form with one "
+            "test and one trial function loop)."
+        )
+    (_, quad_var), (dof_a_node, dof_a_var), (dof_b_node, dof_b_var) = chain
+    assert isinstance(dof_a_node, Loop) and isinstance(dof_b_node, Loop)
+    ndofs_a, ndofs_b = dof_a_node.end, dof_b_node.end
+    # Loop.end is typed `int | str`; narrow it before relying on it as a
+    # real int (see the matching check in generate_csr_entry_module).
+    if not isinstance(ndofs_a, int) or not isinstance(ndofs_b, int):
+        raise NotImplementedError(
+            "generate_csr_assembly_module only supports forms with constant "
+            f"(non-symbolic) local dof counts, got {ndofs_a!r} and {ndofs_b!r}."
+        )
+    if ndofs_a != ndofs_b:
+        raise NotImplementedError(
+            "generate_csr_assembly_module only supports equal test/trial local "
+            f"dof counts (got {ndofs_a} and {ndofs_b}), matching laplacian.h."
+        )
+    ndofs = ndofs_a
+    loop_vars = [quad_var, dof_a_var, dof_b_var]
+
+    # Same optimization generate_mlir_module applies before fission
+    # analysis -- see hoist.distribute_shallow_factors' docstring. Must
+    # run before compute_fission_plan() below, which analyzes whatever
+    # tree is in add_node.body at that point.
+    distribute_shallow_factors(add_node, loop_vars)
+
+    int_constants = collect_int_constants(root, add_node.shape)
+    int_constants.update(range(geometry.output_size))
+    int_constants.add(geometry.output_size)
+
+    ctx_container = Context()
+    with ctx_container, Location.unknown():
+        module = Module.create()
+        f64 = F64Type.get()
+        index_t = IndexType.get()
+        i32 = IntegerType.get_signless(32)
+        dyn = ShapedType.get_dynamic_size()
+
+        avals_ty = MemRefType.get([dyn], f64)
+        acols_ty = MemRefType.get([dyn], i32)
+        arowptr_ty = MemRefType.get([dyn], i32)
+        geometries_ty = MemRefType.get([dyn], f64)
+        cell_dofs_ty = MemRefType.get([dyn], i32)
+        accum_ty = MemRefType.get(list(add_node.shape), f64)
+        geometry_slot_ty = MemRefType.get([geometry.output_size], f64)
+
+        ctx = _OpCtx(
+            a_shape=add_node.shape,
+            coords_shape=(0, 0),  # unused here: this kernel never touches coordinates
+            table_shapes={name: arr.shape for name, arr in tables.items()},
+            f64=f64,
+            index_t=index_t,
+        )
+
+        with InsertionPoint(module.body):
+            table_types = {}
+            for name in sorted(tables):
+                arr = tables[name]
+                ty = MemRefType.get(list(arr.shape), f64)
+                table_types[name] = ty
+                tensor_ty = RankedTensorType.get(list(arr.shape), f64)
+                dense = DenseElementsAttr.get(
+                    np.ascontiguousarray(arr, dtype=np.float64), type=tensor_ty
+                )
+                Operation.create(
+                    "memref.global",
+                    attributes={
+                        "sym_name": StringAttr.get(name),
+                        "sym_visibility": StringAttr.get("private"),
+                        "type": TypeAttr.get(ty),
+                        "initial_value": dense,
+                        "constant": UnitAttr.get(),
+                    },
+                )
+
+            func_ty = FunctionType.get(
+                [avals_ty, acols_ty, arowptr_ty, geometries_ty, cell_dofs_ty, index_t],
+                [],
+            )
+            func_op = Operation.create(
+                "func.func",
+                attributes={
+                    "sym_name": StringAttr.get(kernel_name),
+                    "function_type": TypeAttr.get(func_ty),
+                    "llvm.emit_c_interface": UnitAttr.get(),
+                },
+                regions=1,
+            )
+            entry = func_op.regions[0].blocks.append(
+                avals_ty, acols_ty, arowptr_ty, geometries_ty, cell_dofs_ty, index_t
+            )
+            with InsertionPoint(entry):
+                (
+                    avals,
+                    acols,
+                    arowptr,
+                    geometries,
+                    cell_dofs,
+                    ncells,
+                ) = entry.arguments
+
+                for i in sorted(int_constants):
+                    ctx.index_const[i] = _const_index(ctx, i)
+                ctx.zero_f64 = _const_f64(ctx, 0.0)
+
+                for name in sorted(tables):
+                    ctx.global_val[name] = Operation.create(
+                        "memref.get_global",
+                        results=[table_types[name]],
+                        attributes={"name": FlatSymbolRefAttr.get(name)},
+                    ).results[0]
+
+                ndofs_const = ctx.index_const[ndofs]
+                geom_size_const = ctx.index_const[geometry.output_size]
+
+                # Per-cell scratch: allocated once here, explicitly reset
+                # every cell iteration below rather than reallocated --
+                # see this function's docstring.
+                accum = Operation.create("memref.alloca", results=[accum_ty]).results[0]
+                geometry_slot = Operation.create(
+                    "memref.alloca", results=[geometry_slot_ty]
+                ).results[0]
+                ctx.geometry_val = geometry_slot
+
+                levels, fission_groups = compute_fission_plan(add_node, loop_vars)
+                _emit_fission_scratch_allocas(fission_groups, chain, ctx)
+                topo = topo_order(add_node)
+                groups_by_depth: dict[int, list[FissionGroup]] = {}
+                for group in fission_groups:
+                    groups_by_depth.setdefault(group.depth, []).append(group)
+
+                cell_for = Operation.create(
+                    "scf.for",
+                    operands=[ctx.index_const[0], ncells, ctx.index_const[1]],
+                    regions=1,
+                )
+                cell_block = cell_for.regions[0].blocks.append(index_t)
+                with InsertionPoint(cell_block):
+                    cell_id = cell_block.arguments[0]
+
+                    # Refresh geometry_slot[k] = geometries[cell_id * geometry_size + k].
+                    cell_geom_base = _op2("arith.muli", index_t, cell_id, geom_size_const)
+                    for k in range(geometry.output_size):
+                        src_idx = _op2(
+                            "arith.addi", index_t, cell_geom_base, ctx.index_const[k]
+                        )
+                        _memref_store(
+                            _memref_load(geometries, [src_idx], f64),
+                            geometry_slot,
+                            [ctx.index_const[k]],
+                        )
+
+                    # Zero-init this cell's local accumulator -- unlike
+                    # generate_mlir_module's caller-owned `A` (pure
+                    # accumulate by design, see that function's
+                    # docstring), `accum` here is an internal scratch
+                    # buffer with no caller to zero it, and it is REUSED
+                    # across cell iterations, so it must be reset before
+                    # each cell's contributions are added.
+                    zi_for = Operation.create(
+                        "scf.for",
+                        operands=[ctx.index_const[0], ndofs_const, ctx.index_const[1]],
+                        regions=1,
+                    )
+                    zi_block = zi_for.regions[0].blocks.append(index_t)
+                    with InsertionPoint(zi_block):
+                        zi = zi_block.arguments[0]
+                        zj_for = Operation.create(
+                            "scf.for",
+                            operands=[ctx.index_const[0], ndofs_const, ctx.index_const[1]],
+                            regions=1,
+                        )
+                        zj_block = zj_for.regions[0].blocks.append(index_t)
+                        with InsertionPoint(zj_block):
+                            zj = zj_block.arguments[0]
+                            _memref_store(ctx.zero_f64, accum, [zi, zj])
+                            Operation.create("scf.yield")
+                        Operation.create("scf.yield")
+
+                    # generate_mlir_module's own quadrature-outermost,
+                    # hoisted/fissioned q/i/j loop nest, UNCHANGED --
+                    # accumulates into `accum` (ctx.a_val) via
+                    # _build_nest's default commit path (ctx.commit is
+                    # left None) exactly as it accumulates into a
+                    # caller-owned `A` there.
+                    ctx.a_val = accum  # type: ignore[attr-defined]
+                    _build_nest(0, chain, levels, topo, set(), {}, ctx, add_node, groups_by_depth)
+
+                    # Flush this cell's local block into the global CSR
+                    # matrix: one binary-search-and-atomic-add per
+                    # (i, j) -- not one per quadrature point, matching
+                    # generate_csr_entry_module's own "only ONE atomic
+                    # scatter per entry" design.
+                    cell_dofs_base = _op2("arith.muli", index_t, cell_id, ndofs_const)
+                    fi_for = Operation.create(
+                        "scf.for",
+                        operands=[ctx.index_const[0], ndofs_const, ctx.index_const[1]],
+                        regions=1,
+                    )
+                    fi_block = fi_for.regions[0].blocks.append(index_t)
+                    with InsertionPoint(fi_block):
+                        fi = fi_block.arguments[0]
+                        row_idx = _op2("arith.addi", index_t, cell_dofs_base, fi)
+                        row_i32 = _memref_load(cell_dofs, [row_idx], i32)
+                        fj_for = Operation.create(
+                            "scf.for",
+                            operands=[ctx.index_const[0], ndofs_const, ctx.index_const[1]],
+                            regions=1,
+                        )
+                        fj_block = fj_for.regions[0].blocks.append(index_t)
+                        with InsertionPoint(fj_block):
+                            fj = fj_block.arguments[0]
+                            col_idx = _op2("arith.addi", index_t, cell_dofs_base, fj)
+                            col_i32 = _memref_load(cell_dofs, [col_idx], i32)
+                            val = _memref_load(accum, [fi, fj], f64)
+                            _binary_search_and_scatter(
+                                ctx, val, avals, acols, arowptr, row_i32, col_i32, i32
+                            )
+                            Operation.create("scf.yield")
+                        Operation.create("scf.yield")
+
+                    Operation.create("scf.yield")
+
+                Operation.create("func.return")
+
+        module.operation.verify()
+
+    layout = CsrEntryLayout(
+        ndofs=ndofs, geometry_size=geometry.output_size, cell_dofs_stride=ndofs
+    )
     return module, layout
 
 
