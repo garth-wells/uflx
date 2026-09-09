@@ -39,6 +39,8 @@ def tables_to_c(tables: dict[str, np.ndarray]) -> str:
 
 def mult_generate_c(self) -> str:
     """Generate code for this object."""
+    if self.value_shape != ():
+        raise NotImplementedError("Cannot generate code for multiplication of non-scalars")
     if not isinstance(self.first, GenerateC):
         raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
     if not isinstance(self.second, GenerateC):

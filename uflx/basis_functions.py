@@ -10,12 +10,13 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Any
 
-from uflx.expressions import AbstractExpression
+from uflx.expressions import AbstractExpression, Im, Re
 from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
 from uflx.function_spaces import AbstractFunctionSpace
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
 from uflx.graphs import GraphNode
 from uflx.points import AbstractPoint
+from uflx.tensors import zero
 from uflx.utils import flatten
 
 
@@ -52,6 +53,92 @@ class AbstractEvaluatedReferenceBasisFunction(AbstractReferenceFunction):
     def component_index(self) -> int | None:
         """The (flattened) component index of the basis function."""
 
+    @abstractmethod
+    def diff(self, index: int) -> AbstractReferenceFunction:
+        """Take a derivative of this function."""
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.element.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.element.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
+
+
+class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
+    """Base class for a basis function evaluated at a point on a physical cell."""
+
+    @property
+    @abstractmethod
+    def element(self) -> AbstractFiniteElement:
+        """The finite element containing this basis function."""
+
+    @property
+    @abstractmethod
+    def basis_index(self) -> int | str:
+        """The index of the basis function."""
+
+    @property
+    @abstractmethod
+    def point_index(self) -> int | str:
+        """The index of the point in the set of points."""
+
+    @property
+    @abstractmethod
+    def point(self) -> AbstractPoint:
+        """The point at which the function is evaluated."""
+
+    @property
+    @abstractmethod
+    def derivative(self) -> tuple[int, ...]:
+        """The number of derivatives in each coordinate direction."""
+
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        from uflx.geometry import ReferenceToPhysical
+        from uflx.maps import PushedForward
+
+        assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
+        if isinstance(self.point, ReferenceToPhysical):
+            return PushedForward(
+                self.element.reference_map,
+                EvaluatedReferenceBasisFunction(
+                    self.element,
+                    self.basis_index,
+                    self.point.reference_point,
+                ),
+            )
+        raise NotImplementedError()
+
+    @abstractmethod
+    def diff(self, index: int) -> AbstractPhysicalFunction:
+        """Take a derivative of this function."""
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        if self.element.real_valued:
+            return self
+        else:
+            return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        if self.element.real_valued:
+            return zero(self.value_shape)
+        else:
+            return Im(self)
+
 
 class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     """A basis function evaluated at a point on the reference cell."""
@@ -65,6 +152,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
         component: int | None = None,
     ):
         """Initialise."""
+        assert isinstance(element, AbstractReferenceMappedFiniteElement)
         self._element = element
         self._basis_index = basis_index
         self._point = point
@@ -72,11 +160,7 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
             self._derivative = tuple(0 for _ in range(element.cell.topological_dimension))
         else:
             self._derivative = derivative
-        if (
-            component is None
-            and isinstance(element, AbstractReferenceMappedFiniteElement)
-            and element.reference_value_size == 1
-        ):
+        if component is None and element.reference_value_size == 1:
             self._component: int | None = 0
         else:
             self._component = component
@@ -104,7 +188,10 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        if self._component is None:
+            return self._element.reference_value_shape
+        else:
+            return ()
 
     def __repr__(self):
         """Representation."""
@@ -165,47 +252,6 @@ class EvaluatedReferenceBasisFunction(AbstractEvaluatedReferenceBasisFunction):
         return self.element.cell.topological_dimension
 
 
-class AbstractEvaluatedPhysicalBasisFunction(AbstractPhysicalFunction):
-    """Base class for a basis function evaluated at a point on a physical cell."""
-
-    @property
-    @abstractmethod
-    def element(self) -> AbstractFiniteElement:
-        """The finite element containing this basis function."""
-
-    @property
-    @abstractmethod
-    def basis_index(self) -> int | str:
-        """The index of the basis function."""
-
-    @property
-    @abstractmethod
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-
-    @property
-    @abstractmethod
-    def point(self) -> AbstractPoint:
-        """The point at which the function is evaluated."""
-
-    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
-        """Pull the node back to the reference cell."""
-        from uflx.geometry import ReferenceToPhysical
-        from uflx.maps import PushedForward
-
-        assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
-        if isinstance(self.point, ReferenceToPhysical):
-            return PushedForward(
-                self.element.reference_map,
-                EvaluatedReferenceBasisFunction(
-                    self.element,
-                    self.basis_index,
-                    self.point.reference_point,
-                ),
-            )
-        raise NotImplementedError()
-
-
 class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     """A basis function evaluated at a point on the physical cell."""
 
@@ -259,7 +305,10 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        if self._component is None:
+            return self._element.physical_value_shape(self._point.dim)
+        else:
+            return ()
 
     def __repr__(self):
         """Representation."""
@@ -306,9 +355,10 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
         """The size of the domain (ie the number of inputs to the function)."""
         return self.element.cell.topological_dimension
 
-    def diff(self, index: int) -> AbstractReferenceFunction:
+    def diff(self, index: int) -> AbstractPhysicalFunction:
         """Take a derivative of this function."""
-        return EvaluatedReferenceBasisFunction(
+        return EvaluatedPhysicalBasisFunction(
+            self._function_space,
             self._element,
             self._basis_index,
             self._point,
@@ -318,7 +368,8 @@ class EvaluatedPhysicalBasisFunction(AbstractEvaluatedPhysicalBasisFunction):
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
-        return EvaluatedReferenceBasisFunction(
+        return EvaluatedPhysicalBasisFunction(
+            self._function_space,
             self._element,
             self._basis_index,
             self._point,

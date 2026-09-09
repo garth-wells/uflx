@@ -4,9 +4,9 @@ from collections.abc import Hashable
 
 import numpy as np
 import numpy.typing as npt
+from uflx.algorithms import replace
 from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
-from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
+from uflx.graphs import GraphNode, as_graph
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
@@ -36,14 +36,14 @@ def _is_point_invariant(element: AbstractFiniteElement, derivative: tuple[int, .
 
 
 def tabulate_finite_elements(
-    graph: Graph,
+    expression: GraphNode,
     variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
-) -> tuple[dict[str, np.ndarray], Graph]:
+) -> tuple[dict[str, npt.NDArray[np.floating]], GraphNode]:
     """Generate tables of values for finite elements that need to be evaluated."""
     table_map: dict[Hashable, str] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
     table_info: dict[str, tuple[AbstractFiniteElement, int, npt.NDArray[np.floating]]] = {}
-    for node in graph:
+    for node in as_graph(expression):
         if isinstance(node, GraphNode) and isinstance(
             node, AbstractEvaluatedReferenceBasisFunction
         ):
@@ -89,4 +89,4 @@ def tabulate_finite_elements(
         name: element.tabulate(nderivs, points)
         for name, (element, nderivs, points) in table_info.items()
     }
-    return tables, replace(graph, to_replace)
+    return tables, replace(expression, to_replace)

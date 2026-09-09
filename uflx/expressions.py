@@ -35,49 +35,87 @@ class AbstractExpression(ABC):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
 
-    def __rmul__(self, other: int | float) -> Mult:
+    def __mul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
-        if isinstance(other, int):
-            return Mult(Integer(other), self)
-        if isinstance(other, float):
-            return Mult(RealScalar(other), self)
+        if isinstance(other, AbstractExpression):
+            if self.value_shape == other.value_shape:
+                return Mult(self, other)
+            if other.value_shape == ():
+                return ScalarMult(other, self)
+            if self.value_shape == ():
+                return ScalarMult(self, other)
+            raise ValueError(
+                f"Cannot multiply expressions with shapes {self.value_shape} and "
+                f"{other.value_shape}. To compute a matrix-vector or matrix-matrix "
+                "product, use the '@' operator."
+            )
+        try:
+            return to_scalar(other) * self
+        except ValueError:
+            return NotImplemented
+
+    def __matmul__(self, other: Any) -> AbstractExpression:
+        """Matrix multiply."""
+        if isinstance(other, AbstractExpression):
+            if self.value_shape[-1] != other.value_shape[0]:
+                raise ValueError("Incompatible dimensions in matmul.")
+            return MatMult(self, other)
         return NotImplemented
 
-    def __mul__(self, other: int | float | AbstractExpression) -> AbstractExpression:
+    def __rmul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
-        if isinstance(other, int):
-            return Mult(self, Integer(other))
-        if isinstance(other, float):
-            return Mult(self, RealScalar(other))
-        if not isinstance(other, AbstractExpression):
+        try:
+            return to_scalar(other) * self
+        except ValueError:
             return NotImplemented
-        match len(self.value_shape), len(other.value_shape):
-            case (0, _):
-                return Mult(self, other)
-            case (_, 0):
-                return Mult(other, self)
-            case (2, 1):
-                return MatVec(self, other)
-            case _:
-                return NotImplemented
 
-    def __truediv__(self, other: AbstractExpression) -> Div:
+    def __truediv__(self, other: Any) -> AbstractExpression:
         """Division."""
-        if not isinstance(other, AbstractExpression):
+        if isinstance(other, AbstractExpression):
+            return Div(self, other)
+        try:
+            return self / to_scalar(other)
+        except ValueError:
             return NotImplemented
-        return Div(self, other)
 
-    def __add__(self, other: AbstractExpression) -> AbstractExpression:
+    def __rtruediv__(self, other: Any) -> AbstractExpression:
+        """Division."""
+        try:
+            return to_scalar(other) / self
+        except ValueError:
+            return NotImplemented
+
+    def __add__(self, other: Any) -> AbstractExpression:
         """Add."""
         if isinstance(other, AbstractExpression):
             return Add(self, other)
-        return NotImplemented
+        try:
+            return self + to_scalar(other)
+        except ValueError:
+            return NotImplemented
 
-    def __sub__(self, other: AbstractExpression) -> AbstractExpression:
+    def __radd__(self, other: Any) -> AbstractExpression:
+        """Add."""
+        try:
+            return to_scalar(other) + self
+        except ValueError:
+            return NotImplemented
+
+    def __sub__(self, other: Any) -> AbstractExpression:
         """Subtract."""
         if isinstance(other, AbstractExpression):
             return Subtract(self, other)
-        return NotImplemented
+        try:
+            return self - to_scalar(other)
+        except ValueError:
+            return NotImplemented
+
+    def __rsub__(self, other: Any) -> AbstractExpression:
+        """Subtract."""
+        try:
+            return to_scalar(other) - self
+        except ValueError:
+            return NotImplemented
 
     def __neg__(self):
         """Negate."""
@@ -105,6 +143,34 @@ class AbstractExpression(ABC):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
 
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return Re(self)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return Im(self)
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        try:
+            return complex(self.as_float())
+        except ValueError:
+            raise ValueError(f"Cannot convert {self.__class__.__name__} to complex")
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        try:
+            return float(self.as_int())
+        except ValueError:
+            raise ValueError(f"Cannot convert {self.__class__.__name__} to float")
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        raise ValueError(f"Cannot convert {self.__class__.__name__} to int")
+
 
 class AbstractScalar(AbstractExpression):
     """Abstract base class for scalars."""
@@ -121,6 +187,16 @@ class AbstractScalar(AbstractExpression):
 
 class AbstractInteger(AbstractScalar):
     """Abstract base class for integer values."""
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return Integer(0)
 
 
 class RealScalar(AbstractScalar):
@@ -144,6 +220,57 @@ class RealScalar(AbstractScalar):
         """The arguments used to initialise this object."""
         return (self.value,)
 
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return RealScalar(0)
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.value
+
+
+class ComplexScalar(AbstractScalar):
+    """A complex scalar."""
+
+    def __init__(self, real_part: AbstractScalar, imag_part: AbstractScalar):
+        """Initialise."""
+        self._re = real_part
+        self._im = imag_part
+
+    def __repr__(self):
+        """Representation."""
+        return f"{self._re!r} + ({self._im!r})j"
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._re, self._im
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self._re
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return self._im
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self._re.as_float() + 1j * self._im.as_float()
+
 
 class Integer(AbstractInteger):
     """An integer."""
@@ -151,6 +278,16 @@ class Integer(AbstractInteger):
     def __init__(self, value: int):
         """Initialise."""
         self.value = value
+
+    def __eq__(self, other):
+        """Check for equality."""
+        if isinstance(other, Integer):
+            return self.value == other.value
+        return self.value == other
+
+    def __hash__(self):
+        """Hash."""
+        return hash(("uflx.Integer", self.value))
 
     def __repr__(self):
         """Representation."""
@@ -166,31 +303,20 @@ class Integer(AbstractInteger):
         """The arguments used to initialise this object."""
         return (self.value,)
 
-    def __add__(self, other: AbstractExpression) -> AbstractExpression:
-        """Add."""
-        if isinstance(other, AbstractExpression):
-            if self.value == 0:
-                return other
-            return Add(self, other)
-        return NotImplemented
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return self.value
 
-    def __sub__(self, other: AbstractExpression) -> AbstractExpression:
-        """Subtract."""
-        if isinstance(other, AbstractExpression):
-            if self.value == 0:
-                return -other
-            return Subtract(self, other)
-        return NotImplemented
 
-    def __mul__(self, other: AbstractExpression | float | int) -> AbstractExpression:
-        """Multiply."""
-        if isinstance(other, AbstractExpression):
-            if self.value == 0:
-                return self
-            if self.value == 1:
-                return other
-            return Mult(self, other)
-        return NotImplemented
+def to_scalar(value: Any) -> AbstractScalar:
+    """Convert a value to a UFLx scalar or raise a ValueError if it cannot be converted."""
+    if isinstance(value, float):
+        return RealScalar(value)
+    if isinstance(value, int):
+        return Integer(value)
+    if isinstance(value, complex):
+        return ComplexScalar(RealScalar(value.real), RealScalar(value.imag))
+    raise ValueError(f"Cannot convert value of type {type(value)} to UFLx scalar.")
 
 
 class UnaryOperator(AbstractExpression):
@@ -216,6 +342,85 @@ class UnaryOperator(AbstractExpression):
     def __repr__(self) -> str:
         """Representation."""
         return self.__class__.__name__
+
+
+class Re(UnaryOperator):
+    """Real part."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        return Re(self.argument.component(*indices))
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return RealScalar(0)
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.argument.as_complex().real
+
+
+class Im(UnaryOperator):
+    """Imaginary part."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        return Im(self.argument.component(*indices))
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return RealScalar(0)
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return self
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.argument.as_complex().imag
+
+
+class Conj(UnaryOperator):
+    """Complex conjugate operator."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape
+
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self.argument
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        raise NotImplementedError()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        if self.value_shape == ():
+            raise NotImplementedError("Cannot get a 'component' of a Grad")
+        return Conj(self.argument.component(*indices))
 
 
 class BinaryOperator(AbstractExpression):
@@ -245,16 +450,88 @@ class BinaryOperator(AbstractExpression):
 
 
 class Mult(BinaryOperator):
-    """Scalar multiplication operator."""
+    """Componentwise multiplication operator."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape == second.value_shape
+        super().__init__(first, second)
 
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return ()
+        return self.first.value_shape
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
-        raise ValueError("Cannot get a component of a scalar expression")
+        return self.first.component(*indices) * self.second.component(*indices)
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self.first.as_complex() * self.second.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.first.as_float() * self.second.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return self.first.as_int() * self.second.as_int()
+
+
+class ScalarMult(BinaryOperator):
+    """Multiplication by a scalar."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        print(first, second)
+        assert first.value_shape == ()
+        assert second.value_shape != ()
+        super().__init__(first, second)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.second.value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        return self.first * self.second.component(*indices)
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self.first.as_complex() * self.second.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.first.as_float() * self.second.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return self.first.as_int() * self.second.as_int()
+
+
+class MatMult(BinaryOperator):
+    """Multiplication by a matrix."""
+
+    def __init__(self, first: AbstractExpression, second: AbstractExpression):
+        """Initialise."""
+        assert first.value_shape[-1] == second.value_shape[0]
+        super().__init__(first, second)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.first.value_shape[:-1] + self.second.value_shape[1:]
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        assert len(indices) == len(self.value_shape)
+        n = len(self.first.value_shape) - 1
+        return expression_sum(
+            self.first.component(*indices[:n], i) * self.second.component(i, *indices[n:])
+            for i in range(self.first.value_shape[-1])
+        )
 
 
 class Div(BinaryOperator):
@@ -274,6 +551,22 @@ class Div(BinaryOperator):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         raise ValueError("Cannot get a component of a scalar expression")
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self.first.as_complex() / self.second.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.first.as_float() / self.second.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        a = self.first.as_int()
+        b = self.second.as_int()
+        if a % b != 0:
+            raise ValueError(f"Cannot convert {self.__class__.__name__} to int")
+        return a // b
 
 
 class Add(BinaryOperator):
@@ -295,6 +588,28 @@ class Add(BinaryOperator):
             raise ValueError("Cannot get a component of a scalar expression")
         return self.first.component(*indices) + self.second.component(*indices)
 
+    @property
+    def re(self) -> AbstractExpression:
+        """Get real part."""
+        return self.first.re + self.second.re
+
+    @property
+    def im(self) -> AbstractExpression:
+        """Get imaginary part."""
+        return self.first.im + self.second.im
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self.first.as_complex() + self.second.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.first.as_float() + self.second.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return self.first.as_int() + self.second.as_int()
+
 
 class Subtract(BinaryOperator):
     """Subtraction operator."""
@@ -315,6 +630,18 @@ class Subtract(BinaryOperator):
             raise ValueError("Cannot get a component of a scalar expression")
         return self.first.component(*indices) - self.second.component(*indices)
 
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return self.first.as_complex() - self.second.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return self.first.as_float() - self.second.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return self.first.as_int() - self.second.as_int()
+
 
 class Abs(UnaryOperator):
     """Absolute value operator."""
@@ -330,6 +657,14 @@ class Abs(UnaryOperator):
             raise ValueError("Cannot get a component of a scalar expression")
         return Abs(self.argument.component(*indices))
 
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return abs(self.argument.as_float())
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return abs(self.argument.as_int())
+
 
 class Neg(UnaryOperator):
     """Negation operator."""
@@ -344,6 +679,18 @@ class Neg(UnaryOperator):
         if self.value_shape == ():
             raise ValueError("Cannot get a component of a scalar expression")
         return Neg(self.argument.component(*indices))
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return -self.argument.as_complex()
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return -self.argument.as_float()
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return -self.argument.as_int()
 
 
 class MatVec(BinaryOperator):

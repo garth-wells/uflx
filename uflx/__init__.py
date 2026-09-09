@@ -5,6 +5,7 @@
 # SPDX-License-Identifier:    MIT
 """UFLx: Unified Form Language."""
 
+from uflx import algorithms, graphs
 from uflx.domains import coordinate_element
 from uflx.function_spaces import function_space
 from uflx.functions import Coefficient, TestFunction, TrialFunction

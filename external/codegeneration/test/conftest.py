@@ -120,6 +120,11 @@ class LagrangeElement(AbstractFiniteElement):
         return self._cell
 
     @property
+    def real_valued(self) -> bool:
+        """Check if this element is real-valued."""
+        return True
+
+    @property
     def reference_value_shape(self) -> tuple[int, ...]:
         """Return the shape of the value space on the reference cell."""
         return ()
@@ -395,7 +400,12 @@ def lagrange_element():
     return create
 
 
-CODE_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), ".code")
+CODE_DIRECTORY = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
+    f".code-{os.environ['PYTEST_XDIST_WORKER']}"
+    if "PYTEST_XDIST_WORKER" in os.environ
+    else ".code",
+)
 
 
 @pytest.fixture

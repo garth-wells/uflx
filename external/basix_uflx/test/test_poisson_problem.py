@@ -42,10 +42,10 @@ class FunctionSpace(NamedTuple):
     dofmap: dict[str, dict[tuple[int, ...], list[int]]]
 
 
-def assemble_code(form, code_dir, filename=None):
+def assemble_code(form: AbstractIntegral, code_dir: str, filename: str | None = None):
     """Assemble a code kernel."""
     ffi = FFI()
-    code, signatures = uflx_codegeneration.generate(form)
+    code, signature = uflx_codegeneration.generate(form)
 
     if filename is None:
         h = hashlib.sha1(code.encode("utf-8"))
@@ -53,7 +53,7 @@ def assemble_code(form, code_dir, filename=None):
         while os.path.isfile(os.path.join(code_dir, f"{filename}.c")):
             filename += "_"
 
-    ffi.cdef("\n".join(signatures.values()))
+    ffi.cdef(signature)
     ffi.set_source(filename, code)
     so = ffi.compile(code_dir)
 
@@ -282,6 +282,9 @@ def test_poisson_problem_square(npoints, degree, code_dir):
     rhs = -2 * degree * (degree - 1) * (x[0] - x[1]) ** (degree - 2) * v * dx
 
     wrapped_space = FunctionSpace(space=space, mesh=mesh, dofmap=dofmap)
+
+    assert isinstance(form, AbstractIntegral)
+    assert isinstance(rhs, AbstractIntegral)
 
     matrix = assemble_matrix(form, wrapped_space, wrapped_space, code_dir)
     vector = assemble_vector(rhs, wrapped_space, code_dir)

@@ -37,6 +37,11 @@ class AbstractFiniteElement(ABC):
     def cell(self) -> AbstractEntity:
         """Return the cell that this element is defined on."""
 
+    @property
+    @abstractmethod
+    def real_valued(self) -> bool:
+        """Check if this element is real-valued."""
+
     @abstractmethod
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""

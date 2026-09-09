@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from itertools import count
 from typing import Any, cast
 
+from uflx.algorithms import replace
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.functions import (
@@ -19,8 +20,7 @@ from uflx.functions import (
     AbstractReferenceIntegralScopedFunction,
 )
 from uflx.geometry import JacobianDeterminant
-from uflx.graphs import Graph, GraphNode, generate_graph
-from uflx.graphs.algorithms import replace
+from uflx.graphs import Graph, GraphNode, as_graph, generate_graph
 
 
 class AbstractMeasure(ABC):
@@ -55,11 +55,6 @@ class AbstractIntegral(ABC):
     @abstractmethod
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
-
-    @property
-    def graph(self) -> Graph:
-        """The graph that represents this object."""
-        return generate_graph(self)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -103,8 +98,7 @@ class Integral(AbstractIntegral):
             self._label = label
 
         replacements: dict[GraphNode, GraphNode] = {}
-        i_graph = generate_graph(integrand)
-        for node in i_graph:
+        for node in as_graph(integrand):
             if (
                 isinstance(
                     node, (AbstractIntegralScopedFunction, AbstractReferenceIntegralScopedFunction)
@@ -115,7 +109,8 @@ class Integral(AbstractIntegral):
         if len(replacements) == 0:
             self._integrand = integrand
         else:
-            self._integrand = replace(i_graph, replacements).root
+            self._integrand = replace(integrand, replacements)
+        self._graph = generate_graph(self)
 
     @property
     def integrand(self) -> AbstractExpression:
@@ -126,6 +121,11 @@ class Integral(AbstractIntegral):
     def measure(self) -> AbstractMeasure:
         """The integral measure."""
         return self._measure
+
+    @property
+    def graph(self) -> Graph:
+        """The graph that represents this object."""
+        return self._graph
 
     @property
     def init_args(self) -> tuple[Any, ...]:

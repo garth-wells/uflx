@@ -52,8 +52,8 @@ Expression trees (the symbolic core) are not plain Python object graphs — they
 backed by an explicit DAG in `uflx/graphs/` (`Graph` subclasses `networkx.DiGraph`;
 nodes are `GraphNode`s exposing `successors` and `init_args`). Whole-tree rewrites
 (substituting terminals, extracting real/imaginary parts, applying push-forward/
-pull-back maps) go through `uflx/graphs/algorithms/replace.py`, which walks the graph
-and calls `reconstruct_node` (`uflx/graphs/algorithms/reconstruct.py`) to rebuild any
+pull-back maps) go through `uflx/algorithms/replace.py`, which walks the graph
+and calls `reconstruct_node` (`uflx/algorithms/reconstruct.py`) to rebuild any
 node whose successors changed, by re-invoking `node.__class__(*args)` with replaced
 `init_args`. Anything that needs to transform an expression (`complex.py`, `maps.py`,
 `geometry.py`) is built on this `replace` primitive rather than ad hoc tree-walking —

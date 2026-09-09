@@ -2,11 +2,11 @@
 
 from typing import Any, Protocol, runtime_checkable
 
+from uflx.algorithms import replace
 from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.domains import AbstractCoordinateElement
-from uflx.expressions import AbstractExpression, RealScalar, expression_sum
-from uflx.graphs import Graph, GraphNode
-from uflx.graphs.algorithms import replace
+from uflx.expressions import AbstractExpression, expression_sum
+from uflx.graphs import GraphNode, as_graph
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
 from uflx.tensors import Matrix
 
@@ -244,44 +244,6 @@ class Jacobian(AbstractExpression):
             ]
         )
 
-        if tdim == gdim == 0:
-            return RealScalar(1.0)
-        elif tdim == 2 and gdim == 2:
-            assert isinstance(element.dim, int)
-
-            j00 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=0
-                )
-                for i in range(element.dim)
-            )
-            j01 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=0
-                )
-                for i in range(element.dim)
-            )
-            j10 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(1, 0), component=1
-                )
-                for i in range(element.dim)
-            )
-            j11 = expression_sum(
-                CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                * EvaluatedReferenceBasisFunction(
-                    element, i, self.point, derivative=(0, 1), component=1
-                )
-                for i in range(element.dim)
-            )
-
-            return Matrix(entries=[[j00, j01], [j10, j11]])
-        else:
-            raise NotImplementedError()
-
     def __repr__(self) -> str:
         """Representation."""
         return f"Jacobian({self.domain!r}, {self.point!r})"
@@ -473,13 +435,13 @@ class CoordinateDofComponent(AbstractExpression):
 
 
 def expand_geometry(
-    graph: Graph,
-) -> Graph:
+    expression: GraphNode,
+) -> GraphNode:
     """Replace jacobians with evaluations of the derivatives of finite elements."""
     to_replace: dict[GraphNode, GraphNode] = {}
 
-    for node in graph:
+    for node in as_graph(expression):
         if isinstance(node, GraphNode) and isinstance(node, ExpandableGeometry):
             to_replace[node] = node.expand_geometry()
 
-    return replace(graph, to_replace)
+    return replace(expression, to_replace)
