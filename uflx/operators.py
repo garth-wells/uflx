@@ -5,9 +5,12 @@
 # SPDX-License-Identifier:    MIT
 """Operators."""
 
+from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
 from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
-from uflx.graphs import GraphNode
+from uflx.geometry import JacobianInverseTranspose
+from uflx.graphs import GraphNode, generate_graph
+from uflx.maps import PushedForward
 from uflx.tensors import Vector
 
 
@@ -44,6 +47,29 @@ class Grad(UnaryOperator):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         raise NotImplementedError("Cannot get a 'component' of a Grad")
+
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        # assert isinstance(self.argument, EvaluatedPhysicalBasisFunction)
+        argument = node_map.get(self.argument, self.argument)
+
+        def extract_domain(node: GraphNode) -> AbstractDomain:
+            """Extract the domain associated with a node."""
+            domain: AbstractDomain | None = None
+            for i in generate_graph(node).descendants(node):
+                if isinstance(i, AbstractPhysicalFunction):
+                    if domain is None:
+                        domain = i.function_space.domain
+                    else:
+                        assert domain == i.function_space.domain
+            assert domain is not None
+            return domain
+
+        domain = extract_domain(self)
+        assert isinstance(domain, AbstractCoordinateElement)
+        if isinstance(argument, PushedForward):
+            return JacobianInverseTranspose(domain) * ReferenceGrad(argument.function)
+        raise NotImplementedError()
 
 
 class ReferenceGrad(UnaryOperator):
