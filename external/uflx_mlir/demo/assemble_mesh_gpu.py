@@ -59,26 +59,14 @@ GPU backends: this script can also assemble via the actual
 GPU-launched kernel (generate_csr_assembly_gpu_module) instead of
 generate_csr_assembly_module's CPU path -- pass "cuda" (or the legacy
 alias "gpu") or "amd" as this script's third argument (see Usage below).
-The CUDA path needs a real NVIDIA GPU and an MLIR build configured with
--DMLIR_ENABLE_CUDA_RUNNER=ON (see
-test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells's
-own docstring in test/test_gpu_assembly.py for exactly what that means
-and how libmlir_cuda_runtime.so is located) -- not available on the Mac
-this script was originally developed on, which has no CUDA Toolkit at
-all. That kernel itself is confirmed correct on a real CUDA machine
-(eng-nvidia) at genuine two-cell scale (see test_gpu_assembly.py's own
-test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells);
-this script's own full-mesh GPU run is what actually exercises it at
-real mesh scale. Unlike generate_csr_entry_gpu_module
-(the older, one-cell-per-gpu.launch_func-call kernel this module also
-still provides -- see its own docstring; deliberately NOT wired into
-this script, since a whole mesh's worth of launches that way would be
-far slower than either backend this script does use), the batched kernel
-used here needs only ONE gpu.launch_func call regardless of mesh size:
-gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
-(one thread per local (i, j) entry, same as the older kernel) -- no
-Python-level loop over cells on the GPU backend either, matching the CPU
-backend's own single-call design.
+The CUDA path loads MLIR-generated PTX using the CUDA driver API. Both
+accelerator paths allocate device memory and copy inputs before timing,
+then time a single kernel launch plus synchronization and copy the result
+back afterward. Compilation, module loading, allocations and transfers are
+excluded. These single-launch timings are not warmed-up benchmark averages.
+Each block groups cells along threadIdx.z, with one thread per local matrix
+entry. gridDim.x = ceil(ncells / cells_per_block) and
+blockDim = (ndofs, ndofs, cells_per_block).
 
 The AMD path lowers the same gpu.module through ROCDL, asks ROCm's own
 clang and ld.lld to build an HSACO code object, and launches it through
@@ -86,7 +74,7 @@ the HIP module API. It auto-detects the GPU architecture with
 ``/opt/rocm/bin/offload-arch`` unless a target chip is supplied.
 
 Usage:
-    python3 demo/assemble_mesh_gpu.py [degree] [n] [backend] [target_chip]
+    python3 demo/assemble_mesh_gpu.py [degree] [n] [backend] [target_chip] [cells_per_block]
 
     degree: Lagrange degree, default 2. Only 1 and 2 are supported --
         generate_csr_assembly_module/generate_csr_assembly_gpu_module only
@@ -111,6 +99,8 @@ Usage:
     backend: "cpu" (default), "cuda"/"gpu", or "amd" -- see "GPU
         backends" above. A requested accelerator backend raises a clear
         error rather than silently falling back to CPU.
+    cells_per_block: cells packed along threadIdx.z (default 1).
+        For P1, try 2, 4, 8 or 16 to use more than 16 threads per block.
     target_chip: optional target architecture. CUDA defaults to "sm_80";
         AMD auto-detects it with offload-arch. Examples are "sm_89" for
         eng-nvidia and "gfx1100" for eng-amd. Ignored by the CPU backend.
@@ -143,9 +133,9 @@ from uflx import (
 from uflx_mlir.gpu_assembly import (
     assemble_amdgcn_to_hsaco,
     extract_amdgcn_text,
+    extract_ptx_text,
     generate_csr_assembly_gpu_module,
     generate_csr_assembly_module,
-    gpu_launch_name,
     lower_module_to_nvvm,
     lower_module_to_rocdl,
 )
@@ -562,27 +552,16 @@ def assemble_global_matrix_gpu(
     kernel_name: str = "tabulate_tensor_csr_assembly_gpu",
     cubin_chip: str = "sm_80",
     return_timing: bool = False,
+    cells_per_block: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
-    """Assemble the full matrix with one batched CUDA launch.
+    """Assemble with CUDA device memory and one synchronized kernel launch.
 
-    This makes one real gpu.launch_func call,
-    gridDim.x = ncells (one block per cell), blockDim = (ndofs, ndofs, 1)
-    -- to assemble the full global CSR stiffness matrix on an actual GPU.
-
-    See assemble_global_matrix's own docstring for what's shared with the
-    CPU path (dof-count check, CSR pattern construction, per-cell
-    geometry precompute); the differences here are all about actually
-    reaching a GPU: locating libmlir_cuda_runtime.so, compiling the
-    kernel's gpu.module down to real NVVM/PTX via lower_module_to_nvvm,
-    and looking the launch wrapper up by gpu_launch_name(kernel_name)
-    (generate_csr_assembly_gpu_module's returned module contains that
-    host-side wrapper, not the raw gpu.func symbol itself -- see that
-    function's own docstring).
-
-    Needs a real NVIDIA GPU and an MLIR build configured with
-    -DMLIR_ENABLE_CUDA_RUNNER=ON -- raises RuntimeError with a clear
-    message if libmlir_cuda_runtime.so can't be found, rather than
-    silently falling back to the CPU path.
+    Load MLIR-generated PTX through the CUDA driver API. Allocate and copy
+    all CSR, geometry and dof arrays to device memory before timing, and
+    copy the result back afterward. Like the AMD path, return_timing reports
+    launch plus synchronization wall time, excluding compilation, module
+    loading, allocation and transfers. This is a single launch, not a
+    warmed-up repeated benchmark.
 
     Args:
         coords: Mesh vertex coordinates.
@@ -592,24 +571,15 @@ def assemble_global_matrix_gpu(
         ndofs_global: Number of global degrees of freedom.
         degree: Lagrange polynomial degree.
         kernel_name: Generated GPU kernel name.
-        cubin_chip: the target NVPTX chip generate_csr_assembly_gpu_module's
-            compiled PTX targets -- e.g. "sm_89" for eng-nvidia's Ada
-            Lovelace GPU (see lower_module_to_nvvm's own docstring).
-            Defaults to "sm_80" (Ampere), matching lower_module_to_nvvm's
-            own default; pass whatever matches the actual GPU this runs
-            on.
-        return_timing: when True, also return the single gpu.launch_func
-            call's own wall-clock elapsed seconds as a 4th tuple element
-            -- see assemble_global_matrix's own return_timing doc, same
-            reasoning.
+        cubin_chip: Target NVPTX architecture, for example "sm_89".
+        cells_per_block: Cells packed along the block z dimension.
+        return_timing: Also return synchronized launch time in seconds.
 
     Returns:
-        (avals, acols, arowptr): the assembled CSR matrix, or
-        (avals, acols, arowptr, elapsed_seconds) if return_timing.
+        CSR values, columns and row pointers, optionally followed by timing.
 
     Raises:
-        RuntimeError: if libmlir_cuda_runtime.so can't be found (no
-            CUDA-enabled MLIR build available).
+        RuntimeError: If the CUDA driver is unavailable or an API call fails.
     """
     form, ndofs_check = _stiffness_form(degree)
     if ndofs_check != ndofs:
@@ -618,22 +588,16 @@ def assemble_global_matrix_gpu(
             f"the P{degree} element says {ndofs_check}"
         )
 
-    cuda_runtime_lib = _find_cuda_runtime_lib()
-    if not cuda_runtime_lib or not os.path.exists(cuda_runtime_lib):
-        raise RuntimeError(
-            "libmlir_cuda_runtime.so not found -- rebuild MLIR with "
-            "-DMLIR_ENABLE_CUDA_RUNNER=ON, or set MLIR_CUDA_RUNTIME_LIB "
-            "to its path (see test_gpu_assembly.py's own execution-engine "
-            "tests for the same check)."
-        )
-
-    module, layout = generate_csr_assembly_gpu_module(form, degree, kernel_name, CELL)
+    module, layout = generate_csr_assembly_gpu_module(
+        form, degree, kernel_name, CELL, cells_per_block=cells_per_block
+    )
     if layout.ndofs != ndofs:
         raise AssertionError(f"layout.ndofs={layout.ndofs} != ndofs={ndofs}")
 
     lower_module_to_nvvm(module, cubin_chip=cubin_chip)
 
     ncells = len(cells)
+    nblocks = (ncells + cells_per_block - 1) // cells_per_block
     avals, acols, arowptr = build_csr_pattern(cell_dofs, ndofs, ncells, ndofs_global)
 
     # Same flat, row-major-over-cells layout as assemble_global_matrix's
@@ -643,41 +607,129 @@ def assemble_global_matrix_gpu(
         geometries[c] = _geometry_from_coords(coords[list(verts)])
     geometries = geometries.reshape(-1)
 
-    from mlir.execution_engine import ExecutionEngine
-    from mlir.runtime import get_ranked_memref_descriptor
+    host_arrays = [avals, acols, arowptr, geometries, cell_dofs]
+    try:
+        cuda = ctypes.CDLL("libcuda.so.1")
+    except OSError as error:
+        raise RuntimeError("CUDA driver library libcuda.so.1 is unavailable") from error
 
-    with module.context:
-        engine = ExecutionEngine(module, opt_level=3, shared_libs=[cuda_runtime_lib])
+    def bind(name, *argtypes):
+        function = getattr(cuda, name)
+        function.restype = ctypes.c_int
+        function.argtypes = list(argtypes)
+        return function
 
-    raw_fn = engine.lookup(gpu_launch_name(kernel_name))
-    avals_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(avals)))
-    acols_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(acols)))
-    arowptr_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(arowptr)))
-    geometries_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(geometries)))
-    cell_dofs_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(cell_dofs)))
-    ncells_p = ctypes.pointer(ctypes.c_longlong(ncells))
-
-    packed = (ctypes.c_void_p * 6)(
-        ctypes.cast(avals_pp, ctypes.c_void_p).value,
-        ctypes.cast(acols_pp, ctypes.c_void_p).value,
-        ctypes.cast(arowptr_pp, ctypes.c_void_p).value,
-        ctypes.cast(geometries_pp, ctypes.c_void_p).value,
-        ctypes.cast(cell_dofs_pp, ctypes.c_void_p).value,
-        ctypes.cast(ncells_p, ctypes.c_void_p).value,
+    pointer = ctypes.c_void_p
+    deviceptr = ctypes.c_uint64
+    cu_init = bind("cuInit", ctypes.c_uint)
+    cu_device_get = bind("cuDeviceGet", ctypes.POINTER(ctypes.c_int), ctypes.c_int)
+    cu_retain = bind("cuDevicePrimaryCtxRetain", ctypes.POINTER(pointer), ctypes.c_int)
+    cu_release = bind("cuDevicePrimaryCtxRelease_v2", ctypes.c_int)
+    cu_push = bind("cuCtxPushCurrent_v2", pointer)
+    cu_pop = bind("cuCtxPopCurrent_v2", ctypes.POINTER(pointer))
+    cu_load = bind("cuModuleLoadData", ctypes.POINTER(pointer), pointer)
+    cu_unload = bind("cuModuleUnload", pointer)
+    cu_function = bind("cuModuleGetFunction", ctypes.POINTER(pointer), pointer, ctypes.c_char_p)
+    cu_alloc = bind("cuMemAlloc_v2", ctypes.POINTER(deviceptr), ctypes.c_size_t)
+    cu_free = bind("cuMemFree_v2", deviceptr)
+    cu_htod = bind("cuMemcpyHtoD_v2", deviceptr, pointer, ctypes.c_size_t)
+    cu_dtoh = bind("cuMemcpyDtoH_v2", pointer, deviceptr, ctypes.c_size_t)
+    cu_launch = bind(
+        "cuLaunchKernel",
+        pointer,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        ctypes.c_uint,
+        pointer,
+        ctypes.POINTER(pointer),
+        ctypes.POINTER(pointer),
     )
+    cu_sync = bind("cuCtxSynchronize")
+    cu_error = bind("cuGetErrorString", ctypes.c_int, ctypes.POINTER(ctypes.c_char_p))
 
-    t0 = time.perf_counter()
-    raw_fn(packed)  # ONE gpu.launch_func call, gridDim.x=ncells, assembles the whole mesh.
-    t1 = time.perf_counter()
+    def check(code: int, operation: str) -> None:
+        if code:
+            message = ctypes.c_char_p()
+            cu_error(code, ctypes.byref(message))
+            detail = message.value.decode() if message.value else f"CUDA error {code}"
+            raise RuntimeError(f"{operation}: {detail}")
+
+    check(cu_init(0), "cuInit")
+    device = ctypes.c_int()
+    check(cu_device_get(ctypes.byref(device), 0), "cuDeviceGet")
+    context = pointer()
+    check(cu_retain(ctypes.byref(context), device), "cuDevicePrimaryCtxRetain")
+    cuda_module = pointer()
+    allocations = []
+    pushed = False
+    try:
+        check(cu_push(context), "cuCtxPushCurrent")
+        pushed = True
+        ptx = ctypes.create_string_buffer(extract_ptx_text(module).encode())
+        check(cu_load(ctypes.byref(cuda_module), ptx), "cuModuleLoadData")
+        function = pointer()
+        check(
+            cu_function(ctypes.byref(function), cuda_module, kernel_name.encode()),
+            "cuModuleGetFunction",
+        )
+        arguments = []
+        for array in host_arrays:
+            address = deviceptr()
+            check(cu_alloc(ctypes.byref(address), array.nbytes), "cuMemAlloc")
+            allocations.append(address)
+            check(cu_htod(address, pointer(array.ctypes.data), array.nbytes), "cuMemcpyHtoD")
+            # Flattened rank-1 MLIR memref ABI, matching the HIP path.
+            arguments.extend(
+                [
+                    deviceptr(address.value),
+                    deviceptr(address.value),
+                    ctypes.c_int64(0),
+                    ctypes.c_int64(array.size),
+                    ctypes.c_int64(1),
+                ]
+            )
+        parameters = (pointer * len(arguments))(
+            *(ctypes.cast(ctypes.byref(argument), pointer) for argument in arguments)
+        )
+        t0 = time.perf_counter()
+        check(
+            cu_launch(
+                function, nblocks, 1, 1, ndofs, ndofs, cells_per_block, 0, None, parameters, None
+            ),
+            "cuLaunchKernel",
+        )
+        check(cu_sync(), "cuCtxSynchronize")
+        elapsed = time.perf_counter() - t0
+        check(cu_dtoh(pointer(avals.ctypes.data), allocations[0], avals.nbytes), "cuMemcpyDtoH")
+    finally:
+        # Attempt every cleanup even if an earlier cleanup call fails. Preserve
+        # the original exception when allocation, loading or execution failed.
+        active_error = sys.exc_info()[0] is not None
+        cleanup_errors = []
+        for address in allocations:
+            cleanup_errors.append((cu_free(address), "cuMemFree"))
+        if cuda_module.value:
+            cleanup_errors.append((cu_unload(cuda_module), "cuModuleUnload"))
+        if pushed:
+            previous = pointer()
+            cleanup_errors.append((cu_pop(ctypes.byref(previous)), "cuCtxPopCurrent"))
+        cleanup_errors.append((cu_release(device), "cuDevicePrimaryCtxRelease"))
+        if not active_error:
+            for code, operation in cleanup_errors:
+                check(code, operation)
 
     print(
-        f"  assembled (GPU, {cubin_chip}): {ncells} cells, {ndofs_global} dofs, "
-        f"{len(acols)} nonzeros, 1 launch (gridDim.x={ncells}, "
-        f"blockDim=({ndofs},{ndofs},1)) in {t1 - t0:.3f}s "
-        f"({_dofs_per_sec(ndofs_global, t1 - t0):.3e} dofs/sec)"
+        f"  assembled (CUDA, {cubin_chip}, device memory): {ncells} cells, {ndofs_global} dofs, "
+        f"{len(acols)} nonzeros, 1 launch (gridDim.x={nblocks}, "
+        f"blockDim=({ndofs},{ndofs},{cells_per_block})) in {elapsed:.6f}s "
+        f"({_dofs_per_sec(ndofs_global, elapsed):.3e} dofs/sec; launch + sync only)"
     )
     if return_timing:
-        return avals, acols, arowptr, t1 - t0
+        return avals, acols, arowptr, elapsed
     return avals, acols, arowptr
 
 
@@ -692,6 +744,7 @@ def assemble_global_matrix_amd(
     chip: str | None = None,
     rocm_path: str | None = None,
     return_timing: bool = False,
+    cells_per_block: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Assemble the whole mesh in one launch on an AMD GPU through HIP.
 
@@ -701,6 +754,9 @@ def assemble_global_matrix_amd(
     LLVM-version mismatch that occurs on eng-amd, where the MLIR bindings
     use LLVM 18 but ROCm 7.2's bitcode and linker use LLVM 22.
     """
+    # The current ROCDL code objects use a maximum flat workgroup size of 256.
+    if ndofs * ndofs * cells_per_block > 256:
+        raise ValueError("AMD launch exceeds the compiled kernel limit of 256 threads per block")
     form, ndofs_check = _stiffness_form(degree)
     if ndofs_check != ndofs:
         raise AssertionError(
@@ -729,13 +785,16 @@ def assemble_global_matrix_amd(
             raise RuntimeError("offload-arch found no AMD GPU")
         chip = architectures[0].split(":", maxsplit=1)[0]
 
-    module, layout = generate_csr_assembly_gpu_module(form, degree, kernel_name, CELL)
+    module, layout = generate_csr_assembly_gpu_module(
+        form, degree, kernel_name, CELL, cells_per_block=cells_per_block
+    )
     if layout.ndofs != ndofs:
         raise AssertionError(f"layout.ndofs={layout.ndofs} != ndofs={ndofs}")
     lower_module_to_rocdl(module, chip=chip, link_device_libraries=False)
     hsaco = assemble_amdgcn_to_hsaco(extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm))
 
     ncells = len(cells)
+    nblocks = (ncells + cells_per_block - 1) // cells_per_block
     avals, acols, arowptr = build_csr_pattern(cell_dofs, ndofs, ncells, ndofs_global)
     geometries = np.empty((ncells, layout.geometry_size), dtype=np.float64)
     for c, verts in enumerate(cells):
@@ -852,12 +911,12 @@ def assemble_global_matrix_amd(
             check(
                 hip_module_launch_kernel(
                     hip_function,
-                    ncells,
+                    nblocks,
                     1,
                     1,
                     ndofs,
                     ndofs,
-                    1,
+                    cells_per_block,
                     0,
                     None,
                     kernel_parameters,
@@ -884,8 +943,8 @@ def assemble_global_matrix_amd(
 
     print(
         f"  assembled (AMD, {chip}): {ncells} cells, {ndofs_global} dofs, "
-        f"{len(acols)} nonzeros, 1 launch (gridDim.x={ncells}, "
-        f"blockDim=({ndofs},{ndofs},1)) in {elapsed:.3f}s "
+        f"{len(acols)} nonzeros, 1 launch (gridDim.x={nblocks}, "
+        f"blockDim=({ndofs},{ndofs},{cells_per_block})) in {elapsed:.6f}s "
         f"({_dofs_per_sec(ndofs_global, elapsed):.3e} dofs/sec)"
     )
     if return_timing:
@@ -983,6 +1042,7 @@ def main() -> None:
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 6
     backend = sys.argv[3] if len(sys.argv) > 3 else "cpu"
     target_chip = sys.argv[4] if len(sys.argv) > 4 else None
+    cells_per_block = int(sys.argv[5]) if len(sys.argv) > 5 else 1
 
     if backend not in ("cpu", "gpu", "cuda", "amd"):
         raise SystemExit(f"backend must be 'cpu', 'cuda'/'gpu', or 'amd', got {backend!r}")
@@ -1004,6 +1064,9 @@ def main() -> None:
     else:
         assemble_fn = assemble_global_matrix
         assemble_kwargs = {}
+
+    if backend != "cpu":
+        assemble_kwargs["cells_per_block"] = cells_per_block
 
     print(f"--- exact correctness check (P{degree}, 1x1x1 cube, backend={backend}) ---")
     check_small_mesh_against_reference(degree, assemble_fn, **assemble_kwargs)

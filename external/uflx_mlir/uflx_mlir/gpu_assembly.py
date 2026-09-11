@@ -1196,77 +1196,31 @@ def generate_csr_entry_gpu_module(
 
 
 def generate_csr_assembly_gpu_module(
-    form, degree: int, kernel_name: str, cell: basix.CellType
+    form, degree: int, kernel_name: str, cell: basix.CellType, cells_per_block: int = 1
 ) -> tuple[Module, CsrEntryLayout]:
-    """Generate the batched GPU counterpart of the CSR entry kernel.
+    """Generate a batched GPU CSR kernel with cells packed along threadIdx.z.
 
-    Here gridDim.x = ncells (one gpu.launch_func call assembles the WHOLE mesh, one block
-    per cell) instead of one launch per cell -- the batching that
-    function's own docstring named as future work, now built.
+    Launch with blockDim=(ndofs, ndofs, cells_per_block) and
+    gridDim.x=ceil(ncells/cells_per_block). Each z group assembles one cell,
+    indexed by blockIdx.x*cells_per_block + threadIdx.z. A guard excludes
+    excess groups in the final block before any array access. The cell count
+    is inferred from the flattened geometry memref, preserving the kernel ABI.
+    Each thread retains its own geometry and accumulator; no barriers are used.
 
-    Unlike generate_csr_assembly_module (the CPU whole-mesh kernel, which
-    needs a real scf.for loop over cells because a CPU function body has
-    no other source of parallelism), no software cell loop is needed
-    here at all: the GPU grid itself supplies it. cell_id, a plain
-    kernel argument in generate_csr_entry_gpu_module, becomes
-    `gpu.block_id x` here; blockDim stays (ndofs, ndofs, 1) exactly as
-    before (tx, ty still `gpu.thread_id` x/y, one thread per local (i, j)
-    entry), so every block still does exactly the same per-thread
-    accumulate-then-scatter work generate_csr_entry_gpu_module's kernel
-    does -- the only thing that changes is which cell a given block is
-    doing it for, and that every cell's block now runs in one launch
-    instead of ncells separate launches.
-
-    Geometry input: `geometries` is FLAT (length `ncells *
-    geometry.output_size`), matching generate_csr_assembly_module's own
-    layout exactly -- cell c's block occupying
-    `geometries[c*geometry.output_size:(c+1)*geometry.output_size]`. This
-    is the "geometry become a full per-cell-indexed array" step
-    generate_csr_entry_gpu_module's docstring flagged as a prerequisite
-    for batching: every thread in a block redundantly copies its own
-    block's tiny (geometry.output_size-element) slice out of the flat
-    global array into a small local `memref.alloca` via a fixed,
-    compile-time-constant number of plain load/store pairs (no scf.for,
-    same reasoning as generate_csr_assembly_module's per-cell geometry
-    refresh -- see that function's docstring), which becomes
-    `ctx.geometry_val` for that thread. Redundant across the
-    ndofs*ndofs threads sharing a block, not just across cells, but
-    geometry.output_size is small (6 for an affine tetrahedron) so this
-    is cheap and avoids anything cleverer (shared memory, one thread
-    populating it followed by a barrier) that would need its own
-    verification against real hardware.
-
-    `cell_dofs` is flat exactly as generate_csr_entry_gpu_module's own
-    argument of the same name (and generate_csr_assembly_module's): cell
-    c's local dof `d`'s global id is `cell_dofs[c * ndofs + d]`.
-
-    The device-side gpu.func's own argument list therefore drops
-    `cell_id` entirely (5 args: avals, acols, arowptr, geometries,
-    cell_dofs) compared to generate_csr_entry_gpu_module's 6 -- there is
-    nothing left for a caller to pass per-launch that varies per cell,
-    since every cell's block is in the one launch. The host-side launch
-    wrapper's own argument list instead gains `ncells` (still 6 args
-    total: the same 5 plus ncells) purely to size `gridSizeX` at launch
-    time -- `ncells` is NOT one of the kernelOperands passed into the
-    kernel itself, since the device code never needs it (each block
-    simply trusts its own `gpu.block_id x` value, correct as long as
-    gridSizeX == ncells exactly, which the host wrapper guarantees by
-    construction).
-
-    See generate_csr_entry_gpu_module's own docstring for the GPUModuleOp/
-    GPUFuncOp/ModuleEndOp/LaunchFuncOp constructor-drift handling reused
-    verbatim here (both an older and newer generated Python binding are
-    supported, same try/except pattern), the gpu.host_register/
-    gpu.host_unregister bracketing (still required, same reasoning), and
-    the Args/Returns/Raises shared with generate_csr_entry_module's own
-    scope limits (only affine-tetrahedron Poisson/stiffness forms with
-    equal, constant test/trial local dof counts).
+    Args:
+        form: Affine tetrahedral Poisson form.
+        degree: Element degree.
+        kernel_name: Exported device kernel name.
+        cell: Basix reference cell.
+        cells_per_block: Positive number of cells per block (at most 64).
+            The total thread count must also be at most 1024.
 
     Returns:
-        A tuple (module, layout): as generate_csr_assembly_module's own
-        Returns -- `layout.geometry_size` is the PER-CELL geometry block
-        size, not `geometries`' total length.
+        Generated module and per-cell CSR layout. The host wrapper retains
+        its existing host-memory registration behavior.
     """
+    if not isinstance(cells_per_block, int) or not 1 <= cells_per_block <= 64:
+        raise ValueError("cells_per_block must be an integer between 1 and 64")
     tables, graph, geometry = lower_form(form, degree, cell)
     if geometry is None:
         raise NotImplementedError(
@@ -1302,6 +1256,8 @@ def generate_csr_assembly_gpu_module(
             f"local dof counts (got {ndofs_a} and {ndofs_b}), matching laplacian.h."
         )
     ndofs = ndofs_a
+    if ndofs * ndofs * cells_per_block > 1024:
+        raise ValueError("block dimensions exceed 1024 threads")
     loop_vars = [quad_var, dof_a_var, dof_b_var]
 
     int_constants = collect_int_constants(root, add_node.shape)
@@ -1327,7 +1283,7 @@ def generate_csr_assembly_gpu_module(
         geometries_ty = MemRefType.get([dyn], f64)
         cell_dofs_ty = MemRefType.get([dyn], i32)
         # Device-side kernel args: no cell_id -- see this function's
-        # docstring for why (derived from gpu.block_id x instead).
+        # docstring for the blockIdx.x/threadIdx.z mapping.
         kernel_arg_types = [avals_ty, acols_ty, arowptr_ty, geometries_ty, cell_dofs_ty]
         # Host launch wrapper args: the same 5 plus ncells, used only to
         # size gridSizeX at launch time (not passed into the kernel).
@@ -1396,79 +1352,109 @@ def generate_csr_assembly_gpu_module(
                         ctx.index_const[i] = _const_index(ctx, i)
                     ctx.zero_f64 = _const_f64(ctx, 0.0)
 
-                    # One block per cell -- this is the only thing that
-                    # actually changes compared to generate_csr_entry_gpu_module's
-                    # plain cell_id kernel argument: everything below this
-                    # point (tx/ty thread bindings, the accumulator,
-                    # _build_nest, the CSR scatter) is otherwise identical.
-                    cell_id = gpu_d.block_id(gpu_d.Dimension.x)
-                    tx = gpu_d.thread_id(gpu_d.Dimension.x)
-                    ty = gpu_d.thread_id(gpu_d.Dimension.y)
-                    ctx.thread_bindings = {dof_a_var: tx, dof_b_var: ty}
-
-                    for name in sorted(tables):
-                        ctx.global_val[name] = Operation.create(
-                            "memref.get_global",
-                            results=[table_types[name]],
-                            attributes={"name": FlatSymbolRefAttr.get(name)},
-                        ).results[0]
-
-                    # Refresh this block's own geometry_slot[k] =
-                    # geometries[cell_id * geometry_size + k] -- see this
-                    # function's docstring for why every thread redoes
-                    # this redundantly rather than sharing one copy.
-                    geometry_slot_ty = MemRefType.get([geometry.output_size], f64)
-                    geometry_slot = Operation.create(
-                        "memref.alloca", results=[geometry_slot_ty]
+                    block_id = gpu_d.block_id(gpu_d.Dimension.x)
+                    z = gpu_d.thread_id(gpu_d.Dimension.z)
+                    group_size = _const_index(ctx, cells_per_block)
+                    cell_id = _op2(
+                        "arith.addi",
+                        index_t,
+                        _op2("arith.muli", index_t, block_id, group_size),
+                        z,
+                    )
+                    geometry_length = Operation.create(
+                        "memref.dim",
+                        results=[index_t],
+                        operands=[geometries, ctx.index_const[0]],
                     ).results[0]
-                    geom_size_const = ctx.index_const[geometry.output_size]
-                    cell_geom_base = _op2("arith.muli", index_t, cell_id, geom_size_const)
-                    for k in range(geometry.output_size):
-                        src_idx = _op2("arith.addi", index_t, cell_geom_base, ctx.index_const[k])
-                        _memref_store(
-                            _memref_load(geometries, [src_idx], f64),
-                            geometry_slot,
-                            [ctx.index_const[k]],
+                    ncells = _op2(
+                        "arith.divui",
+                        index_t,
+                        geometry_length,
+                        ctx.index_const[geometry.output_size],
+                    )
+                    valid = _cmpi(6, IntegerType.get_signless(1), cell_id, ncells)
+                    guard = Operation.create("scf.if", operands=[valid], regions=2)
+                    valid_block = guard.regions[0].blocks.append()
+                    with InsertionPoint(valid_block):
+                        tx = gpu_d.thread_id(gpu_d.Dimension.x)
+                        ty = gpu_d.thread_id(gpu_d.Dimension.y)
+                        ctx.thread_bindings = {dof_a_var: tx, dof_b_var: ty}
+
+                        for name in sorted(tables):
+                            ctx.global_val[name] = Operation.create(
+                                "memref.get_global",
+                                results=[table_types[name]],
+                                attributes={"name": FlatSymbolRefAttr.get(name)},
+                            ).results[0]
+
+                        # Refresh this block's own geometry_slot[k] =
+                        # geometries[cell_id * geometry_size + k] -- see this
+                        # function's docstring for why every thread redoes
+                        # this redundantly rather than sharing one copy.
+                        geometry_slot_ty = MemRefType.get([geometry.output_size], f64)
+                        geometry_slot = Operation.create(
+                            "memref.alloca", results=[geometry_slot_ty]
+                        ).results[0]
+                        geom_size_const = ctx.index_const[geometry.output_size]
+                        cell_geom_base = _op2("arith.muli", index_t, cell_id, geom_size_const)
+                        for k in range(geometry.output_size):
+                            src_idx = _op2(
+                                "arith.addi", index_t, cell_geom_base, ctx.index_const[k]
+                            )
+                            _memref_store(
+                                _memref_load(geometries, [src_idx], f64),
+                                geometry_slot,
+                                [ctx.index_const[k]],
+                            )
+                        ctx.geometry_val = geometry_slot
+
+                        # Same thread-private accumulator idiom as
+                        # generate_csr_entry_gpu_module -- see there for why.
+                        accum_ty = MemRefType.get([], f64)
+                        accum = Operation.create("memref.alloca", results=[accum_ty]).results[0]
+                        _memref_store(ctx.zero_f64, accum, [])
+
+                        def _accumulate(c: _OpCtx, result: Value) -> None:
+                            old = _memref_load(accum, [], c.f64)
+                            new = _op2("arith.addf", c.f64, old, result)
+                            _memref_store(new, accum, [])
+
+                        ctx.commit = _accumulate
+
+                        levels, fission_groups = compute_fission_plan(add_node, loop_vars)
+                        _emit_fission_scratch_allocas(fission_groups, chain, ctx)
+
+                        topo = topo_order(add_node)
+                        groups_by_depth: dict[int, list[FissionGroup]] = {}
+                        for group in fission_groups:
+                            groups_by_depth.setdefault(group.depth, []).append(group)
+                        _build_nest(
+                            0, chain, levels, topo, set(), {}, ctx, add_node, groups_by_depth
                         )
-                    ctx.geometry_val = geometry_slot
 
-                    # Same thread-private accumulator idiom as
-                    # generate_csr_entry_gpu_module -- see there for why.
-                    accum_ty = MemRefType.get([], f64)
-                    accum = Operation.create("memref.alloca", results=[accum_ty]).results[0]
-                    _memref_store(ctx.zero_f64, accum, [])
+                        final = _memref_load(accum, [], f64)
 
-                    def _accumulate(c: _OpCtx, result: Value) -> None:
-                        old = _memref_load(accum, [], c.f64)
-                        new = _op2("arith.addf", c.f64, old, result)
-                        _memref_store(new, accum, [])
+                        ndofs_const = ctx.index_const[ndofs]
+                        row_local = _op2(
+                            "arith.addi",
+                            index_t,
+                            _op2("arith.muli", index_t, cell_id, ndofs_const),
+                            tx,
+                        )
+                        col_local = _op2(
+                            "arith.addi",
+                            index_t,
+                            _op2("arith.muli", index_t, cell_id, ndofs_const),
+                            ty,
+                        )
+                        row_i32 = _memref_load(cell_dofs, [row_local], i32)
+                        col_i32 = _memref_load(cell_dofs, [col_local], i32)
 
-                    ctx.commit = _accumulate
+                        _binary_search_and_scatter(
+                            ctx, final, avals, acols, arowptr, row_i32, col_i32, i32
+                        )
 
-                    levels, fission_groups = compute_fission_plan(add_node, loop_vars)
-                    _emit_fission_scratch_allocas(fission_groups, chain, ctx)
-
-                    topo = topo_order(add_node)
-                    groups_by_depth: dict[int, list[FissionGroup]] = {}
-                    for group in fission_groups:
-                        groups_by_depth.setdefault(group.depth, []).append(group)
-                    _build_nest(0, chain, levels, topo, set(), {}, ctx, add_node, groups_by_depth)
-
-                    final = _memref_load(accum, [], f64)
-
-                    ndofs_const = ctx.index_const[ndofs]
-                    row_local = _op2(
-                        "arith.addi", index_t, _op2("arith.muli", index_t, cell_id, ndofs_const), tx
-                    )
-                    col_local = _op2(
-                        "arith.addi", index_t, _op2("arith.muli", index_t, cell_id, ndofs_const), ty
-                    )
-                    row_i32 = _memref_load(cell_dofs, [row_local], i32)
-                    col_i32 = _memref_load(cell_dofs, [col_local], i32)
-
-                    _binary_search_and_scatter(
-                        ctx, final, avals, acols, arowptr, row_i32, col_i32, i32
-                    )
+                        Operation.create("scf.yield")
 
                     gpu_d.ReturnOp(operands_=[])
                 try:
@@ -1533,30 +1519,43 @@ def generate_csr_assembly_gpu_module(
                     attributes={"value": IntegerAttr.get(index_t, ndofs)},
                 ).results[0]
 
-                _kernel_operands = [h_avals, h_acols, h_arowptr, h_geometries, h_cell_dofs]
+                group_size_host = Operation.create(
+                    "arith.constant",
+                    results=[index_t],
+                    attributes={"value": IntegerAttr.get(index_t, cells_per_block)},
+                ).results[0]
+                padding = _op2("arith.subi", index_t, group_size_host, one)
+                padded_cells = _op2("arith.addi", index_t, h_ncells, padding)
+                grid_size = _op2("arith.divui", index_t, padded_cells, group_size_host)
+
+                _kernel_operands = [
+                    h_avals,
+                    h_acols,
+                    h_arowptr,
+                    h_geometries,
+                    h_cell_dofs,
+                ]
                 try:
                     # Same raw-ODS-vs-hand-written LaunchFuncOp drift as
                     # generate_csr_entry_gpu_module -- see that function's
-                    # docstring. gridSizeX is h_ncells here (one block per
-                    # cell) rather than the constant `one` used there
-                    # (single-cell launch).
+                    # docstring. gridSizeX rounds up for partial final blocks.
                     gpu_d.LaunchFuncOp(
                         asyncToken=None,
                         asyncDependencies=[],
                         kernel=SymbolRefAttr.get([gmod_name, kernel_name]),
-                        gridSizeX=h_ncells,
+                        gridSizeX=grid_size,
                         gridSizeY=one,
                         gridSizeZ=one,
                         blockSizeX=ndofs_const_host,
                         blockSizeY=ndofs_const_host,
-                        blockSizeZ=one,
+                        blockSizeZ=group_size_host,
                         kernelOperands=_kernel_operands,
                     )
                 except TypeError:
                     gpu_d.LaunchFuncOp(
                         [gmod_name, kernel_name],
-                        (h_ncells, one, one),
-                        (ndofs_const_host, ndofs_const_host, one),
+                        (grid_size, one, one),
+                        (ndofs_const_host, ndofs_const_host, group_size_host),
                         kernel_operands=_kernel_operands,
                     )
 

@@ -900,8 +900,14 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
 
 
 @_skip_gpu_on_ci
-def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells() -> None:
+@pytest.mark.parametrize("cells_per_block", [1, 2, 4, 8, 16])
+def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells(
+    cells_per_block: int,
+) -> None:
     """Numerically validate the batched GPU kernel by actually running it on a GPU.
+
+    The parametrization covers separate blocks, two cells sharing a block,
+    and partially populated blocks, all against the quadrature reference.
 
     Unlike test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine
     (one gpu.launch_func call per cell, single-cell mesh), this launches
@@ -975,7 +981,7 @@ def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells
     kernel_name = "tabulate_tensor_csr_assembly_gpu_execution_test"
     form, ndofs = _stiffness_form(1)
     module, layout = generate_csr_assembly_gpu_module(
-        form, 1, kernel_name, basix.CellType.tetrahedron
+        form, 1, kernel_name, basix.CellType.tetrahedron, cells_per_block=cells_per_block
     )
     assert layout.ndofs == ndofs == 4
     assert layout.geometry_size == 6
