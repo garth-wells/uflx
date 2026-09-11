@@ -105,10 +105,11 @@ def _expand_affine_tetrahedron_geometry(expression: GraphNode, cell: basix.CellT
             ),
         ):
             continue
-        if len(node.domain.elements) != 1:
-            continue
-        (coordinate_element,) = node.domain.elements
-        if coordinate_element.lagrange_superdegree != 1 or node.domain.geometric_dimension != 3:
+        if (
+            len(node.domain.elements) != 1
+            or not node.domain.is_affine_map
+            or node.domain.geometric_dimension != 3
+        ):
             continue
 
         jacobian = _affine_tetrahedron_jacobian()

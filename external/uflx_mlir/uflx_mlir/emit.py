@@ -361,6 +361,37 @@ def _load_alpha_equivalent_scratch(node: GraphNode, cache: dict[Any, Value], ctx
     return False
 
 
+def _value(
+    node: GraphNode, cache: dict[Any, Value], ctx: _OpCtx, use_signature_cache: bool
+) -> Value:
+    """Return node's already-emitted Value, emitting it now via _emit_node if needed.
+
+    Every graph child of a compound node is normally already in `cache` by
+    the time that parent is emitted -- topo order plus the
+    level-monotonicity invariant (see hoist.compute_levels) guarantee this
+    for nodes the main topo scan in _build_nest drives directly. The one
+    case that guarantee doesn't cover: a child that belongs to a
+    DIFFERENT, always-shallower fission group than its parent (see
+    hoist.compute_fission_plan's docstring on ArrayEntry joining groups
+    normally). A fission group's own build() (_emit_fission_group) only
+    pre-emits the nodes IN THAT GROUP; a cross-group child is registered
+    in ctx.scratch_group once its own (earlier, shallower) group finishes,
+    but nothing calls _emit_node on it again before its consumer needs
+    it -- so a parent whose group runs first would find it missing from
+    `cache` and crash (this was exactly the reported KeyError).
+
+    Falling back to _emit_node here resolves that: for a node already
+    registered in ctx.scratch_group, _emit_node's own scratch_group branch
+    fires immediately (a single memref.load, no further work), so this
+    isn't the general recursive walk _emit_node's own docstring describes
+    avoiding -- it only ever does one bounded step for exactly the
+    cross-group handoff case above.
+    """
+    if node not in cache:
+        _emit_node(node, cache, ctx, use_signature_cache=use_signature_cache)
+    return cache[node]
+
+
 def _emit_node(
     node: GraphNode,
     cache: dict[Any, Value],
@@ -369,12 +400,14 @@ def _emit_node(
 ) -> None:
     """Emit ops for one node of the AddToLocalTensor body's expression DAG.
 
-    Every graph successor (child) of `node` already has an entry in
-    `cache` -- guaranteed by driving this from hoist.topo_order()'s
+    Every graph successor (child) of `node` normally already has an entry
+    in `cache` -- guaranteed by driving this from hoist.topo_order()'s
     children-before-parents ordering, gated by hoist.compute_fission_plan()'s
-    depth assignment (see generate_mlir_module below). Unlike a naive
-    recursive walk, this never recurses into children -- they're looked
-    up directly, since they're guaranteed already emitted. Ops are
+    depth assignment (see generate_mlir_module below); the one exception
+    (a cross-fission-group child) is handled by `_value` below, which the
+    compound-node cases use instead of indexing `cache` directly. Besides
+    that one bounded fallback, this never recurses into children -- they're
+    looked up directly, since they're guaranteed already emitted. Ops are
     created at whatever the CURRENT InsertionPoint is, which the
     depth-driven driver in generate_mlir_module has already positioned at
     the right loop level.
@@ -445,31 +478,31 @@ def _emit_node(
     if isinstance(node, (RealScalar, Integer)):
         v = _const_f64(ctx, node.value)
     elif isinstance(node, Neg):
-        a = cache[node.argument]
+        a = _value(node.argument, cache, ctx, use_signature_cache)
         v = _op1("arith.negf", ctx.f64, a)
     elif isinstance(node, Re):
         # This backend currently emits real-valued kernels. UFLx's
         # complex lowering now leaves an explicit Re around the final
         # real expression, which is an identity for our f64 values.
-        v = cache[node.argument]
+        v = _value(node.argument, cache, ctx, use_signature_cache)
     elif isinstance(node, Abs):
-        a = cache[node.argument]
+        a = _value(node.argument, cache, ctx, use_signature_cache)
         v = _op1("math.absf", ctx.f64, a)
     elif isinstance(node, Add):
-        a = cache[node.first]
-        b = cache[node.second]
+        a = _value(node.first, cache, ctx, use_signature_cache)
+        b = _value(node.second, cache, ctx, use_signature_cache)
         v = _op2("arith.addf", ctx.f64, a, b)
     elif isinstance(node, Subtract):
-        a = cache[node.first]
-        b = cache[node.second]
+        a = _value(node.first, cache, ctx, use_signature_cache)
+        b = _value(node.second, cache, ctx, use_signature_cache)
         v = _op2("arith.subf", ctx.f64, a, b)
     elif isinstance(node, Mult):
-        a = cache[node.first]
-        b = cache[node.second]
+        a = _value(node.first, cache, ctx, use_signature_cache)
+        b = _value(node.second, cache, ctx, use_signature_cache)
         v = _op2("arith.mulf", ctx.f64, a, b)
     elif isinstance(node, Div):
-        a = cache[node.first]
-        b = cache[node.second]
+        a = _value(node.first, cache, ctx, use_signature_cache)
+        b = _value(node.second, cache, ctx, use_signature_cache)
         v = _op2("arith.divf", ctx.f64, a, b)
     elif isinstance(node, CoordinateDofComponent):
         pt = ctx.resolve_index(node._point)

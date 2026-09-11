@@ -379,38 +379,45 @@ def compute_fission_plan(
     # (compute_levels' notion of level applies directly, no fission needed),
     # or (depth, gap_vars) if it needs fission.
     #
-    # ArrayEntry is special-cased out of fission below. Fission (and the
-    # alpha-equivalence scratch-sharing built on top of it, see
-    # uflx_mlir.emit._alpha_signature) exists to avoid recomputing a
-    # genuinely expensive shared subexpression (originally: geometry/
-    # Jacobian terms, see this module's docstring). A bare ArrayEntry --
-    # a table lookup with no further computation, e.g. an FE0 basis
-    # value read -- has no such cost: reloading it at the point of use
-    # costs exactly what reading a cached scratch value costs, so
-    # fissioning one only adds a pointless copy-to-alloca loop. Verified
-    # empirically (disassembly + timing A/B, correctness-checked via
-    # np.testing.assert_allclose): excluding ArrayEntry from fission
-    # dropped 250->222 instructions and gave a measured ~4% (1.0408x)
-    # per-call speedup on a P3 stiffness kernel, with zero change to the
-    # numeric result. It also matches FFCx's own generated C code, which
-    # always re-reads its static table arrays directly at each point of
-    # use rather than ever caching a plain table value.
-    #
-    # ArrayEntry nodes are pure leaves (no successors), so excluding them
-    # here cannot change any other node's `deps`/gap computation -- only
-    # this node's own signature/level assignment is affected, and forcing
-    # levels[node] = len(loop_vars) below (innermost) mirrors what a
-    # fission group would have assigned it anyway.
+    # ArrayEntry participates in fission group membership like any other
+    # node -- an earlier version of this function excluded it, forcing
+    # levels[node] = len(loop_vars) directly on the reasoning that a bare
+    # table lookup (e.g. an FE0 basis value read) is cheap enough to just
+    # recompute at its point of use (verified empirically: recomputing one
+    # costs exactly what reading it back from a scratch buffer costs, see
+    # uflx_mlir's geometry-contraction test), so fissioning one on its own
+    # seemed like pure overhead. That reasoning is correct in isolation, but
+    # it broke the level-monotonicity invariant this module relies on (see
+    # compute_levels' docstring) whenever some OTHER node that DOES need
+    # fission has a gapped ArrayEntry as a direct operand: excluding the
+    # ArrayEntry from every group meant it was never scheduled early enough
+    # -- only reachable once the main nest's depth-driven scan reaches
+    # len(loop_vars) -- even when its own parent got fissioned into an
+    # auxiliary loop anchored well before that point, producing a KeyError
+    # in _emit_node the first time this combination actually arose (e.g.
+    # once uflx_codegeneration's _is_point_invariant hoists a derivative
+    # table's point index to a compile-time constant, an ArrayEntry that
+    # used to depend on the quadrature-point loop variable can end up
+    # depending on nothing but a dof loop variable, gapped exactly like its
+    # parent). Letting ArrayEntry join groups normally fixes this: it either
+    # lands in the SAME group as its parent (the common case, since
+    # union-only dependency growth usually keeps a leaf's gap identical to
+    # its parent's) and becomes a `scratch`-free local intermediate
+    # recomputed once per group iteration -- exactly as cheap as the
+    # excluded case used to be, just correctly ordered -- or, on the rarer
+    # path where a sibling operand gives the parent a wider gap than this
+    # leaf's own, it lands in its own (shallower) group and gets one
+    # scratch buffer instead -- still correct, just not maximally hoisted.
     signature: dict[GraphNode, tuple[int, tuple[str, ...]] | None] = {}
     levels: dict[GraphNode, int] = {}
     for node, deps in depends_on.items():
         depth = _prefix_depth(deps, loop_vars)
         gap_vars = tuple(v for v in loop_vars[depth:] if v in deps)
-        if gap_vars and not isinstance(node, ArrayEntry):
+        if gap_vars:
             signature[node] = (depth, gap_vars)
         else:
             signature[node] = None
-            levels[node] = len(loop_vars) if gap_vars else depth
+            levels[node] = depth
 
     # Reverse of `successors` (a node's own operands) -- who *uses* each
     # node -- needed to tell whether a fission candidate's value ever

@@ -102,7 +102,7 @@ def _poisson_metric_contraction(node: GraphNode):
         return None
 
     domain = determinant.domain
-    if len(domain.elements) != 1 or domain.elements[0].lagrange_superdegree != 1:
+    if len(domain.elements) != 1 or not domain.is_affine_map:
         return None
 
     grad_left = left.second.expand_geometry()

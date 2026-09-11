@@ -34,33 +34,36 @@ def test_affine_poisson_geometry_is_extracted_from_tabulation_graph() -> None:
     assert not any(isinstance(node, CoordinateDofComponent) for node in graph)
 
 
-def test_geometry_contraction_does_not_fission_bare_table_reads() -> None:
-    """Check that bare table reads are not cached through loop fission.
+def test_geometry_contraction_fissions_bare_table_reads() -> None:
+    """Check that bare table reads participate in loop fission like any node.
 
-    This used to assert the opposite (that this exact contraction produces
-    "three scratch vectors": each of the three FE0[<component>, q, trial,
-    0] reads that grad_right.component(0..2) bottoms out in, cached once
-    per trial dof instead of recomputed for every (test, trial) pair --
-    the asymptotic argument being O(ntest*ntrial*nq) versus
-    O(ntrial*nq)). A controlled, correctness-checked A/B measurement
-    (disassembly + timing, on a real P3 tetrahedron stiffness kernel --
-    see hoist.compute_fission_plan's docstring) showed that assumption
-    doesn't hold in practice for a BARE table read: recomputing one costs
-    exactly what reading it back from a cached scratch buffer costs (both
-    are a single load), so the fission machinery here was pure overhead
-    (~4% slower with it, byte-identical results either way). hoist.py's
-    compute_fission_plan now excludes ArrayEntry nodes from fission
-    entirely, so this contraction's three underlying table reads are
-    expected to stay uncached (0 scratch entries), matching what FFCx's
-    own generated code does (always re-reading its static table arrays
-    directly rather than caching them).
+    This contraction's three FE0[<component>, q, trial, 0] reads (what
+    grad_right.component(0..2) bottoms out in) each get hoisted into their
+    own fission group and read back from a scratch buffer, rather than
+    being recomputed for every (test, trial) pair.
+
+    This used to assert the opposite (0 scratch entries): hoist.py's
+    compute_fission_plan special-cased ArrayEntry out of fission on the
+    reasoning that a bare table lookup is cheap enough to just recompute
+    at its point of use, worth a measured ~4% speedup on a P3 tetrahedron
+    stiffness kernel with no exclusion. That reasoning was correct in
+    isolation, but broke the level-monotonicity invariant
+    compute_fission_plan/compute_levels rely on whenever some other node
+    that DOES need fission has a gapped ArrayEntry as a direct operand --
+    the ArrayEntry could never be scheduled early enough, producing a
+    KeyError in uflx_mlir.emit._emit_node the first time this combination
+    actually arose (once uflx_codegeneration's _is_point_invariant started
+    hoisting a derivative table's point index to a compile-time constant).
+    See hoist.compute_fission_plan's docstring for the full analysis.
+    Letting ArrayEntry join fission groups normally fixes the crash at the
+    cost of the ~4% speedup; correctness comes first.
     """
     _, graph, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
     chain, add_node = walk_loop_chain(graph.root)
     chain = reorder_quadrature_outermost(chain)
     _, groups = compute_fission_plan(add_node, [variable for _, variable in chain])
 
-    assert sum(len(group.scratch) for group in groups) == 0
+    assert sum(len(group.scratch) for group in groups) == 3
 
 
 def test_unsupported_form_keeps_inline_geometry() -> None:
