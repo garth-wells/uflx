@@ -2,7 +2,6 @@
 
 from uflx.basis_functions import EvaluatedReferenceBasisFunction
 from uflx.expressions import expression_sum
-from uflx.graphs import generate_graph
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.algorithms.finite_element import (
@@ -55,9 +54,9 @@ def test_tabulate_finite_elements_hoists_only_the_derivative(lagrange_element):
     gradient_node = EvaluatedReferenceBasisFunction(element, 0, point, derivative=(1, 0))
     root = expression_sum([value_node, gradient_node])
 
-    _, graph = tabulate_finite_elements(generate_graph(root), symbols.VariableNamer())
+    _, result = tabulate_finite_elements(root, symbols.VariableNamer())
 
-    entries = [n for n in graph.root.successors if isinstance(n, ArrayEntry)]
+    entries = [n for n in result.successors if isinstance(n, ArrayEntry)]
     assert len(entries) == 2
     by_derivative = {e.index[0]: e for e in entries}
 
