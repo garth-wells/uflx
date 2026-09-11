@@ -70,6 +70,15 @@ class AbstractEntity(ABC):
         """
         return len(self.sub_entities(dim))
 
+    @property
+    def is_simplex(self) -> bool:
+        """Whether this entity is a simplex, ie has exactly dim + 1 vertices.
+
+        Computed generically from sub_entities(0) and topological_dimension, so
+        subclasses do not need to declare this themselves.
+        """
+        return len(self.sub_entities(0)) == self.topological_dimension + 1
+
     @abstractmethod
     def __hash__(self):
         """Hash."""
