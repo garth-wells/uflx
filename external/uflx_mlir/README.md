@@ -225,8 +225,15 @@ module, layout = generate_linear_assembly_gpu_module(
     form, degree, "assemble_vector", basix.CellType.tetrahedron
 )
 seconds = assemble_linear_gpu(
-    module, layout, "assemble_vector", coordinates, coefficients, cell_dofs,
-    output, backend="cuda", chip="sm_89"
+    module,
+    layout,
+    "assemble_vector",
+    coordinates,
+    coefficients,
+    cell_dofs,
+    output,
+    backend="cuda",
+    chip="sm_89",
 )
 ```
 
