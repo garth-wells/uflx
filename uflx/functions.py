@@ -403,6 +403,14 @@ class Coefficient(AbstractIntegralScopedFunction):
                     return new.reconstruct_with_integral_label(self.integral_label)
                 return new
 
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            ReferenceCoefficient(self._space, self._count),
+        )
+
 
 class ReferenceTestFunction(ReferenceArgument):
     """A test function on the reference cell."""
@@ -443,4 +451,59 @@ class ReferenceTrialFunction(ReferenceArgument):
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
+        raise NotImplementedError()
+
+
+class ReferenceCoefficient(AbstractReferenceIntegralScopedFunction):
+    """A known function with given degree-of-freedom values, on the reference cell.
+
+    Unlike ReferenceTestFunction/ReferenceTrialFunction (where component_index
+    alone -- 0 or 1 -- distinguishes the two, since a form has at most one of
+    each), a form can contain several distinct Coefficients on the same space
+    (see Coefficient.count), so this class carries the originating physical
+    Coefficient's count across the pull-back: without it, two different
+    Coefficients on the same space would become indistinguishable
+    ReferenceCoefficient instances once pulled back, and anything downstream
+    that needs to tell them apart (eg code generation assigning each one its
+    own offset into the coefficients array) could no longer do so.
+    """
+
+    def __init__(self, space: AbstractFunctionSpace, count: int, integral_label: str | None = None):
+        """Initialise.
+
+        Args:
+            space: The function space that this function lives in
+            count: The count of the physical Coefficient this was (or will be)
+                   pulled back from -- see Coefficient.count
+            integral_label: The label of the integral that this coefficient
+                            is included in
+        """
+        super().__init__(space, integral_label)
+        self._count = count
+
+    @property
+    def count(self) -> int:
+        """A value that, together with function_space, uniquely identifies this coefficient."""
+        return self._count
+
+    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
+        """Reconstruct the coefficient with the given integral label."""
+        return self.__class__(self._space, self._count, integral_label)
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return self._space, self._count, self._integral_label
+
+    @property
+    def domain_size(self) -> int:
+        """The size of the domain (ie the number of inputs to the function)."""
+        return self._space.domain.cells[0].topological_dimension
+
+    def diff(self, index: int) -> AbstractFunction:
+        """Take a derivative of this function."""
+        raise NotImplementedError()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
         raise NotImplementedError()
