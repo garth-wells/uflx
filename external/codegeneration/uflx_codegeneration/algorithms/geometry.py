@@ -8,7 +8,7 @@ from uflx.graphs import GraphNode, as_graph
 from uflx.tensors import Matrix
 
 from uflx_codegeneration import symbols
-from uflx_codegeneration.nodes import FunctionCall, Variable
+from uflx_codegeneration.nodes import FunctionCall, Return, Variable
 
 
 def insert_geometry_functions(
@@ -16,9 +16,9 @@ def insert_geometry_functions(
     variable_namer: symbols.VariableNamer = symbols.global_variable_namer,
 ) -> tuple[dict[str, tuple[str, list[Variable], GraphNode]], GraphNode]:
     """Replace geometry nodes with calls to functions that compute geometry."""
-    functions = {}
+    functions: dict[str, tuple[str, list[Variable], GraphNode]] = {}
     to_replace: dict[GraphNode, GraphNode] = {}
-    coordinate_dofs = Variable("const double*", symbols.coordinate_dofs)
+    coordinate_dofs = Variable("const double* restrict", symbols.coordinate_dofs)
     for node in as_graph(expression):
         if isinstance(node, JacobianDeterminant):
             f = variable_namer.geometry_function_name()
@@ -28,7 +28,7 @@ def insert_geometry_functions(
                 inputs.append(Variable("int", node.point.index))
                 f_args.append(node.point.index)
             to_replace[node] = FunctionCall(f, *f_args)
-            functions[f] = ("double", inputs, expand_geometry(node))
+            functions[f] = ("double", inputs, Return(expand_geometry(node)))
         elif isinstance(node, Jacobian):
             f = variable_namer.geometry_function_name()
             fs = [
@@ -46,7 +46,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(node.component(i, j)),
+                        Return(expand_geometry(node.component(i, j))),
                     )
         elif isinstance(node, JacobianInverse):
             f = variable_namer.geometry_function_name()
@@ -65,7 +65,7 @@ def insert_geometry_functions(
                     functions[f] = (
                         "double",
                         inputs,
-                        expand_geometry(node.component(i, j)),
+                        Return(expand_geometry(node.component(i, j))),
                     )
 
     return functions, replace(expression, to_replace)

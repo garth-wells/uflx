@@ -10,7 +10,13 @@ from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedRefere
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
+from uflx.functions import (
+    AbstractPhysicalFunction,
+    Argument,
+    Coefficient,
+    ReferenceArgument,
+    ReferenceCoefficient,
+)
 from uflx.geometry import (
     Jacobian,
     JacobianDeterminant,
@@ -26,6 +32,7 @@ from uflx.points import AbstractPoint, AbstractSetOfPoints, Point, PointComponen
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.c import GenerateC
+from uflx_codegeneration.coefficients import EvaluatedReferenceCoefficientBasisFunction
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
 from uflx_codegeneration.utils import indented
 
@@ -209,9 +216,15 @@ def integrals_to_quadrature(
                 raise NotImplementedError("Only codim 0 integrals supported for now")
 
             arguments = []
+            coefficients = []
             for i in graph.descendants(node):
                 if isinstance(i, (Argument, ReferenceArgument)) and i.integral_label == node.label:
                     arguments.append(i)
+                if (
+                    isinstance(i, (Coefficient, ReferenceCoefficient))
+                    and i.integral_label == node.label
+                ):
+                    coefficients.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
                     if not isinstance(domain, AbstractCoordinateElement):
@@ -269,6 +282,30 @@ def integrals_to_quadrature(
                         variables[a.component_index],
                         qpoint,
                     )
+
+            for c in coefficients:
+                c_space = c.function_space
+                if not isinstance(c_space, AbstractReferenceMappedFunctionSpace):
+                    raise NotImplementedError(
+                        "Code generation only implemented for reference mapped spaces"
+                    )
+                if len(c_space.elements) != 1:
+                    raise NotImplementedError(
+                        "Code generation currently only implemented for spaces with "
+                        "exactly one element"
+                    )
+                if not isinstance(c, ReferenceCoefficient):
+                    raise NotImplementedError(
+                        "Code generation currently only implemented for coefficients that "
+                        "have already been pulled back to the reference cell"
+                    )
+                dof_variable = variable_namer.variable()
+                to_replace[c] = EvaluatedReferenceCoefficientBasisFunction(
+                    c_space.elements[0],
+                    dof_variable,
+                    qpoint,
+                    c.count,
+                )
 
             domain = arguments[0].function_space.domain
             for a in arguments:
