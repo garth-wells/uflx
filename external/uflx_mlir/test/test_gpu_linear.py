@@ -55,12 +55,13 @@ def _mesh_data(ndofs, ncoeff, ncells=5):
     return coords, coeffs, maps
 
 
-def _backend():
+def _backend(request: pytest.FixtureRequest):
     if os.environ.get("CI", "").lower() == "true":
         pytest.skip("requires a GPU host")
     backend = os.environ.get("UFLX_GPU_BACKEND")
     if backend not in ("cuda", "amd"):
         pytest.skip("set UFLX_GPU_BACKEND=cuda or amd to run hardware checks")
+    request.getfixturevalue("require_amdgpu" if backend == "amd" else "require_nvptx")
     return backend, os.environ.get("UFLX_GPU_CHIP", "sm_89" if backend == "cuda" else "gfx1100")
 
 
@@ -80,9 +81,9 @@ def test_automatic_launch_layout(degree, threads, cells):
 
 @pytest.mark.parametrize("degree", [1, 2, 3, 4])
 @pytest.mark.parametrize("grouping", [None, 1])
-def test_gradient_vector_on_gpu(degree, grouping):
+def test_gradient_vector_on_gpu(degree, grouping, request: pytest.FixtureRequest):
     """Scatter distinct per-cell stiffness actions, including incomplete blocks."""
-    backend, chip = _backend()
+    backend, chip = _backend(request)
     form, ndofs = _build_coefficient_gradient_form(degree)
     name = "linear_gradient"
     module, layout = generate_linear_assembly_gpu_module(
@@ -101,9 +102,9 @@ def test_gradient_vector_on_gpu(degree, grouping):
 
 
 @pytest.mark.parametrize("kind", ["mass", "mixed", "constant"])
-def test_other_linear_forms_on_gpu(kind):
+def test_other_linear_forms_on_gpu(kind, request: pytest.FixtureRequest):
     """Reuse CPU coefficient packing for value, mixed-space and coefficient-free forms."""
-    backend, chip = _backend()
+    backend, chip = _backend(request)
     form, ndofs, ncoeff = _form(2, kind)
     name = "linear_other"
     module, layout = generate_linear_assembly_gpu_module(form, 2, name, CELL)

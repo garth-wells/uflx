@@ -200,6 +200,7 @@ def test_generate_csr_entry_gpu_module_rejects_unsupported_form() -> None:
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_nvptx")
 def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
     """Actually compile the GPU-wrapped P2 stiffness kernel down to NVVM/PTX.
 
@@ -241,6 +242,7 @@ def test_lower_module_to_nvvm_produces_a_gpu_binary() -> None:
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_nvptx")
 def test_extract_ptx_text_round_trips_real_ptx() -> None:
     """extract_ptx_text should recover genuine, parseable PTX assembly text.
 
@@ -282,6 +284,7 @@ def test_extract_ptx_text_round_trips_real_ptx() -> None:
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_amdgpu")
 def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
     """Compile the GPU-wrapped P2 kernel through ROCDL to real AMDGCN ISA."""
     from uflx_mlir.gpu_assembly import (
@@ -313,6 +316,7 @@ def test_lower_module_to_rocdl_produces_amdgcn_assembly() -> None:
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_amdgpu")
 def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
     """Finish MLIR's AMDGCN output with ROCm's matching assembler/linker."""
     from pathlib import Path
@@ -344,6 +348,7 @@ def test_rocm_tools_assemble_amdgcn_into_hsaco() -> None:
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_amdgpu")
 def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_hip() -> None:
     """Compile and execute the P2 CSR kernel on a real AMD GPU via HIP."""
     import ctypes
@@ -750,6 +755,7 @@ def test_generate_csr_assembly_module_matches_quadrature_reference_two_cells() -
 
 
 @_skip_gpu_on_ci
+@pytest.mark.usefixtures("require_nvptx")
 def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_execution_engine() -> None:
     """Numerically validate the compiled GPU kernel by actually running it on a GPU.
 
@@ -901,6 +907,7 @@ def test_generate_csr_entry_gpu_module_matches_quadrature_reference_via_executio
 
 @_skip_gpu_on_ci
 @pytest.mark.parametrize("cells_per_block", [1, 2, 4, 8, 16])
+@pytest.mark.usefixtures("require_nvptx")
 def test_generate_csr_assembly_gpu_module_matches_quadrature_reference_two_cells(
     cells_per_block: int,
 ) -> None:
