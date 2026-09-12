@@ -14,7 +14,16 @@ import basix
 import numpy as np
 import pytest
 from basix_uflx import element
-from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_space, grad, inner
+from uflx import (
+    Coefficient,
+    TestFunction,
+    TrialFunction,
+    coordinate_element,
+    dx,
+    function_space,
+    grad,
+    inner,
+)
 
 pytest.importorskip("mlir.ir")
 
@@ -185,6 +194,104 @@ def test_stiffness_matches_quadrature_reference(degree: int, inline_geometry: bo
     # must sum to ~0 -- a cheap sanity check independent of the reference
     # computation above.
     np.testing.assert_allclose(a.sum(axis=1), 0.0, atol=1e-8)
+
+
+def _build_coefficient_gradient_form(degree: int):
+    """Build `inner(grad(w), grad(v)) * dx` for a Coefficient w on a P{degree} Lagrange tet.
+
+    Args:
+        degree: The Lagrange degree of the coefficient/test space.
+
+    Returns:
+        A tuple (form, ndofs).
+    """
+    e = element("Lagrange", "tetrahedron", degree, lagrange_variant="equispaced")
+    domain = coordinate_element(element("Lagrange", "tetrahedron", 1, shape=(3,)))
+    space = function_space(domain, e)
+    w = Coefficient(space)
+    v = TestFunction(space)
+    return inner(grad(w), grad(v)) * dx, e.dim
+
+
+def _call_kernel_with_coefficients(
+    module: Module, kernel_name: str, a: np.ndarray, coords: np.ndarray, w: np.ndarray
+) -> None:
+    """Like _call_kernel, but for a kernel whose form uses a Coefficient.
+
+    generate_mlir_module only gives the assembly function a third
+    memref<?xf64> argument (see its own docstring and _OpCtx.coeffs_val)
+    when the form actually uses a Coefficient -- kept as its own helper
+    rather than a variadic version of _call_kernel, so the existing
+    coefficient-free tests above are untouched by this addition.
+
+    Args:
+        module: An `mlir.ir.Module` built by `generate_mlir_module`.
+        kernel_name: The symbol name of the kernel function inside it.
+        a: The local tensor output buffer, written in place -- pure
+            accumulate (see _call_kernel's own docstring), so callers pass
+            an already-zeroed buffer.
+        coords: The cell's coordinate dofs, read by the kernel.
+        w: The flat coefficients buffer (see
+            uflx_codegeneration.algorithms.coefficients.insert_coefficient_functions's
+            own offset_by_count convention -- with a single Coefficient in
+            the form, this is just that Coefficient's own dof vector).
+    """
+    with module.context:
+        pm = PassManager.parse(_PIPELINE)
+        pm.run(module.operation)
+        engine = ExecutionEngine(module, opt_level=3)
+
+    raw_fn = engine.lookup(kernel_name)
+    a_desc_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(a)))
+    coords_desc_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(coords)))
+    w_desc_pp = ctypes.pointer(ctypes.pointer(get_ranked_memref_descriptor(w)))
+    packed = (ctypes.c_void_p * 3)(
+        ctypes.cast(a_desc_pp, ctypes.c_void_p).value,
+        ctypes.cast(coords_desc_pp, ctypes.c_void_p).value,
+        ctypes.cast(w_desc_pp, ctypes.c_void_p).value,
+    )
+    raw_fn(packed)
+
+
+@pytest.mark.parametrize("degree", [1, 2])
+def test_coefficient_gradient_matches_stiffness_action(degree: int) -> None:
+    """inner(grad(w), grad(v))*dx for a Coefficient w should match the stiffness action.
+
+    Exercises the MLIR emission path added for Coefficients (see
+    uflx_codegeneration.algorithms.coefficients.insert_coefficient_functions
+    and emit.py's FunctionCall handling / _emit_coefficient_function): w's
+    value is a runtime dof-summation deferred until after grad() resolves
+    it (mirroring the C backend's own
+    test_coefficient_assembly.test_coefficient_gradient_vector), so the
+    resulting vector must equal the ordinary stiffness matrix applied to
+    w's own dof vector -- checked here against the same independent
+    basix-quadrature reference _reference_stiffness already uses for the
+    coefficient-free stiffness test above.
+    """
+    kernel_name = f"tabulate_tensor_p{degree}_coefficient_gradient_test"
+    form, ndofs = _build_coefficient_gradient_form(degree)
+    module = generate_mlir_module(
+        form,
+        degree=degree,
+        kernel_name=kernel_name,
+        cell=basix.CellType.tetrahedron,
+    )
+    module_text = str(module)
+    assert "func.func @coeff" in module_text
+    assert "call @coeff" in module_text
+
+    coords = np.array(
+        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+        dtype=np.float64,
+    )
+    a_ref = _reference_stiffness(coords, degree)
+
+    rng = np.random.default_rng(3)
+    for _ in range(3):
+        w_dofs = rng.standard_normal(ndofs)
+        vec = np.zeros(ndofs, dtype=np.float64)
+        _call_kernel_with_coefficients(module, kernel_name, vec, coords, w_dofs)
+        np.testing.assert_allclose(vec, a_ref @ w_dofs, rtol=1e-9, atol=1e-8)
 
 
 def test_geometry_kernel_matches_numpy_reference() -> None:

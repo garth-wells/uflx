@@ -44,7 +44,7 @@ from typing import cast
 from uflx.expressions import Add, Mult, Neg, Subtract
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode, NodeOrder, generate_graph
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Loop
 from uflx_codegeneration.quadrature import QuadratureLoop
 
 
@@ -82,10 +82,16 @@ def _direct_loop_deps(node: GraphNode, loop_vars: set[str]) -> frozenset[str]:
     """Return the loop variables `node` references directly through its own index attributes.
 
     As opposed to through its graph successors, which compute_levels()
-    below folds in separately. Only ArrayEntry and CoordinateDofComponent
-    carry index tuples that can name a loop variable (a plain int, or the
+    below folds in separately. ArrayEntry and CoordinateDofComponent carry
+    index tuples that can name a loop variable (a plain int, or the
     digit-string convention uflx_codegeneration also uses for a size-1
-    axis, never do) -- see emit.py's `_OpCtx.resolve_index` for the same
+    axis, never do); FunctionCall (emitted by
+    uflx_codegeneration.algorithms.insert_coefficient_functions -- see
+    emit.py's FunctionCall handling in _emit_node) similarly carries an
+    optional quadrature-point loop variable as a plain string in
+    node.inputs[1:], never as a GraphNode successor (node.inputs[0] is
+    always the coefficients buffer's own C symbol name, never a loop
+    variable) -- see emit.py's `_OpCtx.resolve_index` for the same
     int-vs-loop-variable-name distinction made at emission time; this must
     classify identically or a node could get hoisted above a loop it
     actually depends on.
@@ -94,6 +100,8 @@ def _direct_loop_deps(node: GraphNode, loop_vars: set[str]) -> frozenset[str]:
         indices = node.index
     elif isinstance(node, CoordinateDofComponent):
         indices = (node._point, node._component)
+    elif isinstance(node, FunctionCall):
+        indices = tuple(i for i in node.inputs[1:] if isinstance(i, str))
     else:
         return frozenset()
 

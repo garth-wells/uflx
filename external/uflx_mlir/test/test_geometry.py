@@ -24,7 +24,7 @@ def _build_form(degree: int, *, stiffness: bool = True):
 
 def test_affine_poisson_geometry_is_extracted_from_tabulation_graph() -> None:
     """The element graph should consume packed geometry, not coordinate dofs."""
-    _, graph, geometry = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
+    _, graph, geometry, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
 
     assert geometry is not None
     assert geometry.output_size == 6
@@ -58,7 +58,7 @@ def test_geometry_contraction_fissions_bare_table_reads() -> None:
     Letting ArrayEntry join fission groups normally fixes the crash at the
     cost of the ~4% speedup; correctness comes first.
     """
-    _, graph, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
+    _, graph, _, _ = lower_form(_build_form(2), 2, basix.CellType.tetrahedron)
     chain, add_node = walk_loop_chain(graph.root)
     chain = reorder_quadrature_outermost(chain)
     _, groups = compute_fission_plan(add_node, [variable for _, variable in chain])
@@ -68,7 +68,9 @@ def test_geometry_contraction_fissions_bare_table_reads() -> None:
 
 def test_unsupported_form_keeps_inline_geometry() -> None:
     """Extraction should leave non-Poisson forms on the existing lowering path."""
-    _, graph, geometry = lower_form(_build_form(1, stiffness=False), 1, basix.CellType.tetrahedron)
+    _, graph, geometry, _ = lower_form(
+        _build_form(1, stiffness=False), 1, basix.CellType.tetrahedron
+    )
 
     assert geometry is None
     assert any(isinstance(node, CoordinateDofComponent) for node in graph)

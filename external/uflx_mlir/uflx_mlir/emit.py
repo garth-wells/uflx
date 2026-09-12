@@ -126,6 +126,7 @@ from mlir.ir import (
     Module,
     Operation,
     RankedTensorType,
+    ShapedType,
     StringAttr,
     TypeAttr,
     UnitAttr,
@@ -144,7 +145,18 @@ from uflx.expressions import (
 )
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Loop, Variable
+from uflx_codegeneration import symbols
+from uflx_codegeneration.nodes import (
+    AccumulateToVariable,
+    AddToLocalTensor,
+    ArrayEntry,
+    Block,
+    Declare,
+    FunctionCall,
+    Loop,
+    Return,
+    Variable,
+)
 from uflx_codegeneration.quadrature import QuadratureLoop
 
 from uflx_mlir.geometry import (
@@ -193,6 +205,13 @@ class _OpCtx:
     signature_cache: dict[Any, Value] = field(default_factory=dict)
     geometry_val: Value | None = None
     geometry_components: dict[int, Value] = field(default_factory=dict)
+
+    # The assembly function's own coefficients-buffer argument (a
+    # memref<?xf64>), bound only when the form actually uses a Coefficient
+    # -- see generate_mlir_module and _emit_node's FunctionCall branch.
+    # None (the default) means no such argument exists, matching the
+    # pre-Coefficient kernel signature exactly.
+    coeffs_val: Value | None = None
 
     # GPU-assembly hooks (see uflx_mlir.gpu_assembly): a chain loop variable
     # (or a fission group's gap variable) present here is bound directly to
@@ -254,20 +273,28 @@ def _op2(name: str, result_type, lhs, rhs) -> Value:
     ).results[0]
 
 
-def _const_f64(ctx: _OpCtx, value: float) -> Value:
+def _const_f64_value(f64, value: float) -> Value:
     return Operation.create(
         "arith.constant",
-        results=[ctx.f64],
-        attributes={"value": FloatAttr.get(ctx.f64, float(value))},
+        results=[f64],
+        attributes={"value": FloatAttr.get(f64, float(value))},
     ).results[0]
+
+
+def _const_index_value(index_t, value: int) -> Value:
+    return Operation.create(
+        "arith.constant",
+        results=[index_t],
+        attributes={"value": IntegerAttr.get(index_t, value)},
+    ).results[0]
+
+
+def _const_f64(ctx: _OpCtx, value: float) -> Value:
+    return _const_f64_value(ctx.f64, value)
 
 
 def _const_index(ctx: _OpCtx, value: int) -> Value:
-    return Operation.create(
-        "arith.constant",
-        results=[ctx.index_t],
-        attributes={"value": IntegerAttr.get(ctx.index_t, value)},
-    ).results[0]
+    return _const_index_value(ctx.index_t, value)
 
 
 def _memref_load(memref_val: Value, indices: list[Value], elem_type) -> Value:
@@ -518,10 +545,40 @@ def _emit_node(
         mem = ctx.global_val[node.array]
         idx = [ctx.resolve_index(i) for i in node.index]
         v = _memref_load(mem, idx, ctx.f64)
-    elif isinstance(node, (Variable, FunctionCall)):
+    elif isinstance(node, FunctionCall):
+        # Emitted by insert_coefficient_functions (see
+        # uflx_codegeneration.algorithms.coefficients): node.inputs is
+        # always (symbols.coefficients[, point_index]) -- the coefficients
+        # buffer's own C symbol name, optionally followed by the quadrature
+        # loop variable name the callee needs (see
+        # _emit_coefficient_function/generate_mlir_module for the callee
+        # itself). ctx.coeffs_val is only set when the assembly function's
+        # own signature was given a coefficients-buffer argument, which
+        # generate_mlir_module only does when the form actually has one.
+        if ctx.coeffs_val is None:
+            raise AssertionError(
+                f"FunctionCall({node.function!r}, ...) found but no coefficients buffer "
+                "was bound on the assembly function -- generate_mlir_module should have "
+                "added one whenever coefficient_functions is non-empty."
+            )
+        assert node.inputs and node.inputs[0] == symbols.coefficients, (
+            f"Unexpected FunctionCall inputs {node.inputs!r} -- only coefficient "
+            "dof-summation calls are supported."
+        )
+        operands = [ctx.coeffs_val]
+        for extra in node.inputs[1:]:
+            assert isinstance(extra, str)
+            operands.append(ctx.resolve_index(extra))
+        v = Operation.create(
+            "func.call",
+            results=[ctx.f64],
+            operands=operands,
+            attributes={"callee": FlatSymbolRefAttr.get(node.function)},
+        ).results[0]
+    elif isinstance(node, Variable):
         raise NotImplementedError(
-            f"{type(node).__name__} has no op-builder emitter -- this means the form "
-            "needs a feature (coefficients/constants) this prototype doesn't cover yet."
+            "Variable has no op-builder emitter -- this means the form needs a feature "
+            "(constants) this prototype doesn't cover yet."
         )
     else:
         raise NotImplementedError(f"No op-builder emitter for expression node type {type(node)}")
@@ -824,6 +881,203 @@ def _emit_affine_tetrahedron_geometry_function(
         Operation.create("func.return")
 
 
+def _resolve_coefficient_function_index(
+    idx: int | str,
+    dof_var: str,
+    dof_val: Value,
+    point_var: str | None,
+    point_val: Value | None,
+    index_t,
+) -> Value:
+    """Resolve one ArrayEntry index inside a coefficient function's own body.
+
+    Covers exactly the index shapes insert_coefficient_functions /
+    tabulate_finite_elements can produce there: a literal int (a derivative
+    or component index, or the "0" tabulate_finite_elements uses for a
+    size-1 axis); the function's own dof-loop variable (`dof_var`) or
+    point-index argument (`point_var`), each bound to their MLIR Value
+    directly rather than re-resolved via a shared ctx.index_vars map (this
+    function has no such map -- see _emit_coefficient_function); or
+    insert_coefficient_functions' own "<offset> + <dof-var>" compound
+    string, used when a coefficient does not start at offset 0 in the
+    shared coefficients buffer (see that function's `w_index`/
+    `offset_by_count`).
+    """
+    if isinstance(idx, int):
+        return _const_index_value(index_t, idx)
+    assert isinstance(idx, str)
+    if idx == dof_var:
+        return dof_val
+    if point_var is not None and idx == point_var:
+        assert point_val is not None
+        return point_val
+    if idx.lstrip("-").isdigit():
+        return _const_index_value(index_t, int(idx))
+    if " + " in idx:
+        offset_str, var = idx.split(" + ", 1)
+        assert var == dof_var, f"Unexpected coefficient index expression {idx!r}"
+        offset = _const_index_value(index_t, int(offset_str))
+        return _op2("arith.addi", index_t, offset, dof_val)
+    raise NotImplementedError(f"Cannot resolve coefficient-function index {idx!r}")
+
+
+def _emit_coefficient_expr(
+    node: GraphNode,
+    dof_var: str,
+    dof_val: Value,
+    point_var: str | None,
+    point_val: Value | None,
+    w_val: Value,
+    table_types: dict[str, Any],
+    local_global_val: dict[str, Value],
+    f64,
+    index_t,
+) -> Value:
+    """Emit ops for one node of a coefficient function's summed expression.
+
+    Deliberately separate from the main `_emit_node` dispatch used for the
+    assembly function's own body: after tabulate_finite_elements, a
+    coefficient function's body is always exactly `Mult(ArrayEntry(fe_table,
+    ...), ArrayEntry(symbols.coefficients, (w_index,)))` (see
+    insert_coefficient_functions), so only Mult/ArrayEntry need handling
+    here. Unlike the main function, this one is its own separate func.func
+    (see _emit_coefficient_function), so an FE-table ArrayEntry needs its
+    own local `memref.get_global` (module-scope Values from the assembly
+    function's entry block cannot be referenced from a different function's
+    region), lazily emitted into `local_global_val` on first use; a
+    coefficients-array ArrayEntry instead reads this function's own `w_val`
+    argument directly.
+    """
+    if isinstance(node, Mult):
+        a = _emit_coefficient_expr(
+            node.first,
+            dof_var,
+            dof_val,
+            point_var,
+            point_val,
+            w_val,
+            table_types,
+            local_global_val,
+            f64,
+            index_t,
+        )
+        b = _emit_coefficient_expr(
+            node.second,
+            dof_var,
+            dof_val,
+            point_var,
+            point_val,
+            w_val,
+            table_types,
+            local_global_val,
+            f64,
+            index_t,
+        )
+        return _op2("arith.mulf", f64, a, b)
+    if isinstance(node, ArrayEntry):
+        if node.array == symbols.coefficients:
+            mem = w_val
+        else:
+            if node.array not in local_global_val:
+                local_global_val[node.array] = Operation.create(
+                    "memref.get_global",
+                    results=[table_types[node.array]],
+                    attributes={"name": FlatSymbolRefAttr.get(node.array)},
+                ).results[0]
+            mem = local_global_val[node.array]
+        idx = [
+            _resolve_coefficient_function_index(i, dof_var, dof_val, point_var, point_val, index_t)
+            for i in node.index
+        ]
+        return _memref_load(mem, idx, f64)
+    raise NotImplementedError(
+        f"No op-builder emitter for coefficient-function expression node type {type(node)}"
+    )
+
+
+def _emit_coefficient_function(
+    fname: str,
+    inputs: list[Variable],
+    body: GraphNode,
+    table_types: dict[str, Any],
+    f64,
+    index_t,
+    coeffs_ty,
+) -> None:
+    """Emit a standalone func.func for one insert_coefficient_functions() entry.
+
+    `inputs`/`body` are exactly the (input Variables, function body) pair
+    insert_coefficient_functions/uflx_mlir.lowering.lower_form returns for
+    this function name. `body` always has the fixed shape that function
+    produces (see its own docstring):
+
+        Block((Declare(dtype, acc, 0.0),
+               Loop(dof, 0, ndofs, AccumulateToVariable(acc, expr)),
+               Return(Variable(dtype, acc))))
+
+    MLIR values are SSA -- there is no mutable variable to declare and
+    accumulate into as the C backend does -- so this translates the
+    Declare/Loop/AccumulateToVariable/Return shape into a single `scf.for`
+    carrying the running sum as a float `iter_arg`, yielding the final sum
+    as the loop's own result and returning that directly.
+    """
+    assert isinstance(body, Block) and len(body.statements) == 3
+    declare, loop, ret = body.statements
+    assert isinstance(declare, Declare)
+    assert isinstance(loop, Loop)
+    assert isinstance(loop.body, AccumulateToVariable) and loop.body.variable == declare.variable
+    assert isinstance(ret, Return)
+    assert isinstance(ret.body, Variable) and ret.body._variable == declare.variable
+    assert isinstance(loop.start, int) and isinstance(loop.end, int) and loop.start == 0
+
+    has_point_arg = len(inputs) > 1
+    assert inputs[0]._dtype == "const double* restrict"
+    arg_types = [coeffs_ty] + ([index_t] if has_point_arg else [])
+    func_ty = FunctionType.get(arg_types, [f64])
+    func_op = Operation.create(
+        "func.func",
+        attributes={
+            "sym_name": StringAttr.get(fname),
+            "function_type": TypeAttr.get(func_ty),
+            "llvm.emit_c_interface": UnitAttr.get(),
+        },
+        regions=1,
+    )
+    entry = func_op.regions[0].blocks.append(*arg_types)
+    with InsertionPoint(entry):
+        w_val = entry.arguments[0]
+        point_val = entry.arguments[1] if has_point_arg else None
+        point_var = inputs[1]._variable if has_point_arg else None
+
+        lb = _const_index_value(index_t, loop.start)
+        ub = _const_index_value(index_t, loop.end)
+        step = _const_index_value(index_t, 1)
+        zero = _const_f64_value(f64, float(declare.value))
+
+        for_op = Operation.create(
+            "scf.for", results=[f64], operands=[lb, ub, step, zero], regions=1
+        )
+        block = for_op.regions[0].blocks.append(index_t, f64)
+        with InsertionPoint(block):
+            dof_val, acc_val = block.arguments
+            local_global_val: dict[str, Value] = {}
+            term = _emit_coefficient_expr(
+                loop.body.body,
+                loop.variable,
+                dof_val,
+                point_var,
+                point_val,
+                w_val,
+                table_types,
+                local_global_val,
+                f64,
+                index_t,
+            )
+            new_acc = _op2("arith.addf", f64, acc_val, term)
+            Operation.create("scf.yield", operands=[new_acc])
+        Operation.create("func.return", operands=[for_op.results[0]])
+
+
 def generate_mlir_module(
     form,
     degree: int,
@@ -857,7 +1111,7 @@ def generate_mlir_module(
         via the Module's own reference to it.
     """
     ncoorddofs, tdim = coordinate_shape(form)
-    tables, graph, geometry = lower_form(form, degree, cell)
+    tables, graph, geometry, coefficient_functions = lower_form(form, degree, cell)
     root = graph.root
     chain, add_node = walk_loop_chain(root)
     chain = reorder_quadrature_outermost(chain)
@@ -883,6 +1137,12 @@ def generate_mlir_module(
         a_ty = MemRefType.get(list(a_shape), f64)
         coords_ty = MemRefType.get([ncoorddofs, tdim], f64)
         geometry_ty = MemRefType.get([geometry.output_size], f64) if geometry is not None else None
+        # Unranked-length: the coefficients buffer's actual size depends on
+        # how many distinct Coefficients the form uses and their element
+        # dimensions (see insert_coefficient_functions' offset_by_count),
+        # which isn't known here -- mirrors the C backend's own
+        # `const double* restrict` (no static size either).
+        coeffs_ty = MemRefType.get([ShapedType.get_dynamic_size()], f64)
 
         ctx = _OpCtx(
             a_shape=a_shape,
@@ -921,7 +1181,19 @@ def generate_mlir_module(
                     kernel_name, geometry_ty, coords_ty, f64, index_t
                 )
 
-            func_ty = FunctionType.get([a_ty, coords_ty], [])
+            # Each coefficient gets its own standalone func.func (a dof
+            # summation loop) -- see _emit_coefficient_function -- called
+            # from the assembly function's own body wherever
+            # insert_coefficient_functions left a FunctionCall node (see
+            # _emit_node's FunctionCall branch below).
+            for fname in sorted(coefficient_functions):
+                _, c_inputs, c_body = coefficient_functions[fname]
+                _emit_coefficient_function(
+                    fname, c_inputs, c_body, table_types, f64, index_t, coeffs_ty
+                )
+
+            arg_types = [a_ty, coords_ty] + ([coeffs_ty] if coefficient_functions else [])
+            func_ty = FunctionType.get(arg_types, [])
             func_op = Operation.create(
                 "func.func",
                 attributes={
@@ -931,10 +1203,12 @@ def generate_mlir_module(
                 },
                 regions=1,
             )
-            entry = func_op.regions[0].blocks.append(a_ty, coords_ty)
+            entry = func_op.regions[0].blocks.append(*arg_types)
             with InsertionPoint(entry):
                 ctx.a_val = entry.arguments[0]  # type: ignore[attr-defined]
                 ctx.coords_val = entry.arguments[1]  # type: ignore[attr-defined]
+                if coefficient_functions:
+                    ctx.coeffs_val = entry.arguments[2]
 
                 for i in sorted(int_constants):
                     ctx.index_const[i] = _const_index(ctx, i)

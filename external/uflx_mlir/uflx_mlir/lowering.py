@@ -35,8 +35,12 @@ from uflx.graphs import Graph, GraphNode, NodeOrder, as_graph, generate_graph
 from uflx.integrals import AbstractMeasure, dx
 from uflx.maps import apply_push_forwards
 from uflx.tensors import Matrix
-from uflx_codegeneration.algorithms import expand_inner_products, tabulate_finite_elements
-from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop
+from uflx_codegeneration.algorithms import (
+    expand_inner_products,
+    insert_coefficient_functions,
+    tabulate_finite_elements,
+)
+from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, Loop, Variable
 from uflx_codegeneration.quadrature import (
     QuadratureLoop,
     QuadratureRule,
@@ -132,7 +136,12 @@ def _expand_affine_tetrahedron_geometry(expression: GraphNode, cell: basix.CellT
 
 def lower_form(
     form, degree: int, cell: basix.CellType
-) -> tuple[dict[str, np.ndarray], Graph, GeometryKernelSpec | None]:
+) -> tuple[
+    dict[str, np.ndarray],
+    Graph,
+    GeometryKernelSpec | None,
+    dict[str, tuple[str, list[Variable], GraphNode]],
+]:
     """Lower a UFLx form to a graph of arithmetic/loop/table nodes.
 
     Runs uflx_codegeneration's own pipeline stages, with a quadrature rule
@@ -144,11 +153,21 @@ def lower_form(
         cell: The reference cell the form is integrated over.
 
     Returns:
-        A tuple (tables, graph, geometry): `tables` maps table name to its constant
-        numpy array (quadrature weights, tabulated basis functions, ...);
-        `graph` is the fully-lowered DAG whose root is a chain of
-        Loop/QuadratureLoop nodes ending in a single AddToLocalTensor; and
-        `geometry` describes a separately extracted geometry kernel, if any.
+        A tuple (tables, graph, geometry, coefficient_functions): `tables` maps
+        table name to its constant numpy array (quadrature weights, tabulated
+        basis functions, ...) -- including any tables referenced only from a
+        coefficient function's own body, see below; `graph` is the
+        fully-lowered DAG whose root is a chain of Loop/QuadratureLoop nodes
+        ending in a single AddToLocalTensor; `geometry` describes a
+        separately extracted geometry kernel, if any; and
+        `coefficient_functions` mirrors uflx_codegeneration.generate.generate()'s
+        own `geometry_functions`/`coefficient_functions` dicts -- one entry
+        per distinct (coefficient, derivative, component) combination the
+        form actually uses, mapping a generated function name to (return
+        dtype, input Variables, fully-tabulated function body). `graph`
+        contains a FunctionCall node calling each such name in place of the
+        coefficient's evaluated value -- see
+        uflx_codegeneration.algorithms.insert_coefficient_functions.
     """
     qdeg = max(2 * (degree - 1), 1)
     points, weights = basix.make_quadrature(cell, qdeg)
@@ -175,12 +194,33 @@ def lower_form(
     expression = _expand_affine_tetrahedron_geometry(expression, cell)
     expression = expand_geometry(expression)
     expression = expand_inner_products(expression)
+    # Coefficients are only replaced with a runtime dof-summation once any
+    # differentiation (expand_geometry) and component extraction
+    # (expand_inner_products) has finished with them -- mirrors
+    # uflx_codegeneration.generate.generate()'s own ordering, see
+    # EvaluatedReferenceCoefficientBasisFunction.
+    coefficient_functions, expression = insert_coefficient_functions(expression)
     expression = take_real_part(expression)
 
     q_tables, expression = tabulate_quadrature(expression)
     fe_tables, expression = tabulate_finite_elements(expression)
     tables = {**q_tables, **fe_tables}
-    return tables, generate_graph(expression), geometry
+
+    # Each coefficient function's own body still contains untabulated
+    # EvaluatedReferenceBasisFunction table-lookup nodes (see
+    # insert_coefficient_functions' docstring) -- tabulate each body
+    # separately, exactly as uflx_codegeneration.generate.generate()'s own
+    # per-function emission loop does, and fold the resulting tables into
+    # the same `tables` dict the caller declares as MLIR memref.globals
+    # (table names come from the shared global variable namer, so they
+    # cannot collide with the main graph's own table names).
+    tabulated_coefficient_functions: dict[str, tuple[str, list[Variable], GraphNode]] = {}
+    for fname, (dtype, inputs, body) in coefficient_functions.items():
+        ftables, body = tabulate_finite_elements(body)
+        tables.update(ftables)
+        tabulated_coefficient_functions[fname] = (dtype, inputs, body)
+
+    return tables, generate_graph(expression), geometry, tabulated_coefficient_functions
 
 
 def collect_int_constants(root: GraphNode, a_shape: tuple[int, ...]) -> set[int]:

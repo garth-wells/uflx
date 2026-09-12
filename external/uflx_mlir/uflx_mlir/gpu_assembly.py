@@ -285,7 +285,11 @@ def generate_csr_entry_module(
             the loop chain isn't the standard quadrature-plus-two-dof-axis
             shape, or if the two dof axes have unequal length.
     """
-    tables, graph, geometry = lower_form(form, degree, cell)
+    tables, graph, geometry, _coefficient_functions = lower_form(form, degree, cell)
+    if _coefficient_functions:
+        raise NotImplementedError(
+            "generate_csr_entry_module does not yet support forms with Coefficients."
+        )
     if geometry is None:
         raise NotImplementedError(
             "generate_csr_entry_module only supports forms whose geometry "
@@ -546,7 +550,11 @@ def generate_csr_assembly_module(
         `ncells * layout.geometry_size`, not `layout.geometry_size`
         itself).
     """
-    tables, graph, geometry = lower_form(form, degree, cell)
+    tables, graph, geometry, _coefficient_functions = lower_form(form, degree, cell)
+    if _coefficient_functions:
+        raise NotImplementedError(
+            "generate_csr_assembly_module does not yet support forms with Coefficients."
+        )
     if geometry is None:
         raise NotImplementedError(
             "generate_csr_assembly_module only supports forms whose geometry "
@@ -858,7 +866,11 @@ def generate_csr_entry_gpu_module(
     gpu_launch_name(kernel_name)), both taking the same
     (Avals, Acols, Arowptr, geometry, cell_dofs, cell_id) argument list.
     """
-    tables, graph, geometry = lower_form(form, degree, cell)
+    tables, graph, geometry, _coefficient_functions = lower_form(form, degree, cell)
+    if _coefficient_functions:
+        raise NotImplementedError(
+            "generate_csr_entry_gpu_module does not yet support forms with Coefficients."
+        )
     if geometry is None:
         raise NotImplementedError(
             "generate_csr_entry_gpu_module only supports forms whose geometry "
@@ -1221,7 +1233,11 @@ def generate_csr_assembly_gpu_module(
     """
     if not isinstance(cells_per_block, int) or not 1 <= cells_per_block <= 64:
         raise ValueError("cells_per_block must be an integer between 1 and 64")
-    tables, graph, geometry = lower_form(form, degree, cell)
+    tables, graph, geometry, _coefficient_functions = lower_form(form, degree, cell)
+    if _coefficient_functions:
+        raise NotImplementedError(
+            "generate_csr_assembly_gpu_module does not yet support forms with Coefficients."
+        )
     if geometry is None:
         raise NotImplementedError(
             "generate_csr_assembly_gpu_module only supports forms whose geometry "
