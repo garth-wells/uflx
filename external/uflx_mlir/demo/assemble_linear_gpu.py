@@ -4,8 +4,9 @@ Run from any directory with UFLx and MLIR installed:
     python demo/assemble_linear_gpu.py --degree 1 --n 20 --backend cuda --chip sm_89
     python demo/assemble_linear_gpu.py --degree 2 --n 20 --backend amd --chip gfx1100
 
-The demo's mesh/dof-map builder supports P1/P2. The generator is also tested
-at P3/P4. Coefficients are packed per cell from one shared global vector.
+The mesh/DOF-map builder supports P1 through P4, including shared edge and
+face nodes and cell-interior nodes. Coefficients are packed per cell from
+one shared global vector.
 Pass --cells-per-block 1 to compare against one cell per block.
 """
 
@@ -14,8 +15,9 @@ from __future__ import annotations
 import argparse
 
 import numpy as np
-from assemble_mesh_gpu import CELL, _reference_stiffness_cell, build_dofmap, build_mesh
+from assemble_mesh_gpu import CELL, _reference_stiffness_cell, build_mesh
 from basix_uflx import element
+from lagrange_dofmap import build_dofmap
 from uflx import Coefficient, TestFunction, coordinate_element, dx, function_space, grad, inner
 
 from uflx_mlir.gpu_linear import generate_linear_assembly_gpu_module
@@ -68,7 +70,7 @@ def assemble(n: int, degree: int, backend: str, chip: str, cells_per_block: int 
 def main() -> None:
     """Check a tiny mesh, then run the selected problem size."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--degree", type=int, choices=[1, 2], default=1)
+    parser.add_argument("--degree", type=int, choices=[1, 2, 3, 4], default=1)
     parser.add_argument("--n", type=int, default=6)
     parser.add_argument("--backend", choices=["cuda", "amd"], default="cuda")
     parser.add_argument("--chip")

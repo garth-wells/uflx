@@ -257,7 +257,8 @@ The generator currently requires one integral, one test-DOF axis and at most
 256 local test DOFs, with the CPU lowering's existing geometry/scalar limitations.
 Gradient-action tests cover affine tetrahedra P1 through P4 on CUDA and HIP,
 including multiple cells, distinct cell geometries and coefficients, and shared
-DOF scattering. The small demo mesh builder supports P1/P2:
+DOF scattering. The demo mesh builder supports P1 through P4, including orientation-correct
+sharing of edge and face nodes and P4 cell-interior nodes:
 
 ```bash
 python demo/assemble_linear_gpu.py --degree 1 --n 20 --backend cuda --chip sm_89
