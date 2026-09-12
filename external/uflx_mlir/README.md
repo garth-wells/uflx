@@ -207,3 +207,64 @@ brought over too, under `demo/` -- see that folder's own README. Two of
 those scripts (`demo/ffcx_compare.py`, `demo/ffcx_compare_uflx.py`) need
 the optional `fenics-ffcx` dependency, which is why they live in `demo/`
 rather than as part of this package's own installable surface.
+
+
+## GPU linear-form vectors
+
+`generate_linear_assembly_gpu_module` emits batched vector assembly for real
+linear forms, including `inner(grad(w), grad(v)) * dx` and `inner(w, v) * dx`
+with `w` a runtime `Coefficient`. It reuses the CPU coefficient lowering and
+supports multiple coefficients, including different coefficient/test spaces.
+The existing CSR matrix generators retain their bilinear-form interface.
+
+```python
+from uflx_mlir import generate_linear_assembly_gpu_module
+from uflx_mlir.gpu_runtime import assemble_linear_gpu
+
+module, layout = generate_linear_assembly_gpu_module(
+    form, degree, "assemble_vector", basix.CellType.tetrahedron
+)
+seconds = assemble_linear_gpu(
+    module, layout, "assemble_vector", coordinates, coefficients, cell_dofs,
+    output, backend="cuda", chip="sm_89"
+)
+```
+
+Inputs are C-contiguous NumPy arrays: `coordinates` is float64 with shape
+`(ncells, *layout.coordinate_shape)`, `coefficients` is float64 with shape
+`(ncells, layout.coefficient_size)`, and `cell_dofs` is int32 with shape
+`(ncells, layout.ndofs)`. Within each cell, coefficient DOF blocks are concatenated
+in increasing `Coefficient.count` order, exactly as in the CPU emitter. Pass
+`(ncells, 0)` coefficients for a coefficient-free form. The writable float64
+`output` vector is **accumulated into**, so initialize it to zero for fresh
+assembly. The execution helper allocates device memory, transfers inputs,
+launches, synchronizes and copies output back. It consumes the MLIR module;
+generate a new module before another invocation. The returned time includes only
+one launch and synchronization, with no explicit warm-up.
+
+Each GPU thread owns one test DOF and sums quadrature serially, making one atomic
+add into the global vector. This avoids quadrature reductions. Threads per cell
+are rounded up to a power of two; low orders pack multiple cells into the z
+axis toward 128 threads per block. The default tetrahedral P1/P2/P3/P4 blocks
+are `(4, 1, 32)`, `(16, 1, 8)`, `(32, 1, 4)` and `(64, 1, 2)`. Both excess DOF
+threads and partial final blocks are guarded before accessing arrays. Override
+`cells_per_block` or `target_block_size` in the generator to tune a device.
+The portable block limit is 256 threads (the current HIP code-object limit),
+with at most 64 cells per block. These defaults are a DOF-based heuristic, not
+an autotuned optimum. Quadrature-parallel execution is not implemented.
+
+The generator currently requires one integral, one test-DOF axis and at most
+256 local test DOFs, with the CPU lowering's existing geometry/scalar limitations.
+Gradient-action tests cover affine tetrahedra P1 through P4 on CUDA and HIP,
+including multiple cells, distinct cell geometries and coefficients, and shared
+DOF scattering. The small demo mesh builder supports P1/P2:
+
+```bash
+python demo/assemble_linear_gpu.py --degree 1 --n 20 --backend cuda --chip sm_89
+python demo/assemble_linear_gpu.py --degree 2 --n 20 --backend amd --chip gfx1100
+```
+
+Run hardware tests with `UFLX_GPU_BACKEND=cuda` or `UFLX_GPU_BACKEND=amd`, and
+optionally `UFLX_GPU_CHIP`, using `pytest test/test_gpu_linear.py`. Hardware
+execution tests skip unless a backend is explicitly selected; generation and
+input-validation tests run wherever MLIR Python bindings are available.

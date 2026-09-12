@@ -13,8 +13,9 @@ from uflx_mlir.geometry import geometry_kernel_name
 
 if TYPE_CHECKING:
     from uflx_mlir.emit import generate_mlir_module
+    from uflx_mlir.gpu_linear import generate_linear_assembly_gpu_module
 
-__all__ = ["generate_mlir_module", "geometry_kernel_name"]
+__all__ = ["generate_linear_assembly_gpu_module", "generate_mlir_module", "geometry_kernel_name"]
 
 
 def __getattr__(name: str) -> Any:
@@ -23,4 +24,8 @@ def __getattr__(name: str) -> Any:
         from uflx_mlir.emit import generate_mlir_module
 
         return generate_mlir_module
+    if name == "generate_linear_assembly_gpu_module":
+        from uflx_mlir.gpu_linear import generate_linear_assembly_gpu_module
+
+        return generate_linear_assembly_gpu_module
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
