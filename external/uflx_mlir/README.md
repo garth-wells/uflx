@@ -225,8 +225,15 @@ module, layout = generate_linear_assembly_gpu_module(
     form, degree, "assemble_vector", basix.CellType.tetrahedron
 )
 seconds = assemble_linear_gpu(
-    module, layout, "assemble_vector", coordinates, coefficients, cell_dofs,
-    output, backend="cuda", chip="sm_89"
+    module,
+    layout,
+    "assemble_vector",
+    coordinates,
+    coefficients,
+    cell_dofs,
+    output,
+    backend="cuda",
+    chip="sm_89",
 )
 ```
 
@@ -240,18 +247,51 @@ in increasing `Coefficient.count` order, exactly as in the CPU emitter. Pass
 assembly. The execution helper allocates device memory, transfers inputs,
 launches, synchronizes and copies output back. It consumes the MLIR module;
 generate a new module before another invocation. The returned time includes only
-one launch and synchronization, with no explicit warm-up.
+one action launch and synchronization, with no explicit warm-up. Geometry
+preparation, when needed, completes before this timer starts.
 
-Each GPU thread owns one test DOF and sums quadrature serially, making one atomic
-add into the global vector. This avoids quadrature reductions. Threads per cell
-are rounded up to a power of two; low orders pack multiple cells into the z
-axis toward 128 threads per block. The default tetrahedral P1/P2/P3/P4 blocks
-are `(4, 1, 32)`, `(16, 1, 8)`, `(32, 1, 4)` and `(64, 1, 2)`. Both excess DOF
-threads and partial final blocks are guarded before accessing arrays. Override
-`cells_per_block` or `target_block_size` in the generator to tune a device.
-The portable block limit is 256 threads (the current HIP code-object limit),
-with at most 64 cells per block. These defaults are a DOF-based heuristic, not
-an autotuned optimum. Quadrature-parallel execution is not implemented.
+Affine tetrahedral stiffness actions use a stored geometry metric by default.
+The companion GPU kernel `geometry_kernel_name(name)` computes
+`G = abs(det(J)) * inv(J) * inv(J).T` once per cell. Only six float64 values are
+stored per cell, in order `(G00, G01, G02, G11, G12, G22)`. Quadrature weights
+remain in the action kernel, so the metric is independent of polynomial degree
+and quadrature rule. Recompute it when the mesh coordinates change.
+
+For these kernels `layout.geometry_size == 6`, and the action's second device
+buffer is the flattened metric instead of coordinates. The companion geometry
+kernel takes two flattened float64 memrefs `(metric, coordinates)`; launch it
+with one x thread per cell, block `(128, 1, 1)` and grid
+`((ncells + 127) // 128, 1, 1)`. Applications managing persistent device buffers
+can run geometry setup once and then reuse its output for repeated actions.
+`assemble_linear_gpu` handles this setup automatically, or accepts a precomputed
+host metric array through `geometry=metric` to skip the setup kernel.
+
+Set `precompute_geometry=False` in the generator (or `--inline-geometry` in the
+demo) to retain the original path for comparison. Forms whose geometry cannot
+be fully represented by the extracted metric retain their coordinate buffer
+and have `layout.geometry_size == 0`.
+
+The default stiffness action now follows a cooperative quadrature schedule.
+Each block stages cell coefficients and basis tables in aligned shared memory.
+One thread per quadrature point evaluates the coefficient gradient and applies
+the metric. After a block-wide barrier, one thread per test DOF contracts
+those shared fluxes against the test gradient and makes one global atomic add.
+The fixed-size coefficient and quadrature contractions are unrolled. This avoids
+recomputing the coefficient gradient for every test DOF.
+
+For this path, block x selects cells and block y selects quadrature points or
+DOFs. Threads per cell are `max(ndofs, nquadrature)`. The default P1/P2/P3/P4
+blocks are `(64, 4, 1)`, `(25, 10, 1)`, `(12, 20, 1)`, and `(7, 35, 1)`.
+All threads participate in the barriers, including padding cells. Override
+`cells_per_block` or `target_block_size` to tune the grouping, within the
+256-thread limit. Duplicate basis tables share one buffer. The generator falls
+back to serial quadrature if its shared-memory estimate exceeds 48 KiB.
+
+Set `cooperative=False` in the generator, or `--serial-quadrature` in the demo,
+to compare the previous stored-metric kernel. That path keeps one thread per
+test DOF, a serial quadrature loop, and cell grouping in z. When unspecified,
+`target_block_size` is 256 for cooperative quadrature and 128 for the serial
+path. Other linear forms retain their existing fallback behavior.
 
 The generator currently requires one integral, one test-DOF axis and at most
 256 local test DOFs, with the CPU lowering's existing geometry/scalar limitations.

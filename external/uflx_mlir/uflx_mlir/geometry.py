@@ -16,9 +16,11 @@ from uflx.expressions import (
     Mult,
     expression_sum,
 )
+from uflx.functions import Coefficient, ReferenceCoefficient
 from uflx.geometry import JacobianDeterminant, JacobianInverseTranspose
 from uflx.graphs import GraphNode, as_graph
 from uflx.operators import Inner, ReferenceGrad
+from uflx_codegeneration.coefficients import EvaluatedReferenceCoefficientBasisFunction
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,18 @@ def _poisson_metric_contraction(node: GraphNode):
     if len(domain.elements) != 1 or not domain.is_affine_map:
         return None
 
+    # For a linear action, apply the metric to the coefficient gradient once,
+    # then contract with each test gradient. Symmetry makes this equivalent.
+    coefficient_types = (
+        Coefficient,
+        ReferenceCoefficient,
+        EvaluatedReferenceCoefficientBasisFunction,
+    )
+    if any(isinstance(n, coefficient_types) for n in as_graph(left.second)) and not any(
+        isinstance(n, coefficient_types) for n in as_graph(right.second)
+    ):
+        left, right = right, left
+    assert isinstance(left.second, ReferenceGrad) and isinstance(right.second, ReferenceGrad)
     grad_left = left.second.expand_geometry()
     grad_right = right.second.expand_geometry()
     assert isinstance(grad_left, AbstractExpression)

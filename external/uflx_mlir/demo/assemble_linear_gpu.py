@@ -8,6 +8,9 @@ The mesh/DOF-map builder supports P1 through P4, including shared edge and
 face nodes and cell-interior nodes. Coefficients are packed per cell from
 one shared global vector.
 Pass --cells-per-block 1 to compare against one cell per block.
+Affine metrics are precomputed once on the GPU before the timed action.
+Pass --inline-geometry to compare the previous geometry path.
+Pass --serial-quadrature to retain the previous test-DOF-parallel action.
 """
 
 from __future__ import annotations
@@ -24,7 +27,15 @@ from uflx_mlir.gpu_linear import generate_linear_assembly_gpu_module
 from uflx_mlir.gpu_runtime import assemble_linear_gpu
 
 
-def assemble(n: int, degree: int, backend: str, chip: str, cells_per_block: int | None):
+def assemble(
+    n: int,
+    degree: int,
+    backend: str,
+    chip: str,
+    cells_per_block: int | None,
+    inline_geometry: bool = False,
+    serial_quadrature: bool = False,
+):
     """Assemble a mesh and return its vector and launch measurements."""
     e = element("Lagrange", "tetrahedron", degree, lagrange_variant="equispaced")
     domain = coordinate_element(element("Lagrange", "tetrahedron", 1, shape=(3,)))
@@ -32,7 +43,13 @@ def assemble(n: int, degree: int, backend: str, chip: str, cells_per_block: int 
     w, v = Coefficient(space), TestFunction(space)
     form = inner(grad(w), grad(v)) * dx
     module, layout = generate_linear_assembly_gpu_module(
-        form, degree, "assemble_linear", CELL, cells_per_block=cells_per_block
+        form,
+        degree,
+        "assemble_linear",
+        CELL,
+        cells_per_block=cells_per_block,
+        precompute_geometry=not inline_geometry,
+        cooperative=not serial_quadrature,
     )
     points, cells = build_mesh(n)
     dofs, ndofs, nglobal = build_dofmap(cells, len(points), degree)
@@ -62,7 +79,9 @@ def assemble(n: int, degree: int, backend: str, chip: str, cells_per_block: int 
     print(
         f"P{degree} {backend}: n={n}, {len(cells)} cells, {nglobal} global DOFs, "
         f"block={layout.block_shape}, grid={layout.grid_shape(len(cells))}, "
-        f"quadrature points/cell={layout.quadrature_points}\n"
+        f"quadrature points/cell={layout.quadrature_points}, "
+        f"geometry={'stored' if layout.geometry_size else 'inline'}, "
+        f"quadrature={'cooperative' if layout.cooperative else 'serial'}\n"
         f"  launch + sync: {elapsed * 1e3:.6f} ms, {nglobal / elapsed:.3e} DOFs/s"
     )
 
@@ -75,13 +94,39 @@ def main() -> None:
     parser.add_argument("--backend", choices=["cuda", "amd"], default="cuda")
     parser.add_argument("--chip")
     parser.add_argument("--cells-per-block", type=int)
+    parser.add_argument(
+        "--inline-geometry",
+        action="store_true",
+        help="compute geometry inside each action instead of precomputing it",
+    )
+    parser.add_argument(
+        "--serial-quadrature",
+        action="store_true",
+        help="use the previous quadrature loop per test DOF",
+    )
     args = parser.parse_args()
     if args.n < 1:
         parser.error("--n must be positive")
     chip = args.chip or ("sm_80" if args.backend == "cuda" else "gfx1100")
-    assemble(1, args.degree, args.backend, chip, args.cells_per_block)
+    assemble(
+        1,
+        args.degree,
+        args.backend,
+        chip,
+        args.cells_per_block,
+        args.inline_geometry,
+        args.serial_quadrature,
+    )
     if args.n != 1:
-        assemble(args.n, args.degree, args.backend, chip, args.cells_per_block)
+        assemble(
+            args.n,
+            args.degree,
+            args.backend,
+            chip,
+            args.cells_per_block,
+            args.inline_geometry,
+            args.serial_quadrature,
+        )
     print("Reference and partition-of-unity checks passed. Timing excludes setup and transfers.")
 
 

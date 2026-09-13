@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from mlir.ir import Module
 
+from uflx_mlir.geometry import geometry_kernel_name
 from uflx_mlir.gpu_assembly import (
     assemble_amdgcn_to_hsaco,
     extract_amdgcn_text,
@@ -34,6 +35,7 @@ def assemble_linear_gpu(
     chip: str = "sm_80",
     device: int = 0,
     rocm_path: str = "/opt/rocm",
+    geometry: np.ndarray | None = None,
 ) -> float:
     """Accumulate into output using CUDA or HIP device allocations.
 
@@ -41,7 +43,9 @@ def assemble_linear_gpu(
     The module is lowered in place; generate a fresh module for each call.
     Nonzero initial output is preserved. Returned seconds measure one launch
     and synchronization, excluding compilation, allocations and transfers.
-    No explicit warm-up is performed. Empty meshes return zero without a launch.
+    Stored geometry is computed by a separate GPU kernel before timing unless
+    supplied explicitly. No explicit action warm-up is performed. Empty meshes
+    return zero without a launch.
 
     Args:
         module: Fresh generated GPU module, consumed by lowering.
@@ -55,6 +59,10 @@ def assemble_linear_gpu(
         chip: Architecture, for example "sm_89" or "gfx1100".
         device: Device ordinal within the selected backend.
         rocm_path: ROCm installation used for AMD compilation and runtime.
+        geometry: Optional C-contiguous float64 array (ncells, layout.geometry_size)
+            containing abs(det(J)) * inv(J) * inv(J).T in packed symmetric order,
+            without quadrature weights. Supplying it skips geometry preparation.
+            Only supported when layout.geometry_size is nonzero.
 
     Returns:
         Synchronized kernel-launch wall time in seconds.
@@ -82,10 +90,24 @@ def assemble_linear_gpu(
     ):
         if array.dtype != dtype or not array.flags.c_contiguous:
             raise ValueError(f"arrays must be C-contiguous with dtype {dtype}")
+    if geometry is not None:
+        if not layout.geometry_size:
+            raise ValueError("this kernel does not accept stored geometry")
+        if geometry.shape != (ncells, layout.geometry_size):
+            raise ValueError("geometry has the wrong per-cell shape")
+        if geometry.dtype != np.float64 or not geometry.flags.c_contiguous:
+            raise ValueError("geometry must be C-contiguous with dtype float64")
     if ncells == 0:
         return 0.0
     if cell_dofs.min() < 0 or cell_dofs.max() >= len(output):
         raise ValueError("cell_dofs contain an out-of-range global DOF")
+    geometry_coordinates = None
+    geometry_input = coordinates
+    if layout.geometry_size:
+        if geometry is None:
+            geometry = np.zeros((ncells, layout.geometry_size), dtype=np.float64)
+            geometry_coordinates = coordinates
+        geometry_input = geometry
     rocm = Path(rocm_path)
     if backend == "cuda":
         lower_module_to_nvvm(module, cubin_chip=chip)
@@ -101,15 +123,18 @@ def assemble_linear_gpu(
         library,
         code,
         kernel_name,
-        [output, coordinates.reshape(-1), coefficients.reshape(-1), cell_dofs.reshape(-1)],
+        [output, geometry_input.reshape(-1), coefficients.reshape(-1), cell_dofs.reshape(-1)],
         layout.grid_shape(ncells),
         layout.block_shape,
         backend,
         device,
+        geometry_coordinates=geometry_coordinates,
     )
 
 
-def _launch(library, code, name, arrays, grid, block, backend, device) -> float:
+def _launch(
+    library, code, name, arrays, grid, block, backend, device, *, geometry_coordinates=None
+) -> float:
     """Launch four rank-1 memrefs; release all allocated resources on errors."""
     driver = ct.CDLL(library)
     pointer = ct.c_void_p
@@ -204,8 +229,9 @@ def _launch(library, code, name, arrays, grid, block, backend, device) -> float:
                 path.write_bytes(code)
                 check(load(ct.byref(module), os.fsencode(path)), "hipModuleLoad")
             check(get_function(ct.byref(function), module, name.encode()), "get kernel function")
-            arguments = []
-            for array in arrays:
+
+            def upload(array):
+                """Upload an array and return its rank-1 memref arguments."""
                 address = address_type()
                 check(allocate(ct.byref(address), max(1, array.nbytes)), "allocate device array")
                 allocations.append(address)
@@ -219,15 +245,45 @@ def _launch(library, code, name, arrays, grid, block, backend, device) -> float:
                 address_value = address.value
                 if address_value is None:
                     raise RuntimeError("Device allocation returned a null pointer")
-                arguments.extend(
-                    [
-                        address_type(address_value),
-                        address_type(address_value),
-                        ct.c_int64(0),
-                        ct.c_int64(array.size),
-                        ct.c_int64(1),
-                    ]
+                return [
+                    address_type(address_value),
+                    address_type(address_value),
+                    ct.c_int64(0),
+                    ct.c_int64(array.size),
+                    ct.c_int64(1),
+                ]
+
+            arguments = []
+            for array in arrays:
+                arguments.extend(upload(array))
+            if geometry_coordinates is not None:
+                setup = pointer()
+                check(
+                    get_function(ct.byref(setup), module, geometry_kernel_name(name).encode()),
+                    "get geometry kernel function",
                 )
+                geometry_args = arguments[5:10] + upload(geometry_coordinates.reshape(-1))
+                geometry_params = (pointer * len(geometry_args))(
+                    *(ct.cast(ct.byref(x), pointer) for x in geometry_args)
+                )
+                ncells = geometry_coordinates.shape[0]
+                check(
+                    launch(
+                        setup,
+                        (ncells + 127) // 128,
+                        1,
+                        1,
+                        128,
+                        1,
+                        1,
+                        0,
+                        None,
+                        geometry_params,
+                        None,
+                    ),
+                    "precompute geometry",
+                )
+                check(sync(), "synchronize geometry setup")
             parameters = (pointer * len(arguments))(
                 *(ct.cast(ct.byref(x), pointer) for x in arguments)
             )
