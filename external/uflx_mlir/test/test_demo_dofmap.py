@@ -39,10 +39,10 @@ def test_nodal_positions_and_shared_ids(builders, degree, permute):
     )
     # Verify Basix's basis ordering at its interpolation points, then independently
     # interpolate those points into physical space for every cell.
-    np.testing.assert_allclose(
-        element.tabulate(0, element.points)[0, :, :, 0], np.eye(ndofs), atol=1e-12
-    )
-    barycentric = np.column_stack((1 - element.points.sum(axis=1), element.points))
+    interpolation_points = np.asarray(element.points, dtype=np.float64)
+    basis = np.asarray(element.tabulate(0, interpolation_points), dtype=np.float64)
+    np.testing.assert_allclose(basis[0, :, :, 0], np.eye(ndofs), atol=1e-12)
+    barycentric = np.column_stack((1 - interpolation_points.sum(axis=1), interpolation_points))
     xyz = np.einsum("iv,cvd->cid", barycentric, points[cells])
     lattice = np.rint(xyz * (2 * degree)).astype(np.int64)
     np.testing.assert_allclose(xyz * (2 * degree), lattice, atol=1e-12)
