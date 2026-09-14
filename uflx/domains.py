@@ -43,6 +43,18 @@ class AbstractCoordinateElement(AbstractDomain):
     def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
         """Get the cells in the mesh."""
 
+    @property
+    def is_affine_map(self) -> bool:
+        """Whether the reference-to-physical map of this domain is affine.
+
+        True iff every coordinate element is degree 1 Lagrange on a simplex -- the
+        only case where the Jacobian is constant over the cell rather than varying
+        with position. Degree 1 Lagrange on a non-simplex (eg a quadrilateral) is
+        multilinear, not affine; see AbstractFiniteElement.lagrange_superdegree.
+        Static: depends only on cell shape and degree, never on actual coordinates.
+        """
+        return all(e.cell.is_simplex and e.lagrange_superdegree == 1 for e in self.elements)
+
 
 class CoordinateElement(AbstractCoordinateElement):
     """A coordinate element."""
