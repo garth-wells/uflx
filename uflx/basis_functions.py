@@ -13,7 +13,7 @@ from typing import Any
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
 from uflx.function_spaces import AbstractFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
+from uflx.functions import AbstractFunction
 from uflx.graphs import GraphNode
 from uflx.points import AbstractPoint
 from uflx.tensors import zero

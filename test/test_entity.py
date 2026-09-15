@@ -27,3 +27,9 @@ def test_euler_characteristic(entity):
                 + len(entity.sub_entities(2))
                 == 2
             )
+
+
+def test_is_simplex(entity):
+    """Test that is_simplex correctly identifies simplex vs tensor-product cells."""
+    simplex_names = {"point", "interval", "triangle", "tetrahedron"}
+    assert entity.is_simplex == (entity.name in simplex_names)
