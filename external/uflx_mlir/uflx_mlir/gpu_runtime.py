@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes as ct
-import os
-import tempfile
-import time
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +15,7 @@ from uflx_mlir.gpu_assembly import (
     lower_module_to_nvvm,
     lower_module_to_rocdl,
 )
+from uflx_mlir.gpu_driver import _launch, launch_isolated
 from uflx_mlir.gpu_linear import LinearAssemblyLayout
 
 
@@ -46,6 +43,8 @@ def assemble_linear_gpu(
     Stored geometry is computed by a separate GPU kernel before timing unless
     supplied explicitly. No explicit action warm-up is performed. Empty meshes
     return zero without a launch.
+    HIP execution uses a fresh worker process to isolate ROCm LLVM from MLIR.
+    Worker startup and array exchange are excluded from the returned timing.
 
     Args:
         module: Fresh generated GPU module, consumed by lowering.
@@ -119,7 +118,8 @@ def assemble_linear_gpu(
             extract_amdgcn_text(module), chip=chip, toolkit_path=str(rocm)
         )
         library = str(rocm / "lib/libamdhip64.so")
-    return _launch(
+    launch = launch_isolated if backend == "amd" else _launch
+    return launch(
         library,
         code,
         kernel_name,
@@ -129,192 +129,7 @@ def assemble_linear_gpu(
         backend,
         device,
         geometry_coordinates=geometry_coordinates,
+        geometry_name=geometry_kernel_name(kernel_name)
+        if geometry_coordinates is not None
+        else None,
     )
-
-
-def _launch(
-    library, code, name, arrays, grid, block, backend, device, *, geometry_coordinates=None
-) -> float:
-    """Launch four rank-1 memrefs; release all allocated resources on errors."""
-    driver = ct.CDLL(library)
-    pointer = ct.c_void_p
-    cuda = backend == "cuda"
-    address_type = ct.c_uint64 if cuda else pointer
-
-    def bind(name, *args):
-        fn = getattr(driver, name)
-        fn.restype = ct.c_int
-        fn.argtypes = list(args)
-        return fn
-
-    init = bind("cuInit" if cuda else "hipInit", ct.c_uint)
-    get_function = bind(
-        "cuModuleGetFunction" if cuda else "hipModuleGetFunction",
-        ct.POINTER(pointer),
-        pointer,
-        ct.c_char_p,
-    )
-    allocate = bind("cuMemAlloc_v2" if cuda else "hipMalloc", ct.POINTER(address_type), ct.c_size_t)
-    free = bind("cuMemFree_v2" if cuda else "hipFree", address_type)
-    unload = bind("cuModuleUnload" if cuda else "hipModuleUnload", pointer)
-    launch = bind(
-        "cuLaunchKernel" if cuda else "hipModuleLaunchKernel",
-        pointer,
-        ct.c_uint,
-        ct.c_uint,
-        ct.c_uint,
-        ct.c_uint,
-        ct.c_uint,
-        ct.c_uint,
-        ct.c_uint,
-        pointer,
-        ct.POINTER(pointer),
-        ct.POINTER(pointer),
-    )
-    sync = bind("cuCtxSynchronize" if cuda else "hipDeviceSynchronize")
-    api = {}
-    if cuda:
-        get_error = bind("cuGetErrorString", ct.c_int, ct.POINTER(ct.c_char_p))
-        load = bind("cuModuleLoadData", ct.POINTER(pointer), pointer)
-        api["htod"] = bind("cuMemcpyHtoD_v2", address_type, pointer, ct.c_size_t)
-        api["dtoh"] = bind("cuMemcpyDtoH_v2", pointer, address_type, ct.c_size_t)
-        get_device = bind("cuDeviceGet", ct.POINTER(ct.c_int), ct.c_int)
-        api["retain"] = bind("cuDevicePrimaryCtxRetain", ct.POINTER(pointer), ct.c_int)
-        api["release"] = bind("cuDevicePrimaryCtxRelease_v2", ct.c_int)
-        api["push"] = bind("cuCtxPushCurrent_v2", pointer)
-        api["pop"] = bind("cuCtxPopCurrent_v2", ct.POINTER(pointer))
-    else:
-        get_error = driver.hipGetErrorString
-        get_error.argtypes = [ct.c_int]
-        get_error.restype = ct.c_char_p
-        load = bind("hipModuleLoad", ct.POINTER(pointer), ct.c_char_p)
-        api["copy"] = bind("hipMemcpy", pointer, pointer, ct.c_size_t, ct.c_int)
-        api["set_device"] = bind("hipSetDevice", ct.c_int)
-        get_device = bind("hipGetDevice", ct.POINTER(ct.c_int))
-
-    def check(status, operation):
-        if status:
-            if cuda:
-                message = ct.c_char_p()
-                get_error(status, ct.byref(message))
-                detail = message.value
-            else:
-                detail = get_error(status)
-            raise RuntimeError(f"{operation}: {detail.decode() if detail else status}")
-
-    check(init(0), "initialize GPU driver")
-    module, function, context = pointer(), pointer(), pointer()
-    allocations = []
-    previous = ct.c_int()
-    selected = ct.c_int()
-    retained = pushed = selected_hip = False
-    cleanup = []
-    try:
-        if cuda:
-            check(get_device(ct.byref(selected), device), "cuDeviceGet")
-            check(api["retain"](ct.byref(context), selected), "cuDevicePrimaryCtxRetain")
-            retained = True
-            check(api["push"](context), "cuCtxPushCurrent")
-            pushed = True
-        else:
-            check(get_device(ct.byref(previous)), "hipGetDevice")
-            check(api["set_device"](device), "hipSetDevice")
-            selected_hip = True
-        with tempfile.TemporaryDirectory(prefix="uflx-linear-") as directory:
-            if cuda:
-                blob = ct.create_string_buffer(code)
-                check(load(ct.byref(module), blob), "cuModuleLoadData")
-            else:
-                path = Path(directory) / "kernel.hsaco"
-                path.write_bytes(code)
-                check(load(ct.byref(module), os.fsencode(path)), "hipModuleLoad")
-            check(get_function(ct.byref(function), module, name.encode()), "get kernel function")
-
-            def upload(array):
-                """Upload an array and return its rank-1 memref arguments."""
-                address = address_type()
-                check(allocate(ct.byref(address), max(1, array.nbytes)), "allocate device array")
-                allocations.append(address)
-                if array.nbytes:
-                    status = (
-                        api["htod"](address, pointer(array.ctypes.data), array.nbytes)
-                        if cuda
-                        else api["copy"](address, pointer(array.ctypes.data), array.nbytes, 1)
-                    )
-                    check(status, "copy to device")
-                address_value = address.value
-                if address_value is None:
-                    raise RuntimeError("Device allocation returned a null pointer")
-                return [
-                    address_type(address_value),
-                    address_type(address_value),
-                    ct.c_int64(0),
-                    ct.c_int64(array.size),
-                    ct.c_int64(1),
-                ]
-
-            arguments = []
-            for array in arrays:
-                arguments.extend(upload(array))
-            if geometry_coordinates is not None:
-                setup = pointer()
-                check(
-                    get_function(ct.byref(setup), module, geometry_kernel_name(name).encode()),
-                    "get geometry kernel function",
-                )
-                geometry_args = arguments[5:10] + upload(geometry_coordinates.reshape(-1))
-                geometry_params = (pointer * len(geometry_args))(
-                    *(ct.cast(ct.byref(x), pointer) for x in geometry_args)
-                )
-                ncells = geometry_coordinates.shape[0]
-                check(
-                    launch(
-                        setup,
-                        (ncells + 127) // 128,
-                        1,
-                        1,
-                        128,
-                        1,
-                        1,
-                        0,
-                        None,
-                        geometry_params,
-                        None,
-                    ),
-                    "precompute geometry",
-                )
-                check(sync(), "synchronize geometry setup")
-            parameters = (pointer * len(arguments))(
-                *(ct.cast(ct.byref(x), pointer) for x in arguments)
-            )
-            start = time.perf_counter()
-            check(launch(function, *grid, *block, 0, None, parameters, None), "launch kernel")
-            check(sync(), "synchronize kernel")
-            elapsed = time.perf_counter() - start
-            output = arrays[0]
-            status = (
-                api["dtoh"](pointer(output.ctypes.data), allocations[0], output.nbytes)
-                if cuda
-                else api["copy"](pointer(output.ctypes.data), allocations[0], output.nbytes, 2)
-            )
-            check(status, "copy output to host")
-    finally:
-        import sys
-
-        failed = sys.exc_info()[0] is not None
-        for address in allocations:
-            cleanup.append((free(address), "free device array"))
-        if module.value:
-            cleanup.append((unload(module), "unload module"))
-        if cuda:
-            if pushed:
-                restored = pointer()
-                cleanup.append((api["pop"](ct.byref(restored)), "restore CUDA context"))
-            if retained:
-                cleanup.append((api["release"](selected), "release CUDA context"))
-        elif selected_hip:
-            cleanup.append((api["set_device"](previous), "restore HIP device"))
-        if not failed:
-            for status, operation in cleanup:
-                check(status, operation)
-    return elapsed

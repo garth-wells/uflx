@@ -113,7 +113,6 @@ import glob
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -139,6 +138,7 @@ from uflx_mlir.gpu_assembly import (
     lower_module_to_nvvm,
     lower_module_to_rocdl,
 )
+from uflx_mlir.gpu_driver import launch_isolated
 
 sys.path.insert(0, str(Path(__file__).parent))
 import harness as mlir_harness
@@ -750,7 +750,9 @@ def assemble_global_matrix_amd(
 
     MLIR emits AMDGCN assembly through ROCDL. ROCm's own matching clang
     and ld.lld then produce an HSACO code object, which is loaded and
-    launched directly through the HIP module API. This split avoids the
+    launched through the HIP module API in a fresh worker process. Keeping
+    ROCm out of the MLIR process avoids collisions between their LLVM libraries.
+    Worker startup and array exchange are excluded from timing. This split also avoids the
     LLVM-version mismatch that occurs on eng-amd, where the MLIR bindings
     use LLVM 18 but ROCm 7.2's bitcode and linker use LLVM 22.
     """
@@ -802,144 +804,16 @@ def assemble_global_matrix_amd(
     geometries = geometries.reshape(-1)
     host_arrays = [avals, acols, arowptr, geometries, cell_dofs]
 
-    hip = ctypes.CDLL(str(hip_library))
-
-    def bind(name, restype, *argtypes):
-        function = getattr(hip, name)
-        function.restype = restype
-        function.argtypes = list(argtypes)
-        return function
-
-    hip_init = bind("hipInit", ctypes.c_int, ctypes.c_uint)
-    hip_set_device = bind("hipSetDevice", ctypes.c_int, ctypes.c_int)
-    hip_module_load = bind(
-        "hipModuleLoad", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_char_p
+    elapsed = launch_isolated(
+        str(hip_library),
+        hsaco,
+        kernel_name,
+        host_arrays,
+        (nblocks, 1, 1),
+        (ndofs, ndofs, cells_per_block),
+        "amd",
+        0,
     )
-    hip_module_get_function = bind(
-        "hipModuleGetFunction",
-        ctypes.c_int,
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.c_void_p,
-        ctypes.c_char_p,
-    )
-    hip_malloc = bind("hipMalloc", ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t)
-    hip_memcpy = bind(
-        "hipMemcpy",
-        ctypes.c_int,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_int,
-    )
-    hip_module_launch_kernel = bind(
-        "hipModuleLaunchKernel",
-        ctypes.c_int,
-        ctypes.c_void_p,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_uint,
-        ctypes.c_void_p,
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-    )
-    hip_device_synchronize = bind("hipDeviceSynchronize", ctypes.c_int)
-    hip_free = bind("hipFree", ctypes.c_int, ctypes.c_void_p)
-    hip_module_unload = bind("hipModuleUnload", ctypes.c_int, ctypes.c_void_p)
-    hip_get_error_string = bind("hipGetErrorString", ctypes.c_char_p, ctypes.c_int)
-
-    def check(code: int, operation: str) -> None:
-        if code:
-            message = hip_get_error_string(code)
-            detail = message.decode() if message else f"HIP error {code}"
-            raise RuntimeError(f"{operation}: {detail}")
-
-    check(hip_init(0), "hipInit")
-    check(hip_set_device(0), "hipSetDevice")
-    hip_module = ctypes.c_void_p()
-    hip_function = ctypes.c_void_p()
-    allocations: list[ctypes.c_void_p] = []
-    elapsed = 0.0
-    with tempfile.TemporaryDirectory(prefix="uflx-hip-demo-") as directory:
-        hsaco_path = Path(directory) / "kernel.hsaco"
-        hsaco_path.write_bytes(hsaco)
-        check(
-            hip_module_load(ctypes.byref(hip_module), os.fsencode(hsaco_path)),
-            "hipModuleLoad",
-        )
-        check(
-            hip_module_get_function(ctypes.byref(hip_function), hip_module, kernel_name.encode()),
-            "hipModuleGetFunction",
-        )
-
-        arguments = []
-        try:
-            for array in host_arrays:
-                device_pointer = ctypes.c_void_p()
-                check(hip_malloc(ctypes.byref(device_pointer), array.nbytes), "hipMalloc")
-                allocations.append(device_pointer)
-                check(
-                    hip_memcpy(
-                        device_pointer,
-                        ctypes.c_void_p(array.ctypes.data),
-                        array.nbytes,
-                        1,
-                    ),
-                    "hipMemcpy host-to-device",
-                )
-                # Rank-1 MLIR memref ABI: allocated pointer, aligned pointer,
-                # offset, size, and stride.
-                arguments.extend(
-                    [
-                        ctypes.c_void_p(device_pointer.value),
-                        ctypes.c_void_p(device_pointer.value),
-                        ctypes.c_int64(0),
-                        ctypes.c_int64(array.size),
-                        ctypes.c_int64(1),
-                    ]
-                )
-            kernel_parameters = (ctypes.c_void_p * len(arguments))(
-                *(
-                    ctypes.cast(ctypes.byref(argument), ctypes.c_void_p).value
-                    for argument in arguments
-                )
-            )
-            t0 = time.perf_counter()
-            check(
-                hip_module_launch_kernel(
-                    hip_function,
-                    nblocks,
-                    1,
-                    1,
-                    ndofs,
-                    ndofs,
-                    cells_per_block,
-                    0,
-                    None,
-                    kernel_parameters,
-                    None,
-                ),
-                "hipModuleLaunchKernel",
-            )
-            check(hip_device_synchronize(), "hipDeviceSynchronize")
-            elapsed = time.perf_counter() - t0
-            check(
-                hip_memcpy(
-                    ctypes.c_void_p(avals.ctypes.data),
-                    allocations[0],
-                    avals.nbytes,
-                    2,
-                ),
-                "hipMemcpy device-to-host",
-            )
-        finally:
-            for device_pointer in allocations:
-                check(hip_free(device_pointer), "hipFree")
-            if hip_module.value:
-                check(hip_module_unload(hip_module), "hipModuleUnload")
 
     print(
         f"  assembled (AMD, {chip}): {ncells} cells, {ndofs_global} dofs, "

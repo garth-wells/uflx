@@ -309,3 +309,20 @@ Run hardware tests with `UFLX_GPU_BACKEND=cuda` or `UFLX_GPU_BACKEND=amd`, and
 optionally `UFLX_GPU_CHIP`, using `pytest test/test_gpu_linear.py`. Hardware
 execution tests skip unless a backend is explicitly selected; generation and
 input-validation tests run wherever MLIR Python bindings are available.
+
+### HIP runtime isolation
+
+Both `demo/assemble_mesh_gpu.py` and `assemble_linear_gpu` execute HIP kernels
+in a fresh Python worker. MLIR compilation remains in the parent; only HSACO
+bytes, launch metadata and NumPy arrays cross the process boundary. The worker
+imports neither MLIR nor UFLx. This avoids duplicate LLVM option registration
+when the ROCm runtime/COMGR and the MLIR bindings use conflicting LLVM libraries.
+No `RTLD_DEEPBIND` or library preloading is needed.
+
+Arrays are exchanged through temporary `.npy` files; nonzero initial output is
+preserved and updated output is copied back only after successful completion.
+Worker startup and file exchange increase total demo wall time but are excluded
+from reported kernel timing, as are device allocation, transfers and geometry
+preparation. Worker failures are returned as Python exceptions with stderr.
+The worker uses the current Python interpreter and requires NumPy installed in
+that environment; it ignores `PYTHONPATH` via Python's isolated mode.
