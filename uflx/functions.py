@@ -24,11 +24,6 @@ from uflx.tensors import zero
 class AbstractFunction(AbstractExpression):
     """Abstract base class for a function."""
 
-    @property
-    @abstractmethod
-    def domain_size(self) -> int:
-        """The size of the domain (ie the number of inputs to the function)."""
-
     @abstractmethod
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -96,7 +91,9 @@ class AbstractIntegralScopedFunction(AbstractFunction):
     integral") never conflates the two.
     """
 
-    def __init__(self, space: AbstractFunctionSpace, is_reference: bool, integral_label: str | None = None):
+    def __init__(
+        self, space: AbstractFunctionSpace, is_reference: bool, integral_label: str | None = None
+    ):
         """Initialise."""
         self._space = space
         self._is_reference = is_reference
@@ -126,7 +123,11 @@ class Argument(AbstractIntegralScopedFunction):
     """A function that is a dimension of the tensor to be assembled."""
 
     def __init__(
-        self, space: AbstractFunctionSpace, component: int, is_reference: bool, integral_label: str | None = None
+        self,
+        space: AbstractFunctionSpace,
+        component: int,
+        is_reference: bool,
+        integral_label: str | None = None,
     ):
         """Initialise.
 
@@ -189,33 +190,40 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     _n = count(0)
 
-    def __init__(self, space: AbstractFunctionSpace, coefficient_label: str | None = None, integral_label: str | None = None):
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        coefficient_label: str | None = None,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise.
 
         Args:
             space: The function space that this function lives in
             coefficient_label: The label for this coefficient
+            is_reference: Is this argument's domain the reference cell?
             integral_label: The label of the integral that this coefficient is associated with
         """
-        super().__init__(space, false, integral_label)
+        super().__init__(space, is_reference, integral_label)
         if coefficient_label is None:
             self._label = f"coefficient-{next(self._n)}"
         else:
             self._label = coefficient_label
 
     @property
-    def label(self) -> int:
+    def label(self) -> str:
         """The unique label of this coefficient."""
-        return self._count
+        return self._label
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the coefficient with the given integral label."""
-        return self.__class__(self._space, self._label, integral_label)
+        return self.__class__(self._space, self._label, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._label, self.integral_label
+        return self._space, self._label, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -231,7 +239,7 @@ class Coefficient(AbstractIntegralScopedFunction):
             if (
                 isinstance(old, Coefficient)
                 and old.function_space == self.function_space
-                and old.count == self.count
+                and old.label == self.label
             ):
                 if (
                     isinstance(new, Coefficient)
@@ -240,6 +248,17 @@ class Coefficient(AbstractIntegralScopedFunction):
                 ):
                     return new.reconstruct_with_integral_label(self.integral_label)
                 return new
+
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        if self.is_reference:
+            return self
+        else:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                Coefficient(self._space, self._label, True, self.integral_label),
+            )
 
 
 class TestFunction(Argument):
@@ -247,18 +266,23 @@ class TestFunction(Argument):
 
     __test__ = False
 
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise."""
-        super().__init__(space, 0, false, integral_label)
+        super().__init__(space, 0, is_reference, integral_label)
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
+        return self.__class__(self._space, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self.integral_label
+        return self._space, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -267,26 +291,35 @@ class TestFunction(Argument):
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map, ReferenceTestFunction(self._space)
-        )
+        if self.is_reference:
+            return self
+        else:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TestFunction(self._space, True, self.integral_label),
+            )
 
 
 class TrialFunction(Argument):
     """A trial function."""
 
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise."""
-        super().__init__(space, 1, false, integral_label)
+        super().__init__(space, 1, is_reference, integral_label)
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
+        return self.__class__(self._space, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self.integral_label
+        return self._space, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -295,88 +328,10 @@ class TrialFunction(Argument):
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map, ReferenceTrialFunction(self._space)
-        )
-
-
-class Coefficient(AbstractIntegralScopedFunction):
-    """A known function with given degree-of-freedom values.
-
-    Unlike Argument (a bound variable of the bilinear/linear form being
-    assembled, which becomes an axis of the assembled tensor), a Coefficient
-    represents an already-known function -- eg a previous solution, a
-    material property, or any other field supplied at assembly time -- whose
-    value is fully determined by a fixed array of degree-of-freedom values,
-    not by the tensor being assembled.
-    """
-
-    _n = count(0)
-
-    def __init__(self, space: AbstractFunctionSpace):
-        """Initialise.
-
-        Args:
-            space: The function space that this function lives in
-        """
-        super().__init__(space)
-        self._count = next(self._n)
-
-    @classmethod
-    def _restore(
-        cls,
-        space: AbstractFunctionSpace,
-        count: int,
-        integral_label: str | None,
-    ) -> Self:
-        """Restore a coefficient without allocating a new identity."""
-        coefficient = cls.__new__(cls)
-        AbstractIntegralScopedFunction.__init__(coefficient, space, integral_label)
-        coefficient._count = count
-        return coefficient
-
-    @property
-    def count(self) -> int:
-        """A value that, together with function_space, uniquely identifies this coefficient."""
-        return self._count
-
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct the coefficient with the given integral label."""
-        return self.__class__._restore(self._space, self._count, integral_label)
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return (self._space,)
-
-    def diff(self, index: int) -> AbstractFunction:
-        """Take a derivative of this function."""
-        raise NotImplementedError()
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        raise NotImplementedError()
-
-    def get_replacement(self, replacements: dict[GraphNode, GraphNode]) -> GraphNode | None:
-        """Get the node to replace this node with, or None if no replacement can be made."""
-        for old, new in replacements.items():
-            if (
-                isinstance(old, Coefficient)
-                and old.function_space == self.function_space
-                and old.count == self.count
-            ):
-                if (
-                    isinstance(new, Coefficient)
-                    and self.integral_label is not None
-                    and new.integral_label is None
-                ):
-                    return new.reconstruct_with_integral_label(self.integral_label)
-                return new
-
-    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
-        """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map,
-            ReferenceCoefficient(self._space, self._count),
-        )
+        if self.is_reference:
+            return self
+        else:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TrialFunction(self._space, True, self.integral_label),
+            )

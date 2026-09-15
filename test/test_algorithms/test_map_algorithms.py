@@ -4,10 +4,7 @@ from uflx import TestFunction, TrialFunction, coordinate_element, dx, function_s
 from uflx.algorithms import pull_back_to_reference
 from uflx.functions import (
     AbstractFunction,
-    AbstractPhysicalFunction,
-    AbstractReferenceFunction,
     Coefficient,
-    ReferenceCoefficient,
 )
 from uflx.graphs import as_graph
 from uflx.integrals import Integral
@@ -35,9 +32,9 @@ def test_mass_matrix(lagrange_element):
     assert len(pulled_functions) == 2
 
     for f in functions:
-        assert isinstance(f, AbstractPhysicalFunction)
+        assert isinstance(f, AbstractFunction) and not f.is_reference
     for f in pulled_functions:
-        assert isinstance(f, AbstractReferenceFunction)
+        assert isinstance(f, AbstractFunction) and f.is_reference
 
 
 def test_stuffness_matrix(lagrange_element):
@@ -62,9 +59,9 @@ def test_stuffness_matrix(lagrange_element):
     assert len(pulled_functions) == 2
 
     for f in functions:
-        assert isinstance(f, AbstractPhysicalFunction)
+        assert isinstance(f, AbstractFunction) and not f.is_reference
     for f in pulled_functions:
-        assert isinstance(f, AbstractReferenceFunction)
+        assert isinstance(f, AbstractFunction) and f.is_reference
 
 
 def test_linear_form(lagrange_element):
@@ -87,8 +84,10 @@ def test_linear_form(lagrange_element):
     assert len(functions) == 1
     assert len(pulled_functions) == 1
 
-    assert isinstance(functions[0], AbstractPhysicalFunction)
-    assert isinstance(pulled_functions[0], AbstractReferenceFunction)
+    for f in functions:
+        assert isinstance(f, AbstractFunction) and not f.is_reference
+    for f in pulled_functions:
+        assert isinstance(f, AbstractFunction) and f.is_reference
 
 
 def test_coefficient_mass_matrix_like_form(lagrange_element):
@@ -113,13 +112,15 @@ def test_coefficient_mass_matrix_like_form(lagrange_element):
     assert len(pulled_functions) == 2
 
     for f in functions:
-        assert isinstance(f, AbstractPhysicalFunction)
+        assert isinstance(f, AbstractFunction) and not f.is_reference
     for f in pulled_functions:
-        assert isinstance(f, AbstractReferenceFunction)
+        assert isinstance(f, AbstractFunction) and f.is_reference
 
-    reference_coefficients = [f for f in pulled_functions if isinstance(f, ReferenceCoefficient)]
+    reference_coefficients = [
+        f for f in pulled_functions if isinstance(f, Coefficient) and f.is_reference
+    ]
     assert len(reference_coefficients) == 1
-    assert reference_coefficients[0].count == w.count
+    assert reference_coefficients[0].label == w.label
 
 
 def test_coefficient_gradient_pulls_back(lagrange_element):
@@ -138,9 +139,11 @@ def test_coefficient_gradient_pulls_back(lagrange_element):
     pulled_functions = [
         node for node in as_graph(pulled_form) if isinstance(node, AbstractFunction)
     ]
-    reference_coefficients = [f for f in pulled_functions if isinstance(f, ReferenceCoefficient)]
+    reference_coefficients = [
+        f for f in pulled_functions if isinstance(f, Coefficient) and f.is_reference
+    ]
     assert len(reference_coefficients) == 1
-    assert reference_coefficients[0].count == w.count
+    assert reference_coefficients[0].label == w.label
 
 
 def test_distinct_coefficients_stay_distinguishable_after_pull_back(lagrange_element):
@@ -151,13 +154,15 @@ def test_distinct_coefficients_stay_distinguishable_after_pull_back(lagrange_ele
     w1 = Coefficient(space)
     w2 = Coefficient(space)
     v = TestFunction(space)
-    assert w1.count != w2.count
+    assert w1.label != w2.label
 
     form = inner(w1 + w2, v) * dx
     pulled_form = pull_back_to_reference(form)
 
     reference_coefficients = [
-        node for node in as_graph(pulled_form) if isinstance(node, ReferenceCoefficient)
+        node
+        for node in as_graph(pulled_form)
+        if isinstance(node, Coefficient) and node.is_reference
     ]
     assert len(reference_coefficients) == 2
-    assert {f.count for f in reference_coefficients} == {w1.count, w2.count}
+    assert {f.label for f in reference_coefficients} == {w1.label, w2.label}
