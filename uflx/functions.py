@@ -52,6 +52,7 @@ class AbstractFunction(AbstractExpression):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         if self.is_reference:
+            assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
             return self.function_space.elements[0].reference_value_shape
         else:
             return self.function_space.value_shape
@@ -144,7 +145,7 @@ class Argument(AbstractIntegralScopedFunction):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, self._component, integral_label)
+        return self.__class__(self._space, self._component, self._is_reference, integral_label)
 
     @property
     def component_index(self) -> int:
@@ -154,7 +155,7 @@ class Argument(AbstractIntegralScopedFunction):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._component, self.integral_label
+        return self._space, self._component, self._is_reference, self.integral_label
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -251,14 +252,13 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                Coefficient(self._space, self._label, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            Coefficient(self._space, self._label, True, self.integral_label),
+        )
 
 
 class TestFunction(Argument):
@@ -290,14 +290,13 @@ class TestFunction(Argument):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                TestFunction(self._space, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TestFunction(self._space, True, self.integral_label),
+        )
 
 
 class TrialFunction(Argument):
@@ -327,11 +326,10 @@ class TrialFunction(Argument):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                TrialFunction(self._space, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TrialFunction(self._space, True, self.integral_label),
+        )

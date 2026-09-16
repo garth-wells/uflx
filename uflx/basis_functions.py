@@ -11,8 +11,8 @@ from abc import abstractmethod
 from typing import Any
 
 from uflx.expressions import AbstractExpression, Im, Re
-from uflx.finite_elements import AbstractFiniteElement
-from uflx.function_spaces import AbstractFunctionSpace
+from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
+from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
 from uflx.functions import AbstractFunction
 from uflx.graphs import GraphNode
 from uflx.points import AbstractPoint
@@ -79,7 +79,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
 
     def __init__(
         self,
-        space: AbstractFunctionSpace,
+        space: AbstractReferenceMappedFunctionSpace,
         basis_index: int | str,
         point: AbstractPoint,
         is_reference: bool,
@@ -114,7 +114,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     @property
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
-        raise NotImplementedError()
+        return self._space
 
     @property
     def is_reference(self) -> bool:
@@ -145,7 +145,11 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         if self._component is None:
-            return self.element.reference_value_shape
+            if self.is_reference:
+                assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
+                return self.element.reference_value_shape
+            else:
+                return self.element.physical_value_shape(self._point.dim)
         else:
             return ()
 
