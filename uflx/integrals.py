@@ -15,9 +15,8 @@ from uflx.algorithms import replace
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.functions import (
+    AbstractFunction,
     AbstractIntegralScopedFunction,
-    AbstractPhysicalFunction,
-    AbstractReferenceIntegralScopedFunction,
 )
 from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, as_graph, generate_graph
@@ -99,12 +98,7 @@ class Integral(AbstractIntegral):
 
         replacements: dict[GraphNode, GraphNode] = {}
         for node in as_graph(integrand):
-            if (
-                isinstance(
-                    node, (AbstractIntegralScopedFunction, AbstractReferenceIntegralScopedFunction)
-                )
-                and node.integral_label is None
-            ):
+            if isinstance(node, AbstractIntegralScopedFunction) and node.integral_label is None:
                 replacements[node] = node.reconstruct_with_integral_label(self._label)
         if len(replacements) == 0:
             self._integrand = integrand
@@ -137,7 +131,7 @@ class Integral(AbstractIntegral):
         integrand = node_map.get(self._integrand, self._integrand)
         domain = None
         for node in self.graph.descendants(self._integrand):
-            if isinstance(node, AbstractPhysicalFunction):
+            if isinstance(node, AbstractFunction) and not node.is_reference:
                 if domain is None:
                     domain = node.function_space.domain
                 else:

@@ -3,9 +3,10 @@
 from typing import Any, Protocol, runtime_checkable
 
 from uflx.algorithms import replace
-from uflx.basis_functions import EvaluatedReferenceBasisFunction
+from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
+from uflx.function_spaces import function_space
 from uflx.graphs import GraphNode, as_graph
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
 from uflx.tensors import Matrix
@@ -129,7 +130,9 @@ class ReferenceToPhysical(AbstractPoint):
         components = [
             expression_sum(
                 CoordinateDofComponent(i // dim, i % dim, dim)
-                * EvaluatedReferenceBasisFunction(element, i, self.reference_point, component=j)
+                * EvaluatedBasisFunction(
+                    function_space(self.domain, element), i, self.reference_point, True, component=j
+                )
                 for i in range(element.dim)
             )
             for j in range(dim)
@@ -229,10 +232,11 @@ class Jacobian(AbstractExpression):
                 [
                     expression_sum(
                         CoordinateDofComponent(i // tdim, i % tdim, tdim)
-                        * EvaluatedReferenceBasisFunction(
-                            element,
+                        * EvaluatedBasisFunction(
+                            function_space(self.domain, element),
                             i,
                             self.point,
+                            True,
                             derivative=tuple(1 if d == col else 0 for d in range(gdim)),
                             component=row,
                         )

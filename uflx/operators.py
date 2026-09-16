@@ -8,7 +8,7 @@
 from uflx.complex import conj
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression, BinaryOperator, UnaryOperator
-from uflx.functions import AbstractPhysicalFunction, AbstractReferenceFunction
+from uflx.functions import AbstractFunction
 from uflx.geometry import JacobianInverseTranspose
 from uflx.graphs import GraphNode, as_graph
 from uflx.maps import PushedForward
@@ -36,7 +36,7 @@ class Grad(UnaryOperator):
 
     def __init__(self, argument: GraphNode):
         """Initialise."""
-        assert isinstance(argument, AbstractPhysicalFunction)
+        assert isinstance(argument, AbstractFunction) and not argument.is_reference
         self._physical_argument = argument
         super().__init__(argument)
 
@@ -58,7 +58,7 @@ class Grad(UnaryOperator):
             """Extract the domain associated with a node."""
             domain: AbstractDomain | None = None
             for i in as_graph(node).descendants(node):
-                if isinstance(i, AbstractPhysicalFunction):
+                if isinstance(i, AbstractFunction) and not i.is_reference:
                     if domain is None:
                         domain = i.function_space.domain
                     else:
@@ -78,7 +78,7 @@ class ReferenceGrad(UnaryOperator):
 
     def __init__(self, argument: GraphNode):
         """Initialise."""
-        assert isinstance(argument, AbstractReferenceFunction)
+        assert isinstance(argument, AbstractFunction) and argument.is_reference
         self._reference_argument = argument
         super().__init__(argument)
 
