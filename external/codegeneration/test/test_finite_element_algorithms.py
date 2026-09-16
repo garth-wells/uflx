@@ -1,8 +1,8 @@
 """Test finite element algorithms."""
 
+from uflx import coordinate_element, function_space
 from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.expressions import expression_sum
-from uflx import function_space, coordinate_element
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.algorithms.finite_element import (
