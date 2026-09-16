@@ -207,7 +207,7 @@ def lower_form(
     tables = {**q_tables, **fe_tables}
 
     # Each coefficient function's own body still contains untabulated
-    # EvaluatedReferenceBasisFunction table-lookup nodes (see
+    # EvaluatedBasisFunction table-lookup nodes (see
     # insert_coefficient_functions' docstring) -- tabulate each body
     # separately, exactly as uflx_codegeneration.generate.generate()'s own
     # per-function emission loop does, and fold the resulting tables into

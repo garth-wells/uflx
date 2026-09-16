@@ -16,7 +16,7 @@ from uflx.expressions import (
     Mult,
     expression_sum,
 )
-from uflx.functions import Coefficient, ReferenceCoefficient
+from uflx.functions import Coefficient
 from uflx.geometry import JacobianDeterminant, JacobianInverseTranspose
 from uflx.graphs import GraphNode, as_graph
 from uflx.operators import Inner, ReferenceGrad
@@ -111,7 +111,6 @@ def _poisson_metric_contraction(node: GraphNode):
     # then contract with each test gradient. Symmetry makes this equivalent.
     coefficient_types = (
         Coefficient,
-        ReferenceCoefficient,
         EvaluatedReferenceCoefficientBasisFunction,
     )
     if any(isinstance(n, coefficient_types) for n in as_graph(left.second)) and not any(

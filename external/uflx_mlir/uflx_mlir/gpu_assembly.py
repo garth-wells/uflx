@@ -1592,11 +1592,46 @@ def generate_csr_assembly_gpu_module(
     return module, layout
 
 
+# Minimum PTX ISA version required by each NVPTX target chip, mirroring
+# LLVM's own lookup (llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp,
+# minPTXVersion()). The gpu-lower-to-nvvm-pipeline's `cubin-features`
+# option defaults to "" (no explicit PTX version), which leaves the NVPTX
+# backend to fall back to a low default ISA version (PTX 6.0) regardless
+# of `cubin-chip` -- too low for sm_80 and newer, which fail hard with
+# "PTX version 6.0 does not support target 'sm_80'. Minimum required PTX
+# version is 7.0." `lower_module_to_nvvm` uses this table to derive a
+# `cubin-features=+ptxNN` matching whatever `cubin_chip` was requested, so
+# the caller doesn't have to know this mapping to hit a working default.
+_MINIMUM_PTX_ISA_VERSION = {
+    "sm_70": 60,
+    "sm_72": 61,
+    "sm_75": 63,
+    "sm_80": 70,
+    "sm_86": 71,
+    "sm_87": 74,
+    "sm_89": 78,
+    "sm_90": 78,
+    "sm_90a": 80,
+}
+
+
+def _default_cubin_features(cubin_chip: str) -> str:
+    """The minimum `cubin-features` PTX-ISA string for `cubin_chip`.
+
+    Returns "" (the pipeline's own default) for a chip not in
+    `_MINIMUM_PTX_ISA_VERSION`, rather than guessing a version for an
+    unrecognised target.
+    """
+    version = _MINIMUM_PTX_ISA_VERSION.get(cubin_chip)
+    return "" if version is None else f"+ptx{version}"
+
+
 def lower_module_to_nvvm(
     module: Module,
     *,
     cubin_chip: str = "sm_80",
     cubin_format: str = "isa",
+    cubin_features: str | None = None,
 ) -> None:
     """Lower a GPU module to compiled NVVM/PTX in place.
 
@@ -1638,6 +1673,11 @@ def lower_module_to_nvvm(
     that step entirely. cubin_chip defaults to "sm_80" (Ampere) rather
     than the pipeline's own stale "sm_50" default; override it to match
     whatever GPU the compiled output is actually meant to target.
+    cubin_features defaults to whatever minimum PTX ISA version
+    `cubin_chip` requires (see `_default_cubin_features`) rather than the
+    pipeline's own unversioned default, which otherwise makes the NVPTX
+    backend fall back to too low a PTX version and fail outright on
+    sm_80 and newer chips.
 
     The corresponding AMDGPU path is implemented by
     :func:`lower_module_to_rocdl`. Unlike NVVM, this LLVM checkout has no
@@ -1654,13 +1694,23 @@ def lower_module_to_nvvm(
             needed), "fatbin" (the pipeline's own default) or "bin" (a
             single cubin, no fatbin wrapper) -- the latter two need
             `ptxas` on $PATH or findable via NVVM::getCUDAToolkitPath().
+        cubin_features: The pipeline's `cubin-features` option, eg
+            "+ptx70" -- sets the target PTX ISA version. Defaults to
+            `_default_cubin_features(cubin_chip)`, the minimum PTX
+            version that `cubin_chip` actually requires (see that
+            table); pass "" explicitly to fall back to the pipeline's
+            own unversioned default instead.
     """
     from mlir.passmanager import PassManager
+
+    if cubin_features is None:
+        cubin_features = _default_cubin_features(cubin_chip)
 
     pipeline = (
         "builtin.module(gpu-lower-to-nvvm-pipeline{"
         f"cubin-chip={cubin_chip} cubin-format={cubin_format}"
-        "})"
+        + (f" cubin-features={cubin_features}" if cubin_features else "")
+        + "})"
     )
     # generate_csr_entry_gpu_module's own `with ctx_container, ...:` block
     # (which made ctx_container the default/current context) has already
