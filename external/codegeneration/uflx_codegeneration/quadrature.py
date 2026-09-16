@@ -6,11 +6,11 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from uflx.algorithms import replace
-from uflx.basis_functions import EvaluatedPhysicalBasisFunction, EvaluatedReferenceBasisFunction
+from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.domains import AbstractCoordinateElement, AbstractDomain
 from uflx.expressions import AbstractExpression
 from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractPhysicalFunction, Argument, ReferenceArgument
+from uflx.functions import AbstractFunction, Argument
 from uflx.geometry import (
     Jacobian,
     JacobianDeterminant,
@@ -171,7 +171,7 @@ def extract_domain(graph: Graph, node: GraphNode) -> AbstractDomain:
     """Extract the domain associated with a node."""
     domain: AbstractDomain | None = None
     for i in graph.descendants(node):
-        if isinstance(i, AbstractPhysicalFunction):
+        if isinstance(i, AbstractFunction) and not i.is_reference:
             if domain is None:
                 domain = i.function_space.domain
             else:
@@ -210,7 +210,9 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in graph.descendants(node):
-                if isinstance(i, (Argument, ReferenceArgument)) and i.integral_label == node.label:
+                if isinstance(i, Argument):
+                    print(node, i, i.integral_label, node.label)
+                if isinstance(i, Argument) and i.integral_label == node.label:
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
@@ -257,18 +259,17 @@ def integrals_to_quadrature(
                 assert isinstance(a.function_space, AbstractReferenceMappedFunctionSpace)
                 assert isinstance(a.function_space.domain, AbstractCoordinateElement)
                 if isinstance(a, Argument):
-                    to_replace[a] = EvaluatedPhysicalBasisFunction(
-                        a.function_space,
-                        a.function_space.elements[0],
-                        variables[a.component_index],
-                        ReferenceToPhysical(qpoint, a.function_space.domain),
-                    )
-                elif isinstance(a, ReferenceArgument):
-                    to_replace[a] = EvaluatedReferenceBasisFunction(
-                        a.function_space.elements[0],
-                        variables[a.component_index],
-                        qpoint,
-                    )
+                    if a.is_reference:
+                        to_replace[a] = EvaluatedBasisFunction(
+                            a.function_space, variables[a.component_index], qpoint, True
+                        )
+                    else:
+                        to_replace[a] = EvaluatedBasisFunction(
+                            a.function_space,
+                            variables[a.component_index],
+                            ReferenceToPhysical(qpoint, a.function_space.domain),
+                            False,
+                        )
 
             domain = arguments[0].function_space.domain
             for a in arguments:

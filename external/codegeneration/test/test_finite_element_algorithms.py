@@ -1,6 +1,7 @@
 """Test finite element algorithms."""
 
-from uflx.basis_functions import EvaluatedReferenceBasisFunction
+from uflx import coordinate_element, function_space
+from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.expressions import expression_sum
 
 from uflx_codegeneration import symbols
@@ -50,8 +51,11 @@ def test_tabulate_finite_elements_hoists_only_the_derivative(lagrange_element):
     element = lagrange_element("triangle", 1)
     point = _quadrature_point("q")
 
-    value_node = EvaluatedReferenceBasisFunction(element, 0, point)
-    gradient_node = EvaluatedReferenceBasisFunction(element, 0, point, derivative=(1, 0))
+    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
+    space = function_space(domain, element)
+
+    value_node = EvaluatedBasisFunction(space, 0, point, True)
+    gradient_node = EvaluatedBasisFunction(space, 0, point, True, derivative=(1, 0))
     root = expression_sum([value_node, gradient_node])
 
     _, result = tabulate_finite_elements(root, symbols.VariableNamer())

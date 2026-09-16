@@ -24,11 +24,6 @@ from uflx.tensors import zero
 class AbstractFunction(AbstractExpression):
     """Abstract base class for a function."""
 
-    @property
-    @abstractmethod
-    def domain_size(self) -> int:
-        """The size of the domain (ie the number of inputs to the function)."""
-
     @abstractmethod
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -43,9 +38,10 @@ class AbstractFunction(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
 
-
-class AbstractPhysicalFunction(AbstractFunction):
-    """Abstract base class for a function on a physical cell."""
+    @property
+    @abstractmethod
+    def is_reference(self) -> bool:
+        """Is this function's domain the reference cell?"""
 
     @property
     @abstractmethod
@@ -55,7 +51,11 @@ class AbstractPhysicalFunction(AbstractFunction):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return self.function_space.value_shape
+        if self.is_reference:
+            assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
+            return self.function_space.elements[0].reference_value_shape
+        else:
+            return self.function_space.value_shape
 
     @property
     def domain_size(self) -> int:
@@ -79,16 +79,7 @@ class AbstractPhysicalFunction(AbstractFunction):
             return Im(self)
 
 
-class AbstractReferenceFunction(AbstractFunction):
-    """Abstract base class for a function on a reference cell."""
-
-    @property
-    @abstractmethod
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-
-
-class AbstractIntegralScopedFunction(AbstractPhysicalFunction):
+class AbstractIntegralScopedFunction(AbstractFunction):
     """Base class for a physical function that gets relabelled per integral.
 
     Shared by Argument and Coefficient. When an expression is wrapped in an
@@ -101,15 +92,23 @@ class AbstractIntegralScopedFunction(AbstractPhysicalFunction):
     integral") never conflates the two.
     """
 
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
+    def __init__(
+        self, space: AbstractFunctionSpace, is_reference: bool, integral_label: str | None = None
+    ):
         """Initialise."""
         self._space = space
+        self._is_reference = is_reference
         self._integral_label = integral_label
 
     @property
     def integral_label(self) -> str | None:
         """Get the label of the integral that this function is included in."""
         return self._integral_label
+
+    @property
+    def is_reference(self) -> bool:
+        """Is this function's domain the reference cell?"""
+        return self._is_reference
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
@@ -119,58 +118,17 @@ class AbstractIntegralScopedFunction(AbstractPhysicalFunction):
     @abstractmethod
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct this function with the given integral label."""
-
-
-class AbstractReferenceIntegralScopedFunction(AbstractReferenceFunction):
-    """Base class for a reference function that gets relabelled per integral."""
-
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
-        """Initialise."""
-        self._space = space
-        self._integral_label = integral_label
-
-    @property
-    def integral_label(self) -> str | None:
-        """Get the label of the integral that this function is included in."""
-        return self._integral_label
-
-    @property
-    def function_space(self) -> AbstractFunctionSpace:
-        """The function space that this function lives in."""
-        return self._space
-
-    @abstractmethod
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct this function with the given integral label."""
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
-        return self.function_space.elements[0].reference_value_shape
-
-    @property
-    def re(self) -> AbstractExpression:
-        """Get real part."""
-        if self.function_space.real_valued:
-            return self
-        else:
-            return Re(self)
-
-    @property
-    def im(self) -> AbstractExpression:
-        """Get imaginary part."""
-        if self.function_space.real_valued:
-            return zero(self.value_shape)
-        else:
-            return Im(self)
 
 
 class Argument(AbstractIntegralScopedFunction):
     """A function that is a dimension of the tensor to be assembled."""
 
     def __init__(
-        self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None
+        self,
+        space: AbstractFunctionSpace,
+        component: int,
+        is_reference: bool,
+        integral_label: str | None = None,
     ):
         """Initialise.
 
@@ -178,15 +136,16 @@ class Argument(AbstractIntegralScopedFunction):
             space: The function space that this function lives in
             component: The component of the finite element tensor
                        to be assembled that this function represents
+            is_reference: Is this argument's domain the reference cell?
             integral_label: The label of the integral that this
                             argument is included in
         """
-        super().__init__(space, integral_label)
+        super().__init__(space, is_reference, integral_label)
         self._component = component
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, self._component, integral_label)
+        return self.__class__(self._space, self._component, self._is_reference, integral_label)
 
     @property
     def component_index(self) -> int:
@@ -196,7 +155,7 @@ class Argument(AbstractIntegralScopedFunction):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._component, self.integral_label
+        return self._space, self._component, self._is_reference, self.integral_label
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -219,117 +178,6 @@ class Argument(AbstractIntegralScopedFunction):
                 return new
 
 
-class ReferenceArgument(AbstractReferenceIntegralScopedFunction):
-    """A function that is a dimension of the tensor to be assembled on the reference cell."""
-
-    def __init__(
-        self, space: AbstractFunctionSpace, component: int, integral_label: str | None = None
-    ):
-        """Initialise.
-
-        Args:
-            space: The function space that this function lives in
-            component: The component of the finite element tensor
-                       to be assembled that this function represents
-            integral_label: The label of the integral that this
-                            argument is included in
-        """
-        self._space = space
-        self._component = component
-        self._integral_label = integral_label
-
-    @property
-    def integral_label(self) -> str | None:
-        """Get the label of the integral that this argument is included in."""
-        return self._integral_label
-
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, self._component, integral_label)
-
-    @property
-    def component_index(self) -> int:
-        """The component of the finite element tensor that this function represents."""
-        return self._component
-
-    @property
-    def function_space(self) -> AbstractFunctionSpace:
-        """The function space that this function lives in."""
-        return self._space
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._space, self._component
-
-    @property
-    def domain_size(self) -> int:
-        """The size of the domain (ie the number of inputs to the function)."""
-        return self._space.domain.cells[0].topological_dimension
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        raise NotImplementedError()
-
-
-class TestFunction(Argument):
-    """A test function."""
-
-    __test__ = False
-
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
-        """Initialise."""
-        super().__init__(space, 0, integral_label)
-
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._space, self.integral_label
-
-    def diff(self, index: int) -> AbstractFunction:
-        """Take a derivative of this function."""
-        raise NotImplementedError()
-
-    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
-        """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map, ReferenceTestFunction(self._space)
-        )
-
-
-class TrialFunction(Argument):
-    """A trial function."""
-
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
-        """Initialise."""
-        super().__init__(space, 1, integral_label)
-
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._space, self.integral_label
-
-    def diff(self, index: int) -> AbstractFunction:
-        """Take a derivative of this function."""
-        raise NotImplementedError()
-
-    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
-        """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map, ReferenceTrialFunction(self._space)
-        )
-
-
 class Coefficient(AbstractIntegralScopedFunction):
     """A known function with given degree-of-freedom values.
 
@@ -343,41 +191,40 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     _n = count(0)
 
-    def __init__(self, space: AbstractFunctionSpace):
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        coefficient_label: str | None = None,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise.
 
         Args:
             space: The function space that this function lives in
+            coefficient_label: The label for this coefficient
+            is_reference: Is this argument's domain the reference cell?
+            integral_label: The label of the integral that this coefficient is associated with
         """
-        super().__init__(space)
-        self._count = next(self._n)
-
-    @classmethod
-    def _restore(
-        cls,
-        space: AbstractFunctionSpace,
-        count: int,
-        integral_label: str | None,
-    ) -> Self:
-        """Restore a coefficient without allocating a new identity."""
-        coefficient = cls.__new__(cls)
-        AbstractIntegralScopedFunction.__init__(coefficient, space, integral_label)
-        coefficient._count = count
-        return coefficient
+        super().__init__(space, is_reference, integral_label)
+        if coefficient_label is None:
+            self._label = f"coefficient-{next(self._n)}"
+        else:
+            self._label = coefficient_label
 
     @property
-    def count(self) -> int:
-        """A value that, together with function_space, uniquely identifies this coefficient."""
-        return self._count
+    def label(self) -> str:
+        """The unique label of this coefficient."""
+        return self._label
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the coefficient with the given integral label."""
-        return self.__class__._restore(self._space, self._count, integral_label)
+        return self.__class__(self._space, self._label, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return (self._space,)
+        return self._space, self._label, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -393,7 +240,7 @@ class Coefficient(AbstractIntegralScopedFunction):
             if (
                 isinstance(old, Coefficient)
                 and old.function_space == self.function_space
-                and old.count == self.count
+                and old.label == self.label
             ):
                 if (
                     isinstance(new, Coefficient)
@@ -405,105 +252,84 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
+        if self.is_reference:
+            raise ValueError("Cannot pull back function already defined on reference")
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         return PushedForward(
             self._space.elements[0].reference_map,
-            ReferenceCoefficient(self._space, self._count),
+            Coefficient(self._space, self._label, True, self.integral_label),
         )
 
 
-class ReferenceTestFunction(ReferenceArgument):
-    """A test function on the reference cell."""
+class TestFunction(Argument):
+    """A test function."""
 
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
+    __test__ = False
+
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise."""
-        super().__init__(space, 0, integral_label)
+        super().__init__(space, 0, is_reference, integral_label)
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
+        return self.__class__(self._space, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return (self._space, self._integral_label)
+        return self._space, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
         raise NotImplementedError()
 
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        if self.is_reference:
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TestFunction(self._space, True, self.integral_label),
+        )
 
-class ReferenceTrialFunction(ReferenceArgument):
-    """A trial function on the reference cell."""
 
-    def __init__(self, space: AbstractFunctionSpace, integral_label: str | None = None):
+class TrialFunction(Argument):
+    """A trial function."""
+
+    def __init__(
+        self,
+        space: AbstractFunctionSpace,
+        is_reference: bool = False,
+        integral_label: str | None = None,
+    ):
         """Initialise."""
-        super().__init__(space, 1, integral_label)
+        super().__init__(space, 1, is_reference, integral_label)
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, integral_label)
+        return self.__class__(self._space, self.is_reference, integral_label)
 
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return (self._space,)
+        return self._space, self.is_reference, self.integral_label
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
         raise NotImplementedError()
 
-
-class ReferenceCoefficient(AbstractReferenceIntegralScopedFunction):
-    """A known function with given degree-of-freedom values, on the reference cell.
-
-    Unlike ReferenceTestFunction/ReferenceTrialFunction (where component_index
-    alone -- 0 or 1 -- distinguishes the two, since a form has at most one of
-    each), a form can contain several distinct Coefficients on the same space
-    (see Coefficient.count), so this class carries the originating physical
-    Coefficient's count across the pull-back: without it, two different
-    Coefficients on the same space would become indistinguishable
-    ReferenceCoefficient instances once pulled back, and anything downstream
-    that needs to tell them apart (eg code generation assigning each one its
-    own offset into the coefficients array) could no longer do so.
-    """
-
-    def __init__(self, space: AbstractFunctionSpace, count: int, integral_label: str | None = None):
-        """Initialise.
-
-        Args:
-            space: The function space that this function lives in
-            count: The count of the physical Coefficient this was (or will be)
-                   pulled back from -- see Coefficient.count
-            integral_label: The label of the integral that this coefficient
-                            is included in
-        """
-        super().__init__(space, integral_label)
-        self._count = count
-
-    @property
-    def count(self) -> int:
-        """A value that, together with function_space, uniquely identifies this coefficient."""
-        return self._count
-
-    def reconstruct_with_integral_label(self, integral_label: str) -> Self:
-        """Reconstruct the coefficient with the given integral label."""
-        return self.__class__(self._space, self._count, integral_label)
-
-    @property
-    def init_args(self) -> tuple[Any, ...]:
-        """The arguments used to initialise this object."""
-        return self._space, self._count, self._integral_label
-
-    @property
-    def domain_size(self) -> int:
-        """The size of the domain (ie the number of inputs to the function)."""
-        return self._space.domain.cells[0].topological_dimension
-
-    def diff(self, index: int) -> AbstractFunction:
-        """Take a derivative of this function."""
-        raise NotImplementedError()
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        raise NotImplementedError()
+    def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
+        """Pull the node back to the reference cell."""
+        if self.is_reference:
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TrialFunction(self._space, True, self.integral_label),
+        )
