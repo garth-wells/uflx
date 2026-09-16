@@ -154,7 +154,7 @@ class Argument(AbstractIntegralScopedFunction):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._component, self.integral_label
+        return self._space, self._component, self._is_reference, self.integral_label
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
