@@ -126,7 +126,7 @@ def test_coefficient_offsets_are_distinct(lagrange_element, code_dir):
     v = TestFunction(space)
     w1 = Coefficient(space)
     w2 = Coefficient(space)
-    assert w1.count != w2.count
+    assert w1.label != w2.label
 
     ffi_mass, lib_mass = _compile(inner(u, v) * dx, "test_coefficient_offset_mass_ref", code_dir)
     ffi_coeff, lib_coeff = _compile(inner(w1 + w2, v) * dx, "test_coefficient_offset_sum", code_dir)

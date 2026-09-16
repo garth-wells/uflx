@@ -2,15 +2,15 @@
 
 from typing import Any
 
-from uflx.basis_functions import EvaluatedReferenceBasisFunction
+from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.expressions import AbstractExpression
-from uflx.finite_elements import AbstractFiniteElement
-from uflx.functions import AbstractReferenceFunction
+from uflx.function_spaces import AbstractFunctionSpace
+from uflx.functions import AbstractFunction
 from uflx.points import AbstractPoint
 from uflx.utils import flatten
 
 
-class EvaluatedReferenceCoefficientBasisFunction(EvaluatedReferenceBasisFunction):
+class EvaluatedReferenceCoefficientBasisFunction(EvaluatedBasisFunction):
     """One basis function of a Coefficient, evaluated at a point on the reference cell.
 
     A Coefficient's value at a point is a runtime sum over its own degrees of
@@ -29,13 +29,13 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedReferenceBasisFunction
 
     So instead, ``integrals_to_quadrature`` replaces each Coefficient
     occurrence with an instance of this class -- structurally just an
-    ``EvaluatedReferenceBasisFunction`` whose ``basis_index`` is a fresh,
-    still-unbound per-coefficient loop variable (not a tensor-axis variable)
-    -- and lets ``expand_geometry``/``.diff()`` and
-    ``expand_inner_products``/``.component()`` operate on it completely
+    ``EvaluatedBasisFunction`` (always with ``is_reference=True``) whose
+    ``basis_index`` is a fresh, still-unbound per-coefficient loop variable
+    (not a tensor-axis variable) -- and lets ``expand_geometry``/``.diff()``
+    and ``expand_inner_products``/``.component()`` operate on it completely
     generically, exactly as they already do for Arguments. The extra
-    ``count`` this class carries (identifying which physical Coefficient
-    this basis function belongs to -- see ``Coefficient.count``) is
+    ``label`` this class carries (identifying which physical Coefficient
+    this basis function belongs to -- see ``Coefficient.label``) is
     threaded through every ``.diff()``/``.component()`` call so that it
     survives to the point where ``insert_coefficient_functions`` finally
     turns it into an actual summation loop over ``coefficients[offset:]``.
@@ -43,27 +43,32 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedReferenceBasisFunction
 
     def __init__(
         self,
-        element: AbstractFiniteElement,
+        space: AbstractFunctionSpace,
         basis_index: int | str,
         point: AbstractPoint,
-        count: int,
+        label: str,
         derivative: tuple[int, ...] | None = None,
         component: int | None = None,
     ):
         """Initialise."""
-        super().__init__(element, basis_index, point, derivative, component)
-        self._count = count
+        super().__init__(space, basis_index, point, True, None, derivative, component)
+        self._label = label
 
     @property
-    def count(self) -> int:
-        """The count of the physical Coefficient this basis function belongs to."""
-        return self._count
+    def label(self) -> str:
+        """The label of the physical Coefficient this basis function belongs to."""
+        return self._label
+
+    @property
+    def space(self) -> AbstractFunctionSpace:
+        """The function space that this basis function is drawn from."""
+        return self._space
 
     def __repr__(self):
         """Representation."""
         repr = (
             "EvaluatedReferenceCoefficientBasisFunction("
-            f"{self._element!r}, {self._basis_index}, {self._point!r}, count={self._count}"
+            f"{self._space!r}, {self._basis_index}, {self._point!r}, label={self._label!r}"
         )
         if self._derivative is not None:
             repr += f", {self._derivative}"
@@ -76,21 +81,21 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedReferenceBasisFunction
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (
-            self._element,
+            self._space,
             self._basis_index,
             self._point,
-            self._count,
+            self._label,
             self._derivative,
             self._component,
         )
 
-    def diff(self, index: int) -> AbstractReferenceFunction:
+    def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
         return EvaluatedReferenceCoefficientBasisFunction(
-            self._element,
+            self._space,
             self._basis_index,
             self._point,
-            self._count,
+            self._label,
             tuple(d + 1 if i == index else d for i, d in enumerate(self._derivative)),
             self._component,
         )
@@ -98,10 +103,10 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedReferenceBasisFunction
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         return EvaluatedReferenceCoefficientBasisFunction(
-            self._element,
+            self._space,
             self._basis_index,
             self._point,
-            self._count,
+            self._label,
             self._derivative,
             flatten(indices, self.value_shape),
         )

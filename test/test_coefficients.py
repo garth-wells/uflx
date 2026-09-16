@@ -29,14 +29,14 @@ def test_coefficient_labelling(lagrange_element):
     for node in form1.graph:
         if isinstance(node, Coefficient):
             assert node.integral_label == form1.label
-            assert node.count == w.count
+            assert node.label == w.label
 
     for node in form2.graph:
         if isinstance(node, Coefficient):
             assert node.integral_label == form2.label
-            assert node.count == w.count
+            assert node.label == w.label
 
-    assert Coefficient(space).count == w.count + 1
+    assert Coefficient(space).label != w.label
 
 
 def test_coefficient_count_is_auto_generated(lagrange_element):
@@ -47,7 +47,7 @@ def test_coefficient_count_is_auto_generated(lagrange_element):
 
     w1 = Coefficient(space)
     w2 = Coefficient(space)
-    assert w1.count != w2.count
+    assert w1.label != w2.label
 
 
 def test_coefficient_function_space(lagrange_element):
