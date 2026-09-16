@@ -144,7 +144,7 @@ class Argument(AbstractIntegralScopedFunction):
 
     def reconstruct_with_integral_label(self, integral_label: str) -> Self:
         """Reconstruct the argument with the given integral label."""
-        return self.__class__(self._space, self._component, integral_label)
+        return self.__class__(self._space, self._component, self._is_reference, integral_label)
 
     @property
     def component_index(self) -> int:
