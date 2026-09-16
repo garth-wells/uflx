@@ -251,14 +251,13 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                Coefficient(self._space, self._label, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            Coefficient(self._space, self._label, True, self.integral_label),
+        )
 
 
 class TestFunction(Argument):
@@ -290,14 +289,13 @@ class TestFunction(Argument):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                TestFunction(self._space, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TestFunction(self._space, True, self.integral_label),
+        )
 
 
 class TrialFunction(Argument):
@@ -327,11 +325,10 @@ class TrialFunction(Argument):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
         if self.is_reference:
-            return self
-        else:
-            return PushedForward(
-                self._space.elements[0].reference_map,
-                TrialFunction(self._space, True, self.integral_label),
-            )
+            raise ValueError("Cannot pull back function already defined on reference")
+        assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
+        return PushedForward(
+            self._space.elements[0].reference_map,
+            TrialFunction(self._space, True, self.integral_label),
+        )

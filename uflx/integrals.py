@@ -142,7 +142,7 @@ class Integral(AbstractIntegral):
 
         assert isinstance(integrand, AbstractExpression)
 
-        return Integral(det * integrand, self._measure)
+        return Integral(det * integrand, self._measure, self._label)
 
     def __repr__(self) -> str:
         """Representation."""
