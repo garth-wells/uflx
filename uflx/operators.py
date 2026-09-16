@@ -51,7 +51,8 @@ class Grad(UnaryOperator):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        # assert isinstance(self.argument, EvaluatedPhysicalBasisFunction)
+        # assert isinstance(self.argument, EvaluatedBasisFunction)
+        # assert not self.argument.is_reference
         argument = node_map.get(self.argument, self.argument)
 
         def extract_domain(node: GraphNode) -> AbstractDomain:

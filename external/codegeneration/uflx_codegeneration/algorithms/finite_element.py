@@ -5,7 +5,7 @@ from collections.abc import Hashable
 import numpy as np
 import numpy.typing as npt
 from uflx.algorithms import replace
-from uflx.basis_functions import AbstractEvaluatedReferenceBasisFunction
+from uflx.basis_functions import AbstractEvaluatedBasisFunction
 from uflx.graphs import GraphNode, as_graph
 
 from uflx_codegeneration import symbols
@@ -44,8 +44,10 @@ def tabulate_finite_elements(
     to_replace: dict[GraphNode, GraphNode] = {}
     table_info: dict[str, tuple[AbstractFiniteElement, int, npt.NDArray[np.floating]]] = {}
     for node in as_graph(expression):
-        if isinstance(node, GraphNode) and isinstance(
-            node, AbstractEvaluatedReferenceBasisFunction
+        if (
+            isinstance(node, GraphNode)
+            and isinstance(node, AbstractEvaluatedBasisFunction)
+            and node.is_reference
         ):
             assert isinstance(node.element, AbstractFiniteElement)
             id = (node.element, node.point.points_set)

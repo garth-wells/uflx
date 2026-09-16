@@ -3,7 +3,7 @@
 from typing import Any
 
 from uflx.algorithms import replace
-from uflx.basis_functions import EvaluatedReferenceBasisFunction
+from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.graphs import GraphNode, as_graph
 
 from uflx_codegeneration import symbols
@@ -60,19 +60,19 @@ def insert_coefficient_functions(
         if isinstance(node, EvaluatedReferenceCoefficientBasisFunction)
     ]
 
-    # Every distinct coefficient (identified by its count) is given a
+    # Every distinct coefficient (identified by its label) is given a
     # contiguous block of `ndofs` slots in the coefficients array, ordered by
-    # count. (There is currently no other convention establishing the layout
+    # label. (There is currently no other convention establishing the layout
     # of the coefficients array, since this is the first code generation
     # support for Coefficients.)
-    ndofs_by_count: dict[int, int] = {}
+    ndofs_by_label: dict[str, int] = {}
     for node in nodes:
-        ndofs_by_count[node.count] = node.element.dim
-    offset_by_count: dict[int, int] = {}
+        ndofs_by_label[node.label] = node.element.dim
+    offset_by_label: dict[str, int] = {}
     offset = 0
-    for count in sorted(ndofs_by_count):
-        offset_by_count[count] = offset
-        offset += ndofs_by_count[count]
+    for label in sorted(ndofs_by_label):
+        offset_by_label[label] = offset
+        offset += ndofs_by_label[label]
 
     for node in nodes:
         fname = variable_namer.coefficient_function_name()
@@ -80,14 +80,16 @@ def insert_coefficient_functions(
         assert isinstance(dof_variable, str)
         accumulator = variable_namer.variable()
 
-        table_lookup = EvaluatedReferenceBasisFunction(
-            node.element,
+        table_lookup = EvaluatedBasisFunction(
+            node.space,
             dof_variable,
             node.point,
+            True,
+            None,
             node.derivative,
             node.component_index,
         )
-        dof_offset = offset_by_count[node.count]
+        dof_offset = offset_by_label[node.label]
         w_index = dof_variable if dof_offset == 0 else f"{dof_offset} + {dof_variable}"
 
         w = Variable("const double* restrict", symbols.coefficients)
