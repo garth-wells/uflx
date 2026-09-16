@@ -114,7 +114,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     @property
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
-        raise NotImplementedError()
+        return self._space
 
     @property
     def is_reference(self) -> bool:
