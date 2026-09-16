@@ -52,6 +52,7 @@ class AbstractFunction(AbstractExpression):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         if self.is_reference:
+            assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
             return self.function_space.elements[0].reference_value_shape
         else:
             return self.function_space.value_shape
