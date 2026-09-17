@@ -116,6 +116,56 @@ def reference_stiffness(coords: np.ndarray, degree: int) -> np.ndarray:
     return A
 
 
+def reference_mass(coords: np.ndarray, degree: int) -> np.ndarray:
+    """General quadrature-based numpy/basix reference for CG-`degree` mass
+    matrix on an affine-mapped tetrahedron -- independent of any generated
+    kernel, so it can validate one.
+
+    Unlike reference_stiffness/tabulate(), only needs basis VALUES (no
+    derivatives), so it builds and tabulates its own element directly
+    rather than reusing tabulate() -- which also lets it request a
+    discontinuous element at degree 0, where a *continuous* Lagrange space
+    of degree 0 cannot be constructed at all (basix raises "Cannot create a
+    continuous order 0 Lagrange basis function"). Continuity has no
+    bearing on a single-cell local kernel like this one either way, since
+    only a global dofmap would ever observe it.
+
+    phi_i * phi_j has degree 2*degree (vs grad(phi_i).grad(phi_j)'s
+    2*(degree-1) in reference_stiffness/tabulate), so the quadrature rule
+    requested here is sized differently -- callers generating an MLIR mass
+    kernel via uflx_mlir.lowering.lower_form/emit.generate_mlir_module must
+    account for the same mismatch: those functions size their quadrature
+    rule as max(2*(degree-1), 1) (tuned for a gradient-square integrand),
+    so a mass form needs degree+1 passed as their `degree` argument to get
+    an exact rule, not the bare element degree -- see
+    ffcx_compare_mass_linear_action.py's uflx_compile docstring.
+
+    Assumes positively-oriented tetrahedra (uses detJ directly, not
+    abs(detJ)) -- same convention as reference_stiffness.
+    """
+    element = basix.create_element(
+        basix.ElementFamily.P,
+        CELL,
+        degree,
+        LAGRANGE_VARIANT,
+        discontinuous=(degree == 0),
+    )
+    ndofs = element.dim
+    qdeg = max(2 * degree, 1)
+    points, weights = _make_quadrature(CELL, qdeg)
+    values = element.tabulate(0, points)[0, :, :, 0]
+    assert values.shape == (len(weights), ndofs), f"unexpected tabulate() shape {values.shape}"
+
+    x0, x1, x2, x3 = coords
+    J = np.column_stack([x1 - x0, x2 - x0, x3 - x0])
+    detJ = np.linalg.det(J)
+
+    M = np.zeros((ndofs, ndofs))
+    for q, w in enumerate(weights):
+        M += w * detJ * np.outer(values[q], values[q])
+    return M
+
+
 def _fmt1(arr) -> str:
     return "[" + ", ".join(repr(float(v)) for v in arr) + "]"
 
