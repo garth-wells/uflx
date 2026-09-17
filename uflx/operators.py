@@ -12,7 +12,7 @@ from uflx.functions import AbstractFunction
 from uflx.geometry import JacobianInverseTranspose
 from uflx.graphs import GraphNode, as_graph
 from uflx.maps import PushedForward
-from uflx.tensors import Vector
+from uflx.tensors import Vector, zero
 
 
 class Inner(BinaryOperator):
@@ -43,7 +43,8 @@ class Grad(UnaryOperator):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self._physical_argument.function_space.domain.geometric_dimension,)
+        gdim = self._physical_argument.function_space.domain.geometric_dimension
+        return (*self._physical_argument.value_shape, gdim)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -51,8 +52,11 @@ class Grad(UnaryOperator):
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
-        # assert isinstance(self.argument, EvaluatedBasisFunction)
-        # assert not self.argument.is_reference
+        if self._physical_argument.is_cellwise_constant:
+            # The gradient of a cellwise constant is exactly zero.
+            return zero(self.value_shape)
+
+        # assert isinstance(self.argument, EvaluatedPhysicalBasisFunction)
         argument = node_map.get(self.argument, self.argument)
 
         def extract_domain(node: GraphNode) -> AbstractDomain:
@@ -86,7 +90,7 @@ class ReferenceGrad(UnaryOperator):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        return (self._reference_argument.domain_size,)
+        return (*self._reference_argument.value_shape, self._reference_argument.domain_size)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
@@ -97,11 +101,17 @@ class ReferenceGrad(UnaryOperator):
     def expand_geometry(self) -> GraphNode:
         """Expand geometry."""
         argument = self._reference_argument
+        if argument.is_cellwise_constant:
+            return zero((*argument.value_shape, argument.domain_size))
         return Vector([argument.diff(i) for i in range(argument.domain_size)])
 
 
-def grad(a: AbstractExpression) -> Grad:
+def grad(a: AbstractExpression) -> AbstractExpression:
     """The gradient of an expression."""
+    if isinstance(a, AbstractFunction) and not a.is_reference and a.is_cellwise_constant:
+        # The Grad of a cellwise constant physical function is zero.
+        gdim = a.function_space.domain.geometric_dimension
+        return zero((*a.value_shape, gdim))
     return Grad(a)
 
 
