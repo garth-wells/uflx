@@ -9,6 +9,12 @@ Run (same venv as harness.py, after `pip install fenics-ffcx` for basix):
     python3 demo/generate_kernel.py 2   # writes kernels/p2_stiffness.mlir
     python3 demo/generate_kernel.py 3   # writes kernels/p3_stiffness.mlir
 
+Each run also writes a kernels/p{degree}_stiffness_expected.txt alongside
+the .mlir file -- see write_expected_reference()'s own docstring -- which
+demo/cpp_kernel_call/main.cpp reads to validate that degree's kernel at
+run time, so eg `cmake -B build -DKERNEL_DEGREE=2` in that folder needs
+both files present (generate them here first).
+
 Geometry is a P1-mapped (affine) tetrahedron regardless of the solution
 element's degree. The generated P1 kernel uses the same general quadrature-loop
 structure as higher degrees; its basis gradients are constant and the loop has
@@ -34,6 +40,15 @@ LAGRANGE_VARIANT = basix.LagrangeVariant.equispaced
 CELL = basix.CellType.tetrahedron
 
 KERNELS_DIR = Path(__file__).parent / "kernels"
+
+# Same scalene tetrahedron every demo/ script in this repo uses (see eg
+# ffcx_compare_linear_action.py's COORDS) -- also what write_expected_reference()
+# below evaluates reference_stiffness() at, so demo/cpp_kernel_call/main.cpp's
+# runtime validation is checking against exactly these coordinates.
+DEMO_COORDS = np.array(
+    [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
+    dtype=np.float64,
+)
 
 
 def _make_quadrature(cell, degree):
@@ -164,6 +179,31 @@ def reference_mass(coords: np.ndarray, degree: int) -> np.ndarray:
     for q, w in enumerate(weights):
         M += w * detJ * np.outer(values[q], values[q])
     return M
+
+
+def write_expected_reference(path, degree: int) -> None:
+    """Write reference_stiffness(DEMO_COORDS, degree) to a plain-text file
+    that demo/cpp_kernel_call/main.cpp reads at run time to validate a
+    compiled kernel's actual output.
+
+    That C++ program deliberately doesn't reimplement this computation --
+    it's a "call a kernel from C++" demo, not a basix-in-C++ one -- so the
+    expected values it checks against have to come from somewhere. This
+    keeps that somewhere a single Python-computed source of truth (this
+    function, called right here alongside generating the kernel itself),
+    committed to disk as data rather than being duplicated as hardcoded
+    constants inside main.cpp for every degree someone might try.
+
+    Format: first line is `ndofs`; each of the next `ndofs` lines is
+    `ndofs` whitespace-separated float64 values (full round-trip
+    precision, `repr()`-equivalent) -- row i of the stiffness matrix.
+    """
+    A = reference_stiffness(DEMO_COORDS, degree)
+    ndofs = A.shape[0]
+    assert A.shape == (ndofs, ndofs)
+    lines = [str(ndofs)]
+    lines += [" ".join(repr(float(v)) for v in row) for row in A]
+    Path(path).write_text("\n".join(lines) + "\n")
 
 
 def _fmt1(arr) -> str:
@@ -394,12 +434,8 @@ def main():
     sys.path.insert(0, str(Path(__file__).parent))
     import harness as mlir_harness
 
-    coords = np.array(
-        [[0.0, 0.3, 0.1], [1.1, -0.1, 0.05], [0.2, 1.0, -0.05], [0.15, 0.05, 1.05]],
-        dtype=np.float64,
-    )
-    A1_general = reference_stiffness(coords, 1)
-    A1_closed_form = mlir_harness.reference_p1_stiffness(coords)
+    A1_general = reference_stiffness(DEMO_COORDS, 1)
+    A1_closed_form = mlir_harness.reference_p1_stiffness(DEMO_COORDS)
     np.testing.assert_allclose(A1_general, A1_closed_form, rtol=1e-10)
     print("Cross-check OK: general quadrature reference matches the closed-form P1 reference.")
 
@@ -407,6 +443,10 @@ def main():
     out_path = KERNELS_DIR / f"p{degree}_stiffness.mlir"
     out_path.write_text(mlir_text)
     print(f"wrote {out_path} ({len(mlir_text.splitlines())} lines)")
+
+    expected_path = KERNELS_DIR / f"p{degree}_stiffness_expected.txt"
+    write_expected_reference(expected_path, degree)
+    print(f"wrote {expected_path}")
 
 
 if __name__ == "__main__":
