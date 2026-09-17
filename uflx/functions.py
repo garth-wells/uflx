@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from itertools import count
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
@@ -251,7 +251,14 @@ class Coefficient(AbstractIntegralScopedFunction):
                 f"Derivative index {index} out of range for domain size {self.domain_size}"
             )
         if self.is_cellwise_constant:
-            return zero(self.value_shape)
+            # A cellwise constant's derivative is a plain zero
+            # Tensor/RealScalar -- not itself an AbstractFunction -- so
+            # this is the one place that distinction has to be cast away
+            # rather than widening AbstractFunction.diff's own contract
+            # (which would break chained .diff().diff() calls elsewhere,
+            # eg test_basis_functions.py, whose intermediate values are
+            # statically typed as bare AbstractFunction).
+            return cast(AbstractFunction, zero(self.value_shape))
         raise NotImplementedError()
 
     def component(self, *indices: int) -> AbstractExpression:

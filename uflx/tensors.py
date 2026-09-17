@@ -250,16 +250,15 @@ def zero(shape: tuple[int, ...]) -> RealScalar | Tensor:
         )
     if shape == ():
         return RealScalar(0.0)
+    if len(shape) == 1:
+        return Vector([RealScalar(0.0) for _ in range(shape[0])])
+    if len(shape) == 2:
+        return Matrix([[RealScalar(0.0) for _ in range(shape[1])] for _ in range(shape[0])])
 
     def build_entries(shape: tuple[int, ...]) -> NestedSequence:
-        """Recursively build zero tensor."""
+        """Recursively build a zero tensor."""
         if len(shape) == 1:
             return [RealScalar(0.0) for _ in range(shape[0])]
         return [build_entries(shape[1:]) for _ in range(shape[0])]
 
-    entries = build_entries(shape)
-    if len(shape) == 1:
-        return Vector(entries)
-    if len(shape) == 2:
-        return Matrix(entries)
-    return Tensor(entries)
+    return Tensor(build_entries(shape))
