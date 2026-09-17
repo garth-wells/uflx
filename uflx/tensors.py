@@ -13,7 +13,7 @@ NestedTuple: TypeAlias = AbstractExpression | tuple["NestedTuple", ...]
 
 
 class Tensor(AbstractExpression):
-    """A vector."""
+    """A general tensor."""
 
     def __init__(self, entries: NestedSequence):
         """Initalise."""
@@ -96,7 +96,7 @@ class Vector(Tensor):
 
 
 class Matrix(Tensor):
-    """A matrix."""
+    """A matrix, i.e. a 2D tensor."""
 
     def __init__(self, entries: Sequence[Sequence[AbstractExpression]]):
         """Initalise."""
@@ -226,7 +226,40 @@ class Matrix(Tensor):
 
 
 def zero(shape: tuple[int, ...]) -> RealScalar | Tensor:
-    """Create a tensor full of zeros."""
+    """Create a tensor full of zeros.
+
+    Args:
+        shape: The value shape of the zero tensor to build -- () for a
+            scalar, or any tuple of positive extents for a
+            correctly-shaped all-zero Vector/Matrix/Tensor.
+
+    Returns:
+        RealScalar(0.0) if shape == (), else a Vector (rank 1), Matrix
+        (rank 2), or Tensor (rank 3+) built from nested RealScalar(0.0)
+        leaves matching `shape`.
+
+    Raises:
+        ValueError: if any extent in `shape` is not a positive integer --
+            eg a zero or negative extent, which the underlying
+            Vector/Matrix/Tensor representation cannot express.
+    """
+    if any(not isinstance(n, int) or n <= 0 for n in shape):
+        raise ValueError(
+            f"Cannot create a zero tensor of shape {shape}: every extent must be "
+            "a positive integer."
+        )
     if shape == ():
         return RealScalar(0.0)
-    raise NotImplementedError()
+
+    def build_entries(shape: tuple[int, ...]) -> NestedSequence:
+        """Recursively build zero tensor."""
+        if len(shape) == 1:
+            return [RealScalar(0.0) for _ in range(shape[0])]
+        return [build_entries(shape[1:]) for _ in range(shape[0])]
+
+    entries = build_entries(shape)
+    if len(shape) == 1:
+        return Vector(entries)
+    if len(shape) == 2:
+        return Matrix(entries)
+    return Tensor(entries)

@@ -26,6 +26,16 @@ class AbstractReferenceMap(ABC):
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
 
+    @property
+    def preserves_constant_values(self) -> bool:
+        """Whether a reference-cell-constant function stays constant when pushed forward.
+
+        Conservative by default (False): a subclass overrides this only
+        when it is known to preserve cellwise-constant values.
+
+        """
+        return False
+
 
 class IdentityReferenceMap(AbstractReferenceMap):
     """Identity map."""
@@ -41,6 +51,11 @@ class IdentityReferenceMap(AbstractReferenceMap):
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
         return ()
+
+    @property
+    def preserves_constant_values(self) -> bool:
+        """The identity map trivially preserves constant values."""
+        return True
 
 
 class BlockedReferenceMap(AbstractReferenceMap):
@@ -66,6 +81,11 @@ class BlockedReferenceMap(AbstractReferenceMap):
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Map function values from a physical cell to a reference cell."""
         return self._shape
+
+    @property
+    def preserves_constant_values(self) -> bool:
+        """A blocked map preserves constants iff its component map does."""
+        return self._component_map.preserves_constant_values
 
 
 class SymmetricReferenceMap(AbstractReferenceMap):
@@ -94,6 +114,11 @@ class SymmetricReferenceMap(AbstractReferenceMap):
         """Map function values from a physical cell to a reference cell."""
         return self._shape
 
+    @property
+    def preserves_constant_values(self) -> bool:
+        """A symmetric map preserves constants iff its component map does."""
+        return self._component_map.preserves_constant_values
+
 
 class MixedReferenceMap(AbstractReferenceMap):
     """Map for a mixed element."""
@@ -121,6 +146,11 @@ class MixedReferenceMap(AbstractReferenceMap):
         for s in self._shapes:
             shape += s
         return shape
+
+    @property
+    def preserves_constant_values(self) -> bool:
+        """A mixed map preserves constants iff every sub-map does."""
+        return all(m.preserves_constant_values for m in self._sub_maps)
 
 
 @runtime_checkable
