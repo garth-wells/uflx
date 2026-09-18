@@ -14,6 +14,7 @@ from uflx.maps import apply_push_forwards
 from uflx_codegeneration import symbols
 from uflx_codegeneration.algorithms import (
     expand_inner_products,
+    insert_coefficient_functions,
     insert_geometry_functions,
     tabulate_finite_elements,
 )
@@ -62,6 +63,11 @@ def generate(
     geometry_functions, form = insert_geometry_functions(form)
     form = expand_geometry(form)
     form = expand_inner_products(form)
+    # Coefficients are only replaced with a runtime dof-summation once any
+    # differentiation (expand_geometry) and component extraction
+    # (expand_inner_products) has finished with them -- see
+    # EvaluatedReferenceCoefficientBasisFunction.
+    coefficient_functions, form = insert_coefficient_functions(form)
 
     # Tabulate quadrature rules and finite element functions
     q_tables, form = tabulate_quadrature(form)
@@ -69,16 +75,16 @@ def generate(
     tables = {**q_tables, **fe_tables}
 
     code = ""
-    for fname, (dtype, inputs, function) in geometry_functions.items():
-        code += f"{dtype} {fname}("
+    for fname, (dtype, inputs, function) in {**geometry_functions, **coefficient_functions}.items():
+        code += f"static {dtype} {fname}("
         code += ", ".join(f"{i._dtype} {i._variable}" for i in inputs)
         code += ") {\n"
         ftables, function = tabulate_finite_elements(function)
         code += indented(tables_to_c(ftables), 2)
         code += "\n\n"
         assert isinstance(function, GenerateC)
-        code += f"  return {function.generate_c()};\n"
-        code += "}\n\n"
+        code += indented(function.generate_c(), 2)
+        code += "\n}\n\n"
     code += (
         "void tabulate_tensor_f64(\n"
         f"    double* restrict {symbols.local_tensor},\n"

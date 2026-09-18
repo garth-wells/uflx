@@ -50,7 +50,6 @@ def test_tabulate_finite_elements_hoists_only_the_derivative(lagrange_element):
     """
     element = lagrange_element("triangle", 1)
     point = _quadrature_point("q")
-
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
 
