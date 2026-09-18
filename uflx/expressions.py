@@ -11,8 +11,8 @@ An expression is any algebraic expression that could be used as an integrand.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
-from math import prod, gcd
+from collections.abc import Iterable, Sequence
+from math import gcd, prod
 from typing import Any
 
 from uflx.graphs.graphs import GraphNode
@@ -262,7 +262,7 @@ class ComplexScalar(AbstractScalar):
 
     def __recip__(self) -> AbstractExpression:
         """Reciprocal."""
-        n = self._re ** 2 + self._im ** 2
+        n = self._re**2 + self._im**2
         return ComplexScalar(self._re / n, self._im / n)
 
     def __neg__(self) -> AbstractExpression:

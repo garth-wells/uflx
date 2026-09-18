@@ -12,15 +12,13 @@ from uflx import (
     inner,
 )
 from uflx.algorithms import simplify
-from uflx.expressions import Div, MatMult, Product
+from uflx.expressions import MatMult, Product
 from uflx.geometry import Jacobian, JacobianInverseTranspose
 from uflx.operators import Inner
-from uflx.graphs import as_graph
 
 
 def test_add_and_subtract_integer(lagrange_element):
     """Test that adding 2 and -2 are successfully cancelled."""
-
     element = lagrange_element("triangle", 2)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
@@ -35,7 +33,6 @@ def test_add_and_subtract_integer(lagrange_element):
 
 def test_add_and_subtract_more_integers(lagrange_element):
     """Test that adding and subtracting integers are successfully cancelled."""
-
     element = lagrange_element("triangle", 2)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
@@ -78,7 +75,6 @@ def test_multiply_and_divide_more_integers(lagrange_element):
 
 def test_add_and_subtract_function(lagrange_element):
     """Test that Function and -Function are successfully cancelled."""
-
     element = lagrange_element("triangle", 2)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
@@ -95,7 +91,6 @@ def test_add_and_subtract_function(lagrange_element):
 
 def test_multiply_and_divide_integer_form(lagrange_element):
     """Test that 2 and 1/2 are successfully cancelled."""
-
     pytest.xfail()
 
     element = lagrange_element("triangle", 2)
@@ -103,8 +98,6 @@ def test_multiply_and_divide_integer_form(lagrange_element):
     space = function_space(domain, element)
     u = TrialFunction(space)
     v = TestFunction(space)
-
-    f = Coefficient(space)
 
     form = inner(2 * u, v / 2) * dx
 
@@ -145,7 +138,6 @@ def test_multiply_and_divide_function_form(lagrange_element):
 
 def test_jacobian_and_inverse_form(lagrange_element):
     """Test that Jacobian and inverse Jacobian are successfully cancelled."""
-
     pytest.xfail()
 
     element = lagrange_element("triangle", 2, (2,))

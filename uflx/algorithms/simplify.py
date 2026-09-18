@@ -1,11 +1,11 @@
 """Simplifying expressions."""
 
-from uflx.expressions import AbstractExpression, Product, Sum
-from typing import runtime_checkable, Protocol
+from collections.abc import Sequence
+from typing import Protocol, runtime_checkable
 
-from uflx.graphs import GraphNode, as_graph
 from uflx.algorithms.reconstruct import reconstruct_node
-
+from uflx.expressions import AbstractExpression, Product, Sum
+from uflx.graphs import GraphNode, as_graph
 
 
 @runtime_checkable
