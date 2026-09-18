@@ -49,12 +49,9 @@ set(KERNEL_DEGREE "1" CACHE STRING
     "Polynomial degree of the stiffness kernel to build/run against")
 
 # The MLIR kernel text to lower. Defaults to the KERNEL_DEGREE kernel one
-# level up; point at a different kernel entirely with
-# -DKERNEL_MLIR=/path/to/other.mlir -- eg one of
-# uflx_mlir.emit.generate_mlir_module's own str(module) dumps for a real
-# UFLx form; see main.cpp's docstring comment for what changes (one more
-# memref argument, and its own KERNEL_DEGREE/symbol-name conventions no
-# longer apply) if that kernel has a Coefficient in it.
+# level up. An alternative kernel must have the same bare-pointer signature
+# (output matrix, coordinates), static default-layout memrefs, and the
+# symbol/shape selected by KERNEL_DEGREE.
 set(KERNEL_MLIR "${CMAKE_CURRENT_SOURCE_DIR}/../kernels/p${KERNEL_DEGREE}_stiffness.mlir"
     CACHE FILEPATH "MLIR kernel text to lower to a native object file")
 
@@ -92,15 +89,21 @@ find_program(MLIR_TRANSLATE NAMES mlir-translate REQUIRED
 find_program(LLC NAMES llc REQUIRED
   DOC "Path to llc (LLVM IR -> native object file)")
 
-# Same pipeline as harness.py's QUADRATURE_PIPELINE -- right for this
-# coefficient-free, math-dialect-free kernel. A kernel from
-# uflx_mlir.emit.generate_mlir_module built from a real UFLx form
-# typically needs convert-math-to-llvm too (JacobianDeterminant always
-# takes abs()) -- see README.md's "calling convention" section, and pass
-# a different pipeline here with -DMLIR_LOWERING_PIPELINE=... if so.
+# Unlike harness.py's descriptor ABI, this AOT caller takes bare pointers.
+# All memref arguments must have static shapes and default layouts. Kernels
+# using math operations also need convert-math-to-llvm in this pipeline.
 set(MLIR_LOWERING_PIPELINE
-    "builtin.module(convert-scf-to-cf,convert-arith-to-llvm,finalize-memref-to-llvm,convert-cf-to-llvm,convert-func-to-llvm,reconcile-unrealized-casts)"
+    "builtin.module(convert-scf-to-cf,convert-arith-to-llvm,finalize-memref-to-llvm,convert-cf-to-llvm,convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},reconcile-unrealized-casts)"
     CACHE STRING "mlir-opt --pass-pipeline= argument for lowering KERNEL_MLIR")
+
+# An old cached pipeline would still link, but its descriptor ABI would
+# interpret our two data pointers as unrelated memref fields at runtime.
+if(NOT MLIR_LOWERING_PIPELINE MATCHES "use-bare-ptr-memref-call-conv=true")
+  message(FATAL_ERROR
+    "run_kernel requires the bare-pointer ABI. Reconfigure with "
+    "-UMLIR_LOWERING_PIPELINE to reset the cached pipeline, or include "
+    "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true} in your custom pipeline.")
+endif()
 
 set(LOWERED_MLIR "${CMAKE_CURRENT_BINARY_DIR}/kernel_lowered.mlir")
 set(KERNEL_LL "${CMAKE_CURRENT_BINARY_DIR}/kernel.ll")

@@ -24,7 +24,7 @@ def _require_gpu_target(target: str) -> None:
                 assert target == "NVPTX"
                 lower_module_to_nvvm(module, cubin_chip="sm_80")
         except MLIRError as error:
-            if f"The `{target}` target was not built" in str(error):
+            if f"`{target}` target was not built" in str(error):
                 pytest.skip(f"MLIR was built without the {target} target")
             raise
 
