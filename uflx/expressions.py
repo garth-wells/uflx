@@ -13,8 +13,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from math import gcd, prod
-from typing import Any
+from typing import Any, cast
 
+from uflx.algorithms.simplify import simplify_product_items, simplify_sum_items
 from uflx.graphs.graphs import GraphNode
 
 
@@ -634,6 +635,14 @@ class Product(AbstractExpression):
         except ValueError:
             return NotImplemented
 
+    def simplify(self) -> GraphNode:
+        """Simplify this expression."""
+        items = simplify_product_items(self._items)
+
+        if len(items) == 1:
+            return items[0]
+        return Product(cast(list[AbstractExpression], items))
+
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
@@ -694,6 +703,14 @@ class Sum(AbstractExpression):
             return self + to_scalar(other)
         except ValueError:
             return NotImplemented
+
+    def simplify(self) -> GraphNode:
+        """Simplify this expression."""
+        items = simplify_sum_items(self._items)
+
+        if len(items) == 1:
+            return items[0]
+        return Sum(cast(list[AbstractExpression], items))
 
     @property
     def successors(self) -> set[GraphNode]:

@@ -4,23 +4,34 @@ from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
 
 from uflx.algorithms.reconstruct import reconstruct_node
-from uflx.expressions import AbstractExpression, Product, Sum
 from uflx.graphs import GraphNode, as_graph
+
+
+@runtime_checkable
+class Simplifiable(Protocol):
+    """An expression that can be simplified."""
+
+    def simplify(self) -> GraphNode:
+        """Simplify this expression.
+
+        This function should return None if no simplification can be made.
+        """
 
 
 @runtime_checkable
 class SimplifiableInProduct(Protocol):
     """An expression that can be combined with others within a multiplication."""
 
-    def simplified_product(self, other: AbstractExpression) -> AbstractExpression | None:
+    def simplified_product(self, other: GraphNode) -> GraphNode | None:
         """Return a single expression representing the simplified product.
 
         This function should return None if no simplification can be made.
         """
 
 
-def simplify_product(items: Sequence[AbstractExpression]) -> AbstractExpression:
-    """Simplify a product."""
+def simplify_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
+    """Simplify a list of items in a product."""
+    items = list(items)
     size = -1
     while len(items) != size:
         size = len(items)
@@ -33,26 +44,23 @@ def simplify_product(items: Sequence[AbstractExpression]) -> AbstractExpression:
                 else:
                     continue
                 break
-
-    if len(items) == 1:
-        return items[0]
-    else:
-        return Product(items)
+    return items
 
 
 @runtime_checkable
 class SimplifiableInSum(Protocol):
     """An expression that can be combined with others within a multiplication."""
 
-    def simplified_sum(self, other: AbstractExpression) -> AbstractExpression | None:
+    def simplified_sum(self, other: GraphNode) -> GraphNode | None:
         """Return a single expression representing the simplified sum.
 
         This function should return None if no simplification can be made.
         """
 
 
-def simplify_sum(items: Sequence[AbstractExpression]) -> AbstractExpression:
-    """Simplify a sum."""
+def simplify_sum_items(items: Sequence[GraphNode]) -> list[GraphNode]:
+    """Simplify a list of items in a sum."""
+    items = list(items)
     size = -1
     while len(items) != size:
         size = len(items)
@@ -66,22 +74,7 @@ def simplify_sum(items: Sequence[AbstractExpression]) -> AbstractExpression:
                     continue
                 break
 
-    if len(items) == 1:
-        return items[0]
-    else:
-        return Sum(items)
-
-
-def _mapped_items(
-    items: tuple[AbstractExpression, ...], node_map: dict[GraphNode, GraphNode]
-) -> list[AbstractExpression]:
-    """Get list of mapped items."""
-    out = []
-    for i in items:
-        j = node_map.get(i, i)
-        assert isinstance(j, AbstractExpression)
-        out.append(j)
-    return out
+    return items
 
 
 def simplify(expression: GraphNode) -> GraphNode:
@@ -91,10 +84,10 @@ def simplify(expression: GraphNode) -> GraphNode:
 
     node_map: dict[GraphNode, GraphNode] = {}
     for node in graph.ordered_nodes():
-        if isinstance(node, Product):
-            node_map[node] = simplify_product(_mapped_items(node._items, node_map))
-        elif isinstance(node, Sum):
-            node_map[node] = simplify_sum(_mapped_items(node._items, node_map))
+        if isinstance(node, Simplifiable):
+            new_node = reconstruct_node(node, node_map)
+            assert isinstance(new_node, Simplifiable)
+            node_map[node] = new_node.simplify()
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
