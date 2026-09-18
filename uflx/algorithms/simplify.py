@@ -74,6 +74,18 @@ def simplify_sum(items: Sequence[AbstractExpression]) -> AbstractExpression:
         return Sum(items)
 
 
+def _mapped_items(
+    items: tuple[AbstractExpression, ...], node_map: dict[GraphNode, GraphNode]
+) -> list[AbstractExpression]:
+    """Get list of mapped items."""
+    out = []
+    for i in items:
+        j = node_map.get(i, i)
+        assert isinstance(j, AbstractExpression)
+        out.append(j)
+    return out
+
+
 def simplify(expression: GraphNode) -> GraphNode:
     """Apply simplifications to an expression."""
     graph = as_graph(expression)
@@ -82,9 +94,9 @@ def simplify(expression: GraphNode) -> GraphNode:
     node_map: dict[GraphNode, GraphNode] = {}
     for node in graph.ordered_nodes():
         if isinstance(node, Product):
-            node_map[node] = simplify_product([node_map.get(i, i) for i in node._items])
+            node_map[node] = simplify_product(_mapped_items(node._items, node_map))
         elif isinstance(node, Sum):
-            node_map[node] = simplify_sum([node_map.get(i, i) for i in node._items])
+            node_map[node] = simplify_sum(_mapped_items(node._items, node_map))
         elif any(a in node_map for a in node.successors):
             node_map[node] = reconstruct_node(node, node_map)
 
