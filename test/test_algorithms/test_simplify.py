@@ -21,14 +21,27 @@ from uflx.graphs import as_graph
 def test_add_and_subtract_integer(lagrange_element):
     """Test that adding 2 and -2 are successfully cancelled."""
 
-    pytest.xfail()
-
     element = lagrange_element("triangle", 2)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
     u = TrialFunction(space)
 
     expression = u + 2 - 2
+    simpler_expression = simplify(expression)
+
+    assert not isinstance(expression, TrialFunction)
+    assert isinstance(simpler_expression, TrialFunction)
+
+
+def test_add_and_subtract_more_integers(lagrange_element):
+    """Test that adding and subtracting integers are successfully cancelled."""
+
+    element = lagrange_element("triangle", 2)
+    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
+    space = function_space(domain, element)
+    u = TrialFunction(space)
+
+    expression = u + 2 + 6 - 1 - 3 - 4
     simpler_expression = simplify(expression)
 
     assert not isinstance(expression, TrialFunction)
@@ -49,10 +62,22 @@ def test_multiply_and_divide_integer(lagrange_element):
     assert isinstance(simpler_expression, TrialFunction)
 
 
+def test_multiply_and_divide_more_integers(lagrange_element):
+    """Test that multiplication then division by integers are successfully cancelled."""
+    element = lagrange_element("triangle", 2)
+    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
+    space = function_space(domain, element)
+    u = TrialFunction(space)
+
+    expression = u * 4 / 6 * 3 / 2
+    simpler_expression = simplify(expression)
+
+    assert not isinstance(expression, TrialFunction)
+    assert isinstance(simpler_expression, TrialFunction)
+
+
 def test_add_and_subtract_function(lagrange_element):
     """Test that Function and -Function are successfully cancelled."""
-
-    pytest.xfail()
 
     element = lagrange_element("triangle", 2)
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))

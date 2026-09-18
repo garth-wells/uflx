@@ -93,7 +93,7 @@ class AbstractExpression(ABC):
     def __add__(self, other: Any) -> AbstractExpression:
         """Add."""
         if isinstance(other, AbstractExpression):
-            return Add(self, other)
+            return Sum([self, other])
         try:
             return self + to_scalar(other)
         except ValueError:
@@ -109,7 +109,7 @@ class AbstractExpression(ABC):
     def __sub__(self, other: Any) -> AbstractExpression:
         """Subtract."""
         if isinstance(other, AbstractExpression):
-            return Subtract(self, other)
+            return self + -other
         try:
             return self - to_scalar(other)
         except ValueError:
@@ -215,6 +215,14 @@ class RealScalar(AbstractScalar):
         """Representation."""
         return f"{self.value}"
 
+    def __recip__(self) -> AbstractExpression:
+        """Reciprocal."""
+        return RealScalar(1 / self.value)
+
+    def __neg__(self) -> AbstractExpression:
+        """Negation."""
+        return RealScalar(-self.value)
+
     @property
     def successors(self) -> set[GraphNode]:
         """The successors of this node."""
@@ -251,6 +259,15 @@ class ComplexScalar(AbstractScalar):
     def __repr__(self):
         """Representation."""
         return f"{self._re!r} + ({self._im!r})j"
+
+    def __recip__(self) -> AbstractExpression:
+        """Reciprocal."""
+        n = self._re ** 2 + self._im ** 2
+        return ComplexScalar(self._re / n, self._im / n)
+
+    def __neg__(self) -> AbstractExpression:
+        """Negation."""
+        return ComplexScalar(-self._re, -self._im)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -289,12 +306,22 @@ class Integer(AbstractInteger):
 
         This function should return None if no simplification can be made.
         """
-        if isinstance(other, Integer):
-            return Integer(self.value + other.value)
         if self.value == 1:
             return other
         if self.value == 0:
             return self
+        if isinstance(other, Integer):
+            return Integer(self.value * other.value)
+
+    def simplified_sum(self, other: AbstractExpression) -> AbstractExpression | None:
+        """Return a single expression representing the simplified sum.
+
+        This function should return None if no simplification can be made.
+        """
+        if self.value == 0:
+            return other
+        if isinstance(other, Integer):
+            return Integer(self.value + other.value)
 
     def __eq__(self, other):
         """Check for equality."""
@@ -313,6 +340,10 @@ class Integer(AbstractInteger):
     def __recip__(self) -> AbstractExpression:
         """Reciprocal."""
         return Rational(1, self.value)
+
+    def __neg__(self) -> AbstractExpression:
+        """Negation."""
+        return Integer(-self.value)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -343,25 +374,46 @@ class Rational(AbstractScalar):
 
         This function should return None if no simplification can be made.
         """
-        new_numerator = None
-        new_denominator = None
         if isinstance(other, Integer):
-            new_numerator = self.numerator * other.value
-            new_denominator = self.denominator
+            numerator = self.numerator * other.value
+            denominator = self.denominator
         elif isinstance(other, Rational):
-            new_numerator = self.numerator * other.numerator
-            new_denominator = self.denominator * other.denominator
+            numerator = self.numerator * other.numerator
+            denominator = self.denominator * other.denominator
         else:
             return None
 
-        factor = gcd(new_numerator, new_denominator)
-        new_numerator //= factor
-        new_denominator //= factor
+        factor = gcd(numerator, denominator)
+        numerator //= factor
+        denominator //= factor
 
-        if new_denominator == 1 or new_numerator == 0:
-            return Integer(new_numerator)
+        if denominator == 1 or numerator == 0:
+            return Integer(numerator)
         else:
-            return Rational(new_numerator, new_denominator)
+            return Rational(numerator, denominator)
+
+    def simplified_sum(self, other: AbstractExpression) -> AbstractExpression | None:
+        """Return a single expression representing the simplified product.
+
+        This function should return None if no simplification can be made.
+        """
+        if isinstance(other, Integer):
+            numerator = self.numerator + other.value * self.denominator
+            denominator = self.denominator
+        elif isinstance(other, Rational):
+            numerator = self.numerator * other.denominator + self.denominator * other.numerator
+            denominator = self.denominator * other.denominator
+        else:
+            return None
+
+        factor = gcd(numerator, denominator)
+        numerator //= factor
+        denominator //= factor
+
+        if denominator == 1 or numerator == 0:
+            return Integer(numerator)
+        else:
+            return Rational(numerator, denominator)
 
     def __eq__(self, other):
         """Check for equality."""
@@ -376,6 +428,14 @@ class Rational(AbstractScalar):
     def __repr__(self):
         """Representation."""
         return f"{self.numerator}/{self.denominator}"
+
+    def __recip__(self) -> AbstractExpression:
+        """Reciprocal."""
+        return Rational(self.denominator, self.numerator)
+
+    def __neg__(self) -> AbstractExpression:
+        """Negation."""
+        return Rational(-self.numerator, self.denominator)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -549,7 +609,10 @@ class Product(AbstractExpression):
         """Multiply."""
         if isinstance(other, AbstractExpression):
             return Product(self._items + (other._items if isinstance(other, Product) else (other,)))
-        return NotImplemented
+        try:
+            return self * to_scalar(other)
+        except ValueError:
+            return NotImplemented
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -589,6 +652,67 @@ class Product(AbstractExpression):
     def as_int(self) -> int:
         """Convert to an integer."""
         return prod(i.as_int() for i in self._items)
+
+
+class Sum(AbstractExpression):
+    """Componentwise sum."""
+
+    def __init__(self, items: Sequence[AbstractExpression]):
+        """Initialise."""
+        if len(items) == 0:
+            raise ValueError("Cannot create an empty sum")
+        self._value_shape = items[0].value_shape
+        for i in items[1:]:
+            assert i.value_shape == self._value_shape
+        self._items = tuple(items)
+
+    def __add__(self, other: Any) -> AbstractExpression:
+        """Add."""
+        if isinstance(other, AbstractExpression):
+            return Sum(self._items + (other._items if isinstance(other, Sum) else (other,)))
+        try:
+            return self + to_scalar(other)
+        except ValueError:
+            return NotImplemented
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set(self._items)
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._items,)
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return "Sum([" + ", ".join(f"{i!r}" for i in self._items) + "])"
+
+    def __str__(self) -> str:
+        """Representation."""
+        return "Sum"
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self._value_shape
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        return Sum([i.component(*indices) for i in self._items])
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return sum(i.as_complex() for i in self._items)
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return sum(i.as_float() for i in self._items)
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return sum(i.as_int() for i in self._items)
 
 
 class ScalarMult(BinaryOperator):
@@ -678,48 +802,6 @@ class Div(BinaryOperator):
         if a % b != 0:
             raise ValueError(f"Cannot convert {self.__class__.__name__} to int")
         return a // b
-
-
-class Add(BinaryOperator):
-    """Addition operator."""
-
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise."""
-        assert first.value_shape == second.value_shape
-        super().__init__(first, second)
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return self.first.value_shape
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        if self.value_shape == ():
-            raise ValueError("Cannot get a component of a scalar expression")
-        return self.first.component(*indices) + self.second.component(*indices)
-
-    @property
-    def re(self) -> AbstractExpression:
-        """Get real part."""
-        return self.first.re + self.second.re
-
-    @property
-    def im(self) -> AbstractExpression:
-        """Get imaginary part."""
-        return self.first.im + self.second.im
-
-    def as_complex(self) -> complex:
-        """Convert to a complex number."""
-        return self.first.as_complex() + self.second.as_complex()
-
-    def as_float(self) -> float:
-        """Convert to a floating point number."""
-        return self.first.as_float() + self.second.as_float()
-
-    def as_int(self) -> int:
-        """Convert to an integer."""
-        return self.first.as_int() + self.second.as_int()
 
 
 class Subtract(BinaryOperator):
@@ -825,6 +907,14 @@ class Neg(UnaryOperator):
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         return self.argument.value_shape
+
+    def simplified_sum(self, other: AbstractExpression) -> AbstractExpression | None:
+        """Return a single expression representing the simplified sum.
+
+        This function should return None if no simplification can be made.
+        """
+        if self.value_shape == () and other == self.argument:
+            return Integer(0)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
