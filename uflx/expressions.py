@@ -122,11 +122,11 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
-    def __neg__(self):
+    def __neg__(self) -> AbstractExpression:
         """Negate."""
         return Neg(self)
 
-    def __abs__(self):
+    def __abs__(self) -> AbstractExpression:
         """Absolute value."""
         return Abs(self)
 
@@ -263,11 +263,21 @@ class ComplexScalar(AbstractScalar):
     def __recip__(self) -> AbstractExpression:
         """Reciprocal."""
         n = self._re**2 + self._im**2
-        return ComplexScalar(self._re / n, self._im / n)
+        re = self._re / n
+        im = self._im / n
+        if isinstance(re, AbstractScalar) and isinstance(im, AbstractScalar):
+            return ComplexScalar(re, im)
+        else:
+            return Div(Integer(1), self)
 
     def __neg__(self) -> AbstractExpression:
         """Negation."""
-        return ComplexScalar(-self._re, -self._im)
+        re = -self.re
+        im = -self.im
+        if isinstance(re, AbstractScalar) and isinstance(im, AbstractScalar):
+            return ComplexScalar(re, im)
+        else:
+            return Neg(self)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -419,7 +429,7 @@ class Rational(AbstractScalar):
         """Check for equality."""
         if isinstance(other, Rational):
             return self.numerator == other.numerator and self.denominator == other.denominator
-        return self.value == other
+        return False
 
     def __hash__(self):
         """Hash."""
@@ -884,7 +894,7 @@ class Reciprocal(UnaryOperator):
             raise ValueError("Cannot get a component of a scalar expression")
         return Reciprocal(self.argument.component(*indices))
 
-    def as_complex(self) -> float:
+    def as_complex(self) -> complex:
         """Convert to a floating point number."""
         return 1.0 / self.argument.as_complex()
 
