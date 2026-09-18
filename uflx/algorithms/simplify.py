@@ -23,13 +23,11 @@ def simplify_product(items: Sequence[AbstractExpression]) -> AbstractExpression:
     """Simplify a product."""
     size = -1
     while len(items) != size:
-        print(items)
         size = len(items)
         for i, item in enumerate(items):
             if isinstance(item, SimplifiableInProduct):
                 for j, item2 in enumerate(items):
                     if i != j and (s := item.simplified_product(item2)) is not None:
-                        print(item, type(item), item2, type(item2), s)
                         items = [it for k, it in enumerate(items) if k not in [i, j]] + [s]
                         break
                 else:

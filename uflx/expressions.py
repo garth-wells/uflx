@@ -55,6 +55,14 @@ class AbstractExpression(ABC):
         except ValueError:
             return NotImplemented
 
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return isinstance(other, self.__class__) and self.init_args == other.init_args
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash((f"uflx.{self.__class__.__name__}", *self.init_args))
+
     def __matmul__(self, other: Any) -> AbstractExpression:
         """Matrix multiply."""
         if isinstance(other, AbstractExpression):
@@ -316,9 +324,11 @@ class Integer(AbstractInteger):
 
         This function should return None if no simplification can be made.
         """
+        from uflx.functions import Argument
+
         if self.value == 1:
             return other
-        if self.value == 0:
+        if self.value == 0 and not isinstance(other, Argument):
             return self
         if isinstance(other, Integer):
             return Integer(self.value * other.value)
