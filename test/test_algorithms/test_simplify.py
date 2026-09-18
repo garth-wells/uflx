@@ -14,6 +14,7 @@ from uflx import (
 from uflx.algorithms import simplify
 from uflx.expressions import MatMult, Product
 from uflx.geometry import Jacobian, JacobianInverseTranspose
+from uflx.integrals import Integral
 from uflx.operators import Inner
 
 
@@ -100,8 +101,10 @@ def test_multiply_and_divide_integer_form(lagrange_element):
     v = TestFunction(space)
 
     form = inner(2 * u, v / 2) * dx
-
     simpler_form = simplify(form)
+
+    assert isinstance(form, Integral)
+    assert isinstance(simpler_form, Integral)
 
     assert isinstance(form.integrand, Product)
     assert len(form.integrand._items) > 2
@@ -122,8 +125,10 @@ def test_multiply_and_divide_function_form(lagrange_element):
     f = Coefficient(space)
 
     form = (u * f) * (v / f) * dx
-
     simpler_form = simplify(form)
+
+    assert isinstance(form, Integral)
+    assert isinstance(simpler_form, Integral)
 
     assert isinstance(form.integrand, Product)
     assert len(form.integrand._items) > 2
@@ -150,8 +155,10 @@ def test_jacobian_and_inverse_form(lagrange_element):
     j_inv_t = JacobianInverseTranspose(domain)
 
     form = inner(j @ u, j_inv_t @ v) * dx
-
     simpler_form = simplify(form)
+
+    assert isinstance(form, Integral)
+    assert isinstance(simpler_form, Integral)
 
     assert isinstance(form.integrand, Inner)
     assert isinstance(form.integrand.first, MatMult)
