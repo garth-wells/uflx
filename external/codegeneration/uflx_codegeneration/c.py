@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from uflx.expressions import Abs, Sum, Div, Integer, Product, Neg, RealScalar, Subtract
+from uflx.expressions import Abs, Div, Integer, Neg, Product, RealScalar, Reciprocal, Subtract, Sum
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 
@@ -46,7 +46,7 @@ def product_generate_c(self) -> str:
         if not isinstance(i, GenerateC):
             raise NotImplementedError(f"GenerateC is not implemented for {i.__class__}")
         items.append(i.generate_c())
-    return " * ".join(items)
+    return "(" + " * ".join(items) + ")"
 
 
 setattr(Product, "generate_c", product_generate_c)
@@ -64,6 +64,16 @@ def div_generate_c(self) -> str:
 setattr(Div, "generate_c", div_generate_c)
 
 
+def reciprocal_generate_c(self) -> str:
+    """Generate code for this object."""
+    if not isinstance(self.argument, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.argument.__class__}")
+    return f"(1.0 / {self.argument.generate_c()})"
+
+
+setattr(Reciprocal, "generate_c", reciprocal_generate_c)
+
+
 def sum_generate_c(self) -> str:
     """Generate code for this object."""
     items = []
@@ -71,7 +81,7 @@ def sum_generate_c(self) -> str:
         if not isinstance(i, GenerateC):
             raise NotImplementedError(f"GenerateC is not implemented for {i.__class__}")
         items.append(i.generate_c())
-    return " + ".join(items)
+    return "(" + " + ".join(items) + ")"
 
 
 setattr(Sum, "generate_c", sum_generate_c)
