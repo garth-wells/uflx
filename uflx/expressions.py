@@ -596,7 +596,6 @@ class ScalarMult(BinaryOperator):
 
     def __init__(self, first: AbstractExpression, second: AbstractExpression):
         """Initialise."""
-        print(first, second)
         assert first.value_shape == ()
         assert second.value_shape != ()
         super().__init__(first, second)

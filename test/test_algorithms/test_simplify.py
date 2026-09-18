@@ -45,10 +45,6 @@ def test_multiply_and_divide_integer(lagrange_element):
     expression = u * 2 / 2
     simpler_expression = simplify(expression)
 
-    as_graph(expression).print()
-    print()
-    as_graph(simpler_expression).print()
-
     assert not isinstance(expression, TrialFunction)
     assert isinstance(simpler_expression, TrialFunction)
 
@@ -89,10 +85,6 @@ def test_multiply_and_divide_integer_form(lagrange_element):
 
     simpler_form = simplify(form)
 
-    form.graph.print()
-    print()
-    simpler_form.graph.print()
-
     assert isinstance(form.integrand, Product)
     assert len(form.integrand._items) > 2
 
@@ -114,10 +106,6 @@ def test_multiply_and_divide_function_form(lagrange_element):
     form = (u * f) * (v / f) * dx
 
     simpler_form = simplify(form)
-
-    form.graph.print()
-    print()
-    simpler_form.graph.print()
 
     assert isinstance(form.integrand, Product)
     assert len(form.integrand._items) > 2
