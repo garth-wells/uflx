@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from itertools import count
-from typing import Any, Self
+from typing import Any, Self, cast
 
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
@@ -56,6 +56,24 @@ class AbstractFunction(AbstractExpression):
             return self.function_space.elements[0].reference_value_shape
         else:
             return self.function_space.value_shape
+
+    @property
+    def is_cellwise_constant(self) -> bool:
+        """Whether this function's value is the same everywhere on every cell.
+
+        True when every element of the function space is known to lie in
+        the degree-0 Lagrange space (lagrange_superdegree == 0) and,
+        for a physical (non-reference) function, every element's
+        reference map is known to preserve that constancy when pushed
+        forward (see AbstractReferenceMap.preserves_constant_values).
+        """
+        assert isinstance(self.function_space, AbstractReferenceMappedFunctionSpace)
+        elements = self.function_space.elements
+        if any(e.lagrange_superdegree != 0 for e in elements):
+            return False
+        if self.is_reference:
+            return True
+        return all(e.reference_map.preserves_constant_values for e in elements)
 
     @property
     def domain_size(self) -> int:
@@ -228,6 +246,19 @@ class Coefficient(AbstractIntegralScopedFunction):
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
+        if not 0 <= index < self.domain_size:
+            raise ValueError(
+                f"Derivative index {index} out of range for domain size {self.domain_size}"
+            )
+        if self.is_cellwise_constant:
+            # A cellwise constant's derivative is a plain zero
+            # Tensor/RealScalar -- not itself an AbstractFunction -- so
+            # this is the one place that distinction has to be cast away
+            # rather than widening AbstractFunction.diff's own contract
+            # (which would break chained .diff().diff() calls elsewhere,
+            # eg test_basis_functions.py, whose intermediate values are
+            # statically typed as bare AbstractFunction).
+            return cast(AbstractFunction, zero(self.value_shape))
         raise NotImplementedError()
 
     def component(self, *indices: int) -> AbstractExpression:
