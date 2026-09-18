@@ -114,7 +114,18 @@ add_custom_command(
   COMMAND "${MLIR_OPT}" "--pass-pipeline=${MLIR_LOWERING_PIPELINE}"
           "${KERNEL_MLIR}" -o "${LOWERED_MLIR}"
   COMMAND "${MLIR_TRANSLATE}" --mlir-to-llvmir "${LOWERED_MLIR}" -o "${KERNEL_LL}"
-  COMMAND "${LLC}" -filetype=obj -O3 "${KERNEL_LL}" -o "${KERNEL_OBJ}"
+  # -relocation-model=pic: llc's own default is the *static* relocation
+  # model, which emits absolute (R_X86_64_32S-style) relocations against
+  # .rodata/.data -- fine linked into a plain non-PIE executable, but a
+  # hard link error ("relocation ... can not be used when making a PIE
+  # object") on any distro whose toolchain defaults main.cpp's own
+  # compile (and gcc/clang's final link) to PIE, which is the default on
+  # most current Linux distros. Matching main.cpp's own PIC/PIE object
+  # code here is more portable than turning PIE off for the whole
+  # executable (-DCMAKE_EXE_LINKER_FLAGS=-no-pie / -fno-PIE would work
+  # too, but only by opting the *entire* binary out of a hardening
+  # default the rest of the toolchain wants on).
+  COMMAND "${LLC}" -filetype=obj -O3 -relocation-model=pic "${KERNEL_LL}" -o "${KERNEL_OBJ}"
   DEPENDS "${KERNEL_MLIR}"
   COMMENT "Lowering ${KERNEL_MLIR} -> kernel.o (mlir-opt -> mlir-translate -> llc)"
   VERBATIM
