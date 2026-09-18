@@ -90,10 +90,21 @@ find_program(LLC NAMES llc REQUIRED
   DOC "Path to llc (LLVM IR -> native object file)")
 
 # Unlike harness.py's descriptor ABI, this AOT caller takes bare pointers.
-# All memref arguments must have static shapes and default layouts. Kernels
-# using math operations also need convert-math-to-llvm in this pipeline.
+# All memref arguments must have static shapes and default layouts.
+# convert-math-to-llvm is included because any kernel generated from a real
+# UFLx form needs it -- the `dx` measure always multiplies by
+# abs(JacobianDeterminant), which survives mlir-opt as a bare `math.absf`
+# until something lowers it. Left unconverted, mlir-translate's own dialect
+# registry (a narrower "can this go straight to LLVM IR" set -- llvm, nvvm,
+# rocdl, gpu, omp, acc, the SIMD extension dialects, plus builtin/func/dlti;
+# no arith, no math) can't even parse the file it's handed, and fails with
+# "Dialect `math' not found for custom op 'math.absf'" -- not the pipeline
+# telling you a pass is missing, just a parser that never registered the
+# dialect describing the op it's staring at. The coefficient-free stiffness
+# kernels this demo shipped with never needed this (no measure, no abs()),
+# so it went unnoticed until degree/kernel changes brought in a real one.
 set(MLIR_LOWERING_PIPELINE
-    "builtin.module(convert-scf-to-cf,convert-arith-to-llvm,finalize-memref-to-llvm,convert-cf-to-llvm,convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},reconcile-unrealized-casts)"
+    "builtin.module(convert-scf-to-cf,convert-math-to-llvm,convert-arith-to-llvm,finalize-memref-to-llvm,convert-cf-to-llvm,convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},reconcile-unrealized-casts)"
     CACHE STRING "mlir-opt --pass-pipeline= argument for lowering KERNEL_MLIR")
 
 # An old cached pipeline would still link, but its descriptor ABI would
@@ -103,6 +114,18 @@ if(NOT MLIR_LOWERING_PIPELINE MATCHES "use-bare-ptr-memref-call-conv=true")
     "run_kernel requires the bare-pointer ABI. Reconfigure with "
     "-UMLIR_LOWERING_PIPELINE to reset the cached pipeline, or include "
     "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true} in your custom pipeline.")
+endif()
+
+# A cached pipeline from before convert-math-to-llvm was added here would
+# still configure and link -- it only breaks (with the confusing parser
+# error above, not a clear message) the moment a kernel that actually
+# contains a math op reaches mlir-translate.
+if(NOT MLIR_LOWERING_PIPELINE MATCHES "convert-math-to-llvm")
+  message(FATAL_ERROR
+    "run_kernel requires convert-math-to-llvm (any real UFLx-generated "
+    "kernel's `dx` measure uses abs(JacobianDeterminant), which lowers to "
+    "math.absf). Reconfigure with -UMLIR_LOWERING_PIPELINE to reset the "
+    "cached pipeline, or include convert-math-to-llvm in your custom one.")
 endif()
 
 set(LOWERED_MLIR "${CMAKE_CURRENT_BINARY_DIR}/kernel_lowered.mlir")
