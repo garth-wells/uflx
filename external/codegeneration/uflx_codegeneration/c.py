@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 import numpy as np
-from uflx.expressions import Abs, Add, Div, Integer, Mult, Neg, RealScalar, Subtract
+from uflx.expressions import Abs, Div, Integer, Neg, Product, RealScalar, Reciprocal, Subtract, Sum
 from uflx.geometry import CoordinateDofComponent
 from uflx.points import PointComponent
 
@@ -37,18 +37,19 @@ def tables_to_c(tables: dict[str, np.ndarray]) -> str:
     )
 
 
-def mult_generate_c(self) -> str:
+def product_generate_c(self) -> str:
     """Generate code for this object."""
     if self.value_shape != ():
         raise NotImplementedError("Cannot generate code for multiplication of non-scalars")
-    if not isinstance(self.first, GenerateC):
-        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
-    if not isinstance(self.second, GenerateC):
-        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
-    return f"({self.first.generate_c()} * {self.second.generate_c()})"
+    items = []
+    for i in self._items:
+        if not isinstance(i, GenerateC):
+            raise NotImplementedError(f"GenerateC is not implemented for {i.__class__}")
+        items.append(i.generate_c())
+    return "(" + " * ".join(items) + ")"
 
 
-setattr(Mult, "generate_c", mult_generate_c)
+setattr(Product, "generate_c", product_generate_c)
 
 
 def div_generate_c(self) -> str:
@@ -63,16 +64,27 @@ def div_generate_c(self) -> str:
 setattr(Div, "generate_c", div_generate_c)
 
 
-def add_generate_c(self) -> str:
+def reciprocal_generate_c(self) -> str:
     """Generate code for this object."""
-    if not isinstance(self.first, GenerateC):
-        raise NotImplementedError(f"GenerateC is not implemented for {self.first.__class__}")
-    if not isinstance(self.second, GenerateC):
-        raise NotImplementedError(f"GenerateC is not implemented for {self.second.__class__}")
-    return f"({self.first.generate_c()} + {self.second.generate_c()})"
+    if not isinstance(self.argument, GenerateC):
+        raise NotImplementedError(f"GenerateC is not implemented for {self.argument.__class__}")
+    return f"(1.0 / {self.argument.generate_c()})"
 
 
-setattr(Add, "generate_c", add_generate_c)
+setattr(Reciprocal, "generate_c", reciprocal_generate_c)
+
+
+def sum_generate_c(self) -> str:
+    """Generate code for this object."""
+    items = []
+    for i in self._items:
+        if not isinstance(i, GenerateC):
+            raise NotImplementedError(f"GenerateC is not implemented for {i.__class__}")
+        items.append(i.generate_c())
+    return "(" + " + ".join(items) + ")"
+
+
+setattr(Sum, "generate_c", sum_generate_c)
 
 
 def subtract_generate_c(self) -> str:
