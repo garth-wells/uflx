@@ -120,9 +120,7 @@ class RightSimplifiableInMatrixProduct(Protocol):
 def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
     """Simplify a list of items in a matrix product."""
     items = list(items)
-    size = -1
-    while len(items) != size:
-        size = len(items)
+    while True:
         for i, (item, item2) in enumerate(pairwise(items)):
             if (
                 isinstance(item, SimplifiableInMatrixProduct)
@@ -136,4 +134,6 @@ def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]
             ):
                 items = [*items[:i], s, *items[i + 2 :]]
                 break
+        else:
+            break
     return items
