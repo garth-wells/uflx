@@ -13,7 +13,7 @@ from uflx import (
 )
 from uflx.algorithms import simplify
 from uflx.expressions import Product, MatrixProduct
-from uflx.geometry import Jacobian, JacobianInverseTranspose, JacobianInverse
+from uflx.geometry import Jacobian, JacobianInverseTranspose, JacobianInverse, JacobianTranspose
 from uflx.integrals import Integral
 from uflx.operators import Inner
 
@@ -141,7 +141,10 @@ def test_multiply_and_divide_function_form(lagrange_element):
         assert isinstance(simpler_form.integrand._items[1], TrialFunction)
 
 
-def test_jacobian_and_inverse_matvec(lagrange_element):
+@pytest.mark.parametrize("v_first", [True, False])
+@pytest.mark.parametrize("inv_first", [True, False])
+@pytest.mark.parametrize("transpose", [True, False])
+def test_jacobian_and_inverse_matvec(lagrange_element, v_first, inv_first, transpose):
     """Test that Jacobian and inverse Jacobian are successfully cancelled."""
     element = lagrange_element("triangle", 2, (2,))
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
@@ -149,16 +152,19 @@ def test_jacobian_and_inverse_matvec(lagrange_element):
     u = TrialFunction(space)
     v = TestFunction(space)
 
-    j = Jacobian(domain)
-    j_inv = JacobianInverse(domain)
+    if transpose:
+        first = JacobianTranspose(domain)
+        second = JacobianInverseTranspose(domain)
+    else:
+        first = Jacobian(domain)
+        second = JacobianInverse(domain)
+    if inv_first:
+        first, second = second, first
+    if v_first:
+        expression = v @ first @ second
+    else:
+        expression = first @ second @ v
 
-    expression = j @ j_inv @ v
-    simpler_expression = simplify(expression)
-
-    assert isinstance(expression, MatrixProduct)
-    assert isinstance(simpler_expression, TestFunction)
-
-    expression = j_inv @ j @ v
     simpler_expression = simplify(expression)
 
     assert isinstance(expression, MatrixProduct)

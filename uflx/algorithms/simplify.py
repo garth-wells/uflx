@@ -104,6 +104,16 @@ class SimplifiableInMatrixProduct(Protocol):
         This function should return None if no simplification can be made.
         """
 
+@runtime_checkable
+class RightSimplifiableInMatrixProduct(Protocol):
+    """An expression that can be combined with others within a matrix product."""
+
+    def simplified_matrix_product_right(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+
 
 def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
     """Simplify a list of items in a matrix product."""
@@ -113,6 +123,9 @@ def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]
         size = len(items)
         for i, (item, item2) in enumerate(zip(items[:-1], items[1:])):
             if isinstance(item, SimplifiableInMatrixProduct) and (s := item.simplified_matrix_product(item2)) is not None:
+                items = items[:i] + [s] + items[i+2:]
+                break
+            if isinstance(item2, RightSimplifiableInMatrixProduct) and (s := item2.simplified_matrix_product(item)) is not None:
                 items = items[:i] + [s] + items[i+2:]
                 break
     return items

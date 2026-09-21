@@ -9,7 +9,7 @@ from uflx.expressions import AbstractExpression, expression_sum
 from uflx.function_spaces import function_space
 from uflx.graphs import GraphNode, as_graph
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
-from uflx.tensors import Matrix
+from uflx.tensors import Matrix, IdentityMatrix
 
 
 @runtime_checkable
@@ -256,6 +256,14 @@ class Jacobian(AbstractExpression):
         """Get a component of the expression."""
         return self.expand_geometry().component(*indices)
 
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        if isinstance(other, JacobianInverse) and self.domain == other.domain and self.point == other.point:
+            return IdentityMatrix(self.value_shape[0])
+
 
 class JacobianDeterminant(AbstractExpression):
     """The determinant of the Jacobian."""
@@ -330,6 +338,14 @@ class JacobianInverse(AbstractExpression):
         """Get a component of the expression."""
         return self.expand_geometry().component(*indices)
 
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        if isinstance(other, Jacobian) and self.domain == other.domain and self.point == other.point:
+            return IdentityMatrix(self.value_shape[0])
+
 
 class JacobianTranspose(AbstractExpression):
     """The transpose of the Jacobian."""
@@ -369,6 +385,14 @@ class JacobianTranspose(AbstractExpression):
         """Get a component of the expression."""
         return self.expand_geometry().component(*indices)
 
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        if isinstance(other, JacobianInverseTranspose) and self.domain == other.domain and self.point == other.point:
+            return IdentityMatrix(self.value_shape[0])
+
 
 class JacobianInverseTranspose(AbstractExpression):
     """The inverse transpose of the Jacobian."""
@@ -407,6 +431,14 @@ class JacobianInverseTranspose(AbstractExpression):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         return self.expand_geometry().component(*indices)
+
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        if isinstance(other, JacobianTranspose) and self.domain == other.domain and self.point == other.point:
+            return IdentityMatrix(self.value_shape[0])
 
 
 class CoordinateDofComponent(AbstractExpression):
