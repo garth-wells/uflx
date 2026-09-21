@@ -191,11 +191,11 @@ def test_jacobian_and_inverse_form(lagrange_element):
 
     assert isinstance(form.integrand, Inner)
     assert isinstance(form.integrand.first, MatrixProduct)
-    assert isinstance(form.integrand.first.first, Jacobian)
-    assert isinstance(form.integrand.first.second, TrialFunction)
+    assert isinstance(form.integrand.first._items[0], Jacobian)
+    assert isinstance(form.integrand.first._items[1], TrialFunction)
     assert isinstance(form.integrand.second, MatrixProduct)
-    assert isinstance(form.integrand.second.first, JacobianInverseTranspose)
-    assert isinstance(form.integrand.second.second, TestFunction)
+    assert isinstance(form.integrand.second._items[0], JacobianInverseTranspose)
+    assert isinstance(form.integrand.second._items[1], TestFunction)
 
     assert isinstance(simpler_form.integrand, Inner)
     if isinstance(simpler_form.integrand.first, TrialFunction):
