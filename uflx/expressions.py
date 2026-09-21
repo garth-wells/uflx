@@ -15,7 +15,7 @@ from collections.abc import Iterable, Sequence
 from math import gcd, prod
 from typing import Any, cast
 
-from uflx.algorithms.simplify import simplify_product_items, simplify_sum_items
+from uflx.algorithms.simplify import simplify_product_items, simplify_sum_items, simplify_matrix_product_items
 from uflx.graphs.graphs import GraphNode
 
 
@@ -69,7 +69,7 @@ class AbstractExpression(ABC):
         if isinstance(other, AbstractExpression):
             if self.value_shape[-1] != other.value_shape[0]:
                 raise ValueError("Incompatible dimensions in matmul.")
-            return MatMult(self, other)
+            return MatrixProduct([self, other])
         return NotImplemented
 
     def __rmul__(self, other: Any) -> AbstractExpression:
@@ -683,6 +683,86 @@ class Product(AbstractExpression):
         return prod(i.as_int() for i in self._items)
 
 
+class MatrixProduct(AbstractExpression):
+    """Matrix product of two or more objects."""
+
+    def __init__(self, items: Sequence[AbstractExpression]):
+        """Initialise."""
+        if len(items) == 0:
+            raise ValueError("Cannot create an empty product")
+        shape = None
+        for i in items:
+            if shape is None:
+                shape = i.value_shape
+            elif len(shape) == 2 and len(i.value_shape) == 2:
+                if shape[1] != i.value_shape[0]:
+                    raise ValueError("Incompatible dimensions in matrix product")
+                shape = (shape[0], i.value_shape[1])
+            elif len(shape) == 2 and len(i.value_shape) == 1:
+                if shape[1] != i.value_shape[0]:
+                    raise ValueError("Incompatible dimensions in matrix product")
+                shape = (shape[0],)
+            elif len(shape) == 1 and len(i.value_shape) == 2:
+                if shape[0] != i.value_shape[0]:
+                    raise ValueError("Incompatible dimensions in matrix product")
+                shape = (i.value_shape[1],)
+            else:
+                raise NotImplementedError("Matrix product only implemented for matrices and vectors")
+        assert shape is not None
+        self._value_shape = shape
+        self._items = tuple(items)
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        assert len(indices) == len(self.value_shape)
+        n = len(self._items[0].value_shape) - 1
+
+        if len(self._items) != 2:
+            raise NotImplementedError()
+
+        return expression_sum(
+            self._items[0].component(*indices[:n], i) * self._items[1].component(i, *indices[n:])
+            for i in range(self.items[0].value_shape[-1])
+        )
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self._value_shape
+
+    def __matmul__(self, other: Any) -> AbstractExpression:
+        """Multiply."""
+        if isinstance(other, AbstractExpression):
+            return MatrixProduct(self._items + (other._items if isinstance(other, MatrixProduct) else (other,)))
+        return NotImplemented
+
+    def simplify(self) -> GraphNode:
+        """Simplify this expression."""
+        items = simplify_matrix_product_items(self._items)
+
+        if len(items) == 1:
+            return items[0]
+        return MatrixProduct(cast(list[AbstractExpression], items))
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set(self._items)
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._items,)
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return "MatrixProduct([" + ", ".join(f"{i!r}" for i in self._items) + "])"
+
+    def __str__(self) -> str:
+        """Representation."""
+        return "MatrixProduct"
+
+
 class Sum(AbstractExpression):
     """Componentwise sum."""
 
@@ -781,29 +861,6 @@ class ScalarMult(BinaryOperator):
     def as_int(self) -> int:
         """Convert to an integer."""
         return self.first.as_int() * self.second.as_int()
-
-
-class MatMult(BinaryOperator):
-    """Multiplication by a matrix."""
-
-    def __init__(self, first: AbstractExpression, second: AbstractExpression):
-        """Initialise."""
-        assert first.value_shape[-1] == second.value_shape[0]
-        super().__init__(first, second)
-
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return self.first.value_shape[:-1] + self.second.value_shape[1:]
-
-    def component(self, *indices: int) -> AbstractExpression:
-        """Get a component of the expression."""
-        assert len(indices) == len(self.value_shape)
-        n = len(self.first.value_shape) - 1
-        return expression_sum(
-            self.first.component(*indices[:n], i) * self.second.component(i, *indices[n:])
-            for i in range(self.first.value_shape[-1])
-        )
 
 
 class Div(BinaryOperator):

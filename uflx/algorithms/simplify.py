@@ -92,3 +92,27 @@ def simplify(expression: GraphNode) -> GraphNode:
             node_map[node] = reconstruct_node(node, node_map)
 
     return node_map.get(graph.root, graph.root)
+
+
+@runtime_checkable
+class SimplifiableInMatrixProduct(Protocol):
+    """An expression that can be combined with others within a matrix product."""
+
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+
+
+def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
+    """Simplify a list of items in a matrix product."""
+    items = list(items)
+    size = -1
+    while len(items) != size:
+        size = len(items)
+        for i, (item, item2) in enumerate(zip(items[:-1], items[1:])):
+            if isinstance(item, SimplifiableInMatrixProduct) and (s := item.simplified_matrix_product(item2)) is not None:
+                items = items[:i] + [s] + items[i+2:]
+                break
+    return items

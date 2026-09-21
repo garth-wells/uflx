@@ -12,8 +12,8 @@ from uflx import (
     inner,
 )
 from uflx.algorithms import simplify
-from uflx.expressions import MatMult, Product
-from uflx.geometry import Jacobian, JacobianInverseTranspose
+from uflx.expressions import Product, MatrixProduct
+from uflx.geometry import Jacobian, JacobianInverseTranspose, JacobianInverse
 from uflx.integrals import Integral
 from uflx.operators import Inner
 
@@ -141,6 +141,31 @@ def test_multiply_and_divide_function_form(lagrange_element):
         assert isinstance(simpler_form.integrand._items[1], TrialFunction)
 
 
+def test_jacobian_and_inverse_matvec(lagrange_element):
+    """Test that Jacobian and inverse Jacobian are successfully cancelled."""
+    element = lagrange_element("triangle", 2, (2,))
+    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
+    space = function_space(domain, element)
+    u = TrialFunction(space)
+    v = TestFunction(space)
+
+    j = Jacobian(domain)
+    j_inv = JacobianInverse(domain)
+
+    expression = j @ j_inv @ v
+    simpler_expression = simplify(expression)
+
+    assert isinstance(expression, MatrixProduct)
+    assert isinstance(simpler_expression, TestFunction)
+
+    expression = j_inv @ j @ v
+    simpler_expression = simplify(expression)
+
+    assert isinstance(expression, MatrixProduct)
+    assert isinstance(simpler_expression, TestFunction)
+
+
+
 def test_jacobian_and_inverse_form(lagrange_element):
     """Test that Jacobian and inverse Jacobian are successfully cancelled."""
     pytest.xfail()
@@ -161,10 +186,10 @@ def test_jacobian_and_inverse_form(lagrange_element):
     assert isinstance(simpler_form, Integral)
 
     assert isinstance(form.integrand, Inner)
-    assert isinstance(form.integrand.first, MatMult)
+    assert isinstance(form.integrand.first, MatrixProduct)
     assert isinstance(form.integrand.first.first, Jacobian)
     assert isinstance(form.integrand.first.second, TrialFunction)
-    assert isinstance(form.integrand.second, MatMult)
+    assert isinstance(form.integrand.second, MatrixProduct)
     assert isinstance(form.integrand.second.first, JacobianInverseTranspose)
     assert isinstance(form.integrand.second.second, TestFunction)
 
