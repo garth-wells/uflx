@@ -728,7 +728,7 @@ class MatrixProduct(AbstractExpression):
 
         return expression_sum(
             self._items[0].component(*indices[:n], i) * self._items[1].component(i, *indices[n:])
-            for i in range(self.items[0].value_shape[-1])
+            for i in range(self._items[0].value_shape[-1])
         )
 
     @property

@@ -284,7 +284,7 @@ class IdentityMatrix(AbstractExpression):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self.size
+        return (self.size,)
 
     def __repr__(self) -> str:
         """Representation."""

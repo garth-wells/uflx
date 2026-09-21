@@ -129,7 +129,7 @@ def simplify_matrix_product_items(items: Sequence[GraphNode]) -> list[GraphNode]
                 break
             if (
                 isinstance(item2, RightSimplifiableInMatrixProduct)
-                and (s := item2.simplified_matrix_product(item)) is not None
+                and (s := item2.simplified_matrix_product_right(item)) is not None
             ):
                 items = [*items[:i], s, *items[i + 2 :]]
                 break
