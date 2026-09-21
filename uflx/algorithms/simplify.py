@@ -33,9 +33,7 @@ class SimplifiableInProduct(Protocol):
 def simplify_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
     """Simplify a list of items in a product."""
     items = list(items)
-    size = -1
-    while len(items) != size:
-        size = len(items)
+    while True:
         for i, item in enumerate(items):
             if isinstance(item, SimplifiableInProduct):
                 for j, item2 in enumerate(items):
@@ -45,6 +43,8 @@ def simplify_product_items(items: Sequence[GraphNode]) -> list[GraphNode]:
                 else:
                     continue
                 break
+        else:
+            break
     return items
 
 
@@ -62,9 +62,7 @@ class SimplifiableInSum(Protocol):
 def simplify_sum_items(items: Sequence[GraphNode]) -> list[GraphNode]:
     """Simplify a list of items in a sum."""
     items = list(items)
-    size = -1
-    while len(items) != size:
-        size = len(items)
+    while True:
         for i, item in enumerate(items):
             if isinstance(item, SimplifiableInSum):
                 for j, item2 in enumerate(items):
@@ -74,7 +72,8 @@ def simplify_sum_items(items: Sequence[GraphNode]) -> list[GraphNode]:
                 else:
                     continue
                 break
-
+        else:
+            break
     return items
 
 
