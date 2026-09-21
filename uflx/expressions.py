@@ -15,7 +15,11 @@ from collections.abc import Iterable, Sequence
 from math import gcd, prod
 from typing import Any, cast
 
-from uflx.algorithms.simplify import simplify_product_items, simplify_sum_items, simplify_matrix_product_items
+from uflx.algorithms.simplify import (
+    simplify_matrix_product_items,
+    simplify_product_items,
+    simplify_sum_items,
+)
 from uflx.graphs.graphs import GraphNode
 
 
@@ -707,7 +711,9 @@ class MatrixProduct(AbstractExpression):
                     raise ValueError("Incompatible dimensions in matrix product")
                 shape = (i.value_shape[1],)
             else:
-                raise NotImplementedError("Matrix product only implemented for matrices and vectors")
+                raise NotImplementedError(
+                    "Matrix product only implemented for matrices and vectors"
+                )
         assert shape is not None
         self._value_shape = shape
         self._items = tuple(items)
@@ -733,7 +739,9 @@ class MatrixProduct(AbstractExpression):
     def __matmul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
         if isinstance(other, AbstractExpression):
-            return MatrixProduct(self._items + (other._items if isinstance(other, MatrixProduct) else (other,)))
+            return MatrixProduct(
+                self._items + (other._items if isinstance(other, MatrixProduct) else (other,))
+            )
         return NotImplemented
 
     def simplify(self) -> GraphNode:

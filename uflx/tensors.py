@@ -293,7 +293,7 @@ class IdentityMatrix(AbstractExpression):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         assert len(indices) == 2 and all(i < self.size for i in indices)
-        return RealScalar(1.0 if i == j else 0.0)
+        return RealScalar(1.0 if indices[0] == indices[1] else 0.0)
 
     def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
         """Return a single expression representing the simplified matrix product.

@@ -9,7 +9,7 @@ from uflx.expressions import AbstractExpression, expression_sum
 from uflx.function_spaces import function_space
 from uflx.graphs import GraphNode, as_graph
 from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
-from uflx.tensors import Matrix, IdentityMatrix
+from uflx.tensors import IdentityMatrix, Matrix
 
 
 @runtime_checkable
@@ -261,7 +261,11 @@ class Jacobian(AbstractExpression):
 
         This function should return None if no simplification can be made.
         """
-        if isinstance(other, JacobianInverse) and self.domain == other.domain and self.point == other.point:
+        if (
+            isinstance(other, JacobianInverse)
+            and self.domain == other.domain
+            and self.point == other.point
+        ):
             return IdentityMatrix(self.value_shape[0])
 
 
@@ -343,7 +347,11 @@ class JacobianInverse(AbstractExpression):
 
         This function should return None if no simplification can be made.
         """
-        if isinstance(other, Jacobian) and self.domain == other.domain and self.point == other.point:
+        if (
+            isinstance(other, Jacobian)
+            and self.domain == other.domain
+            and self.point == other.point
+        ):
             return IdentityMatrix(self.value_shape[0])
 
 
@@ -390,7 +398,11 @@ class JacobianTranspose(AbstractExpression):
 
         This function should return None if no simplification can be made.
         """
-        if isinstance(other, JacobianInverseTranspose) and self.domain == other.domain and self.point == other.point:
+        if (
+            isinstance(other, JacobianInverseTranspose)
+            and self.domain == other.domain
+            and self.point == other.point
+        ):
             return IdentityMatrix(self.value_shape[0])
 
 
@@ -437,7 +449,11 @@ class JacobianInverseTranspose(AbstractExpression):
 
         This function should return None if no simplification can be made.
         """
-        if isinstance(other, JacobianTranspose) and self.domain == other.domain and self.point == other.point:
+        if (
+            isinstance(other, JacobianTranspose)
+            and self.domain == other.domain
+            and self.point == other.point
+        ):
             return IdentityMatrix(self.value_shape[0])
 
 

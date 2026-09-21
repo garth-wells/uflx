@@ -12,8 +12,8 @@ from uflx import (
     inner,
 )
 from uflx.algorithms import simplify
-from uflx.expressions import Product, MatrixProduct
-from uflx.geometry import Jacobian, JacobianInverseTranspose, JacobianInverse, JacobianTranspose
+from uflx.expressions import MatrixProduct, Product
+from uflx.geometry import Jacobian, JacobianInverse, JacobianInverseTranspose, JacobianTranspose
 from uflx.integrals import Integral
 from uflx.operators import Inner
 
@@ -149,7 +149,6 @@ def test_jacobian_and_inverse_matvec(lagrange_element, v_first, inv_first, trans
     element = lagrange_element("triangle", 2, (2,))
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
-    u = TrialFunction(space)
     v = TestFunction(space)
 
     if transpose:
@@ -169,7 +168,6 @@ def test_jacobian_and_inverse_matvec(lagrange_element, v_first, inv_first, trans
 
     assert isinstance(expression, MatrixProduct)
     assert isinstance(simpler_expression, TestFunction)
-
 
 
 def test_jacobian_and_inverse_form(lagrange_element):
