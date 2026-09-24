@@ -1,7 +1,7 @@
 """Code generation."""
 
 import quadraturerules
-from uflx.algorithms import pull_back_to_reference
+from uflx.algorithms import pull_back_to_reference, simplify
 from uflx.geometry import (
     expand_geometry,
 )
@@ -57,6 +57,7 @@ def generate(
     # Apply algorithms from UFLx
     form = pull_back_to_reference(form)
     form = apply_push_forwards(form)
+    form = simplify(form)
 
     # Apply codegeneration algorithms
     form = integrals_to_quadrature(form, rules)
