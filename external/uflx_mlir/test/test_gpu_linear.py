@@ -264,7 +264,7 @@ def test_serial_layout_remains_available(degree, threads, cells):
 
 def test_cooperative_flux_has_three_components():
     """Share three metric-transformed fluxes and the quadrature weight."""
-    from uflx.expressions import Add
+    from uflx.expressions import Sum
     from uflx_codegeneration.nodes import ArrayEntry
 
     from uflx_mlir.hoist import (
@@ -291,7 +291,7 @@ def test_cooperative_flux_has_three_components():
         if levels[child] < 2
     }
     assert len(frontier) == 4
-    assert sum(isinstance(value, Add) for value in frontier) == 3
+    assert sum(isinstance(value, Sum) for value in frontier) == 3
     assert sum(isinstance(value, ArrayEntry) for value in frontier) == 1
 
 

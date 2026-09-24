@@ -4,8 +4,7 @@ from typing import Any
 
 from uflx.basis_functions import EvaluatedBasisFunction
 from uflx.expressions import AbstractExpression
-from uflx.function_spaces import AbstractFunctionSpace
-from uflx.functions import AbstractFunction
+from uflx.function_spaces import AbstractReferenceMappedFunctionSpace
 from uflx.points import AbstractPoint
 from uflx.utils import flatten
 
@@ -43,7 +42,7 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedBasisFunction):
 
     def __init__(
         self,
-        space: AbstractFunctionSpace,
+        space: AbstractReferenceMappedFunctionSpace,
         basis_index: int | str,
         point: AbstractPoint,
         label: str,
@@ -60,7 +59,7 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedBasisFunction):
         return self._label
 
     @property
-    def space(self) -> AbstractFunctionSpace:
+    def space(self) -> AbstractReferenceMappedFunctionSpace:
         """The function space that this basis function is drawn from."""
         return self._space
 
@@ -89,7 +88,7 @@ class EvaluatedReferenceCoefficientBasisFunction(EvaluatedBasisFunction):
             self._component,
         )
 
-    def diff(self, index: int) -> AbstractFunction:
+    def diff(self, index: int) -> "EvaluatedReferenceCoefficientBasisFunction":
         """Take a derivative of this function."""
         return EvaluatedReferenceCoefficientBasisFunction(
             self._space,

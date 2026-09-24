@@ -13,7 +13,7 @@ from uflx.expressions import (
     AbstractScalar,
     MatMult,
     MatVec,
-    Mult,
+    Product,
     expression_sum,
 )
 from uflx.functions import Coefficient
@@ -74,13 +74,19 @@ def geometry_kernel_name(kernel_name: str) -> str:
 
 def _poisson_metric_contraction(node: GraphNode):
     """Return a reference-gradient contraction when ``node`` is affine Poisson geometry."""
-    if not isinstance(node, Mult):
+    # Product is n-ary in general (see uflx.expressions), but this pattern
+    # only ever matches the specific abs(det(J)) * contraction shape this
+    # module itself builds -- anything else just falls through to None
+    # (the generic, unoptimized lowering), so requiring exactly 2 items is
+    # safe rather than a real restriction.
+    if not isinstance(node, Product) or len(node._items) != 2:
         return None
+    first, second = node._items
 
-    if isinstance(node.first, Abs) and isinstance(node.first.argument, JacobianDeterminant):
-        determinant, contraction = node.first.argument, node.second
-    elif isinstance(node.second, Abs) and isinstance(node.second.argument, JacobianDeterminant):
-        determinant, contraction = node.second.argument, node.first
+    if isinstance(first, Abs) and isinstance(first.argument, JacobianDeterminant):
+        determinant, contraction = first.argument, second
+    elif isinstance(second, Abs) and isinstance(second.argument, JacobianDeterminant):
+        determinant, contraction = second.argument, first
     else:
         return None
 

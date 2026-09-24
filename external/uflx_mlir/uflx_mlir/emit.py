@@ -58,7 +58,7 @@ Two things keep the generated code from doing needless work:
     transforms for Galerkin forms.
   - value-based (structural) common-subexpression elimination, in
     addition to the identity-based `cache` above: uflx's expression node
-    classes (RealScalar, Integer, Add/Sub/Mult/Div/Neg/Abs,
+    classes (RealScalar, Integer, Sum/Sub/Product/Div/Neg/Abs,
     CoordinateDofComponent, ...) and uflx_codegeneration's ArrayEntry
     don't define __eq__/__hash__, so uflx_codegeneration's own graph
     construction routinely builds many object-distinct nodes for the same
@@ -134,14 +134,14 @@ from mlir.ir import (
 )
 from uflx.expressions import (
     Abs,
-    Add,
     Div,
     Integer,
-    Mult,
     Neg,
+    Product,
     Re,
     RealScalar,
     Subtract,
+    Sum,
 )
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode
@@ -314,7 +314,7 @@ def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
     entirely. See the module docstring for why this exists. For a leaf node the
     signature is built directly from its own field values (e.g. a
     CoordinateDofComponent's (point, component, tdim)); for a compound
-    (Neg/Abs/Add/Subtract/Mult/Div) node it's built from the IDENTITY of
+    (Neg/Abs/Sum/Subtract/Product/Div) node it's built from the IDENTITY of
     its children's already-emitted Values (via `cache`), not from the
     child nodes themselves -- since `_emit_node` only ever calls this
     after a node's children are already in `cache` (topo order), this
@@ -339,12 +339,12 @@ def _node_signature(node: GraphNode, cache: dict[Any, Value]) -> Any | None:
         return (type(node), id(cache[node.argument]))
     if isinstance(node, Abs):
         return (Abs, id(cache[node.argument]))
-    if isinstance(node, Add):
-        return (Add, id(cache[node.first]), id(cache[node.second]))
+    if isinstance(node, Sum):
+        return (Sum, tuple(id(cache[item]) for item in node._items))
     if isinstance(node, Subtract):
         return (Subtract, id(cache[node.first]), id(cache[node.second]))
-    if isinstance(node, Mult):
-        return (Mult, id(cache[node.first]), id(cache[node.second]))
+    if isinstance(node, Product):
+        return (Product, tuple(id(cache[item]) for item in node._items))
     if isinstance(node, Div):
         return (Div, id(cache[node.first]), id(cache[node.second]))
     return None
@@ -365,10 +365,13 @@ def _alpha_signature(node: GraphNode, renamed_indices: dict[str, str]) -> Any | 
     if isinstance(node, (Neg, Abs, Re)):
         argument = _alpha_signature(node.argument, renamed_indices)
         return None if argument is None else (type(node), argument)
-    if isinstance(node, (Add, Subtract, Mult, Div)):
+    if isinstance(node, (Subtract, Div)):
         first = _alpha_signature(node.first, renamed_indices)
         second = _alpha_signature(node.second, renamed_indices)
         return None if first is None or second is None else (type(node), first, second)
+    if isinstance(node, (Sum, Product)):
+        items = tuple(_alpha_signature(item, renamed_indices) for item in node._items)
+        return None if any(item is None for item in items) else (type(node), items)
     return None
 
 
@@ -515,18 +518,25 @@ def _emit_node(
     elif isinstance(node, Abs):
         a = _value(node.argument, cache, ctx, use_signature_cache)
         v = _op1("math.absf", ctx.f64, a)
-    elif isinstance(node, Add):
-        a = _value(node.first, cache, ctx, use_signature_cache)
-        b = _value(node.second, cache, ctx, use_signature_cache)
-        v = _op2("arith.addf", ctx.f64, a, b)
+    elif isinstance(node, Sum):
+        # Sum/Product are n-ary (see uflx.expressions): left-fold the items
+        # through a chain of binary arith ops, in the same left-to-right
+        # order they're stored in -- this reproduces exactly the rounding
+        # path a nested binary Add tree built the same way (via chained
+        # `+=`) would have produced.
+        values = [_value(item, cache, ctx, use_signature_cache) for item in node._items]
+        v = values[0]
+        for other in values[1:]:
+            v = _op2("arith.addf", ctx.f64, v, other)
     elif isinstance(node, Subtract):
         a = _value(node.first, cache, ctx, use_signature_cache)
         b = _value(node.second, cache, ctx, use_signature_cache)
         v = _op2("arith.subf", ctx.f64, a, b)
-    elif isinstance(node, Mult):
-        a = _value(node.first, cache, ctx, use_signature_cache)
-        b = _value(node.second, cache, ctx, use_signature_cache)
-        v = _op2("arith.mulf", ctx.f64, a, b)
+    elif isinstance(node, Product):
+        values = [_value(item, cache, ctx, use_signature_cache) for item in node._items]
+        v = values[0]
+        for other in values[1:]:
+            v = _op2("arith.mulf", ctx.f64, v, other)
     elif isinstance(node, Div):
         a = _value(node.first, cache, ctx, use_signature_cache)
         b = _value(node.second, cache, ctx, use_signature_cache)
@@ -937,9 +947,9 @@ def _emit_coefficient_expr(
 
     Deliberately separate from the main `_emit_node` dispatch used for the
     assembly function's own body: after tabulate_finite_elements, a
-    coefficient function's body is always exactly `Mult(ArrayEntry(fe_table,
-    ...), ArrayEntry(symbols.coefficients, (w_index,)))` (see
-    insert_coefficient_functions), so only Mult/ArrayEntry need handling
+    coefficient function's body is always exactly `Product([ArrayEntry(
+    fe_table, ...), ArrayEntry(symbols.coefficients, (w_index,))])` (see
+    insert_coefficient_functions), so only Product/ArrayEntry need handling
     here. Unlike the main function, this one is its own separate func.func
     (see _emit_coefficient_function), so an FE-table ArrayEntry needs its
     own local `memref.get_global` (module-scope Values from the assembly
@@ -948,9 +958,13 @@ def _emit_coefficient_expr(
     coefficients-array ArrayEntry instead reads this function's own `w_val`
     argument directly.
     """
-    if isinstance(node, Mult):
+    if isinstance(node, Product):
+        assert len(node._items) == 2, (
+            "insert_coefficient_functions always builds a 2-item Product "
+            f"here (fe_table entry, coefficient entry); got {node!r}"
+        )
         a = _emit_coefficient_expr(
-            node.first,
+            node._items[0],
             dof_var,
             dof_val,
             point_var,
@@ -962,7 +976,7 @@ def _emit_coefficient_expr(
             index_t,
         )
         b = _emit_coefficient_expr(
-            node.second,
+            node._items[1],
             dof_var,
             dof_val,
             point_var,

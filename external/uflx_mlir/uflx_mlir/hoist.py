@@ -41,7 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from uflx.expressions import Add, Mult, Neg, Subtract
+from uflx.expressions import Neg, Product, Subtract, Sum
 from uflx.geometry import CoordinateDofComponent
 from uflx.graphs import GraphNode, NodeOrder, generate_graph
 from uflx_codegeneration.nodes import AddToLocalTensor, ArrayEntry, FunctionCall, Loop
@@ -173,22 +173,22 @@ def compute_levels(add_node: AddToLocalTensor, loop_vars: list[str]) -> dict[Gra
 
 
 def distribute_shallow_factors(add_node: AddToLocalTensor, loop_vars: list[str]) -> None:
-    """Push a shallow multiplicative factor down into a deeper Mul/Add tree.
+    """Push a shallow multiplicative factor down into a deeper Product/Sum tree.
 
     Motivation: uflx_codegeneration's own form lowering places the
     integration measure's quadrature weight as the OUTERMOST multiplicative
     factor over the whole per-entry integrand -- add_node.body is literally
-    Mult(weight, big_expression), where `weight` depends only on the
+    Product([weight, big_expression]), where `weight` depends only on the
     quadrature loop variable but `big_expression` depends on every loop
     variable (the quadrature point AND both dof indices). compute_levels()
     can only ever assign nodes that already exist in the graph a legal
     depth -- it can't change what's being multiplied by what -- so
-    Mult(weight, big_expression)'s own level is the union of both operands'
-    dependencies (everything), and it never gets hoisted even though
-    `weight` itself could, in principle, be folded into big_expression's
-    own quadrature-point-only subexpressions (e.g. a geometric factor)
-    instead of being multiplied into the full, already dof-dependent
-    result once per (dof, dof) pair.
+    Product([weight, big_expression])'s own level is the union of its
+    operands' dependencies (everything), and it never gets hoisted even
+    though `weight` itself could, in principle, be folded into
+    big_expression's own quadrature-point-only subexpressions (e.g. a
+    geometric factor) instead of being multiplied into the full, already
+    dof-dependent result once per (dof, dof) pair.
 
     This is exactly the algorithmic difference found (by diffing generated
     code) between this module's output and ffcx 0.12.0.dev0's own
@@ -197,30 +197,37 @@ def distribute_shallow_factors(add_node: AddToLocalTensor, loop_vars: list[str])
     scalar multiplies total per point), where this module's un-rewritten
     output multiplied the weight in once per (dof, dof) pair (400 multiplies
     per point) -- see hoist.py's module docstring. This function performs
-    the equivalent algebraic rewrite: wherever a Mult node has one operand
-    at a shallower computed level than the other, the shallower operand
-    gets pushed down through the deeper operand's own Add/Subtract/Neg/Mult
-    structure (distributing over Add/Subtract, commuting through Neg, and
-    at each Mult recursing into whichever of its two operands has the
-    smaller level) until it reaches a leaf or a node type it doesn't know
-    how to push through (e.g. Div, Abs), where it's finally multiplied in
-    directly.
+    the equivalent algebraic rewrite: wherever a Product node has one item
+    at a shallower computed level than the rest, that item gets pushed down
+    through the deeper item(s)' own Sum/Subtract/Neg/Product structure
+    (distributing over Sum/Subtract, commuting through Neg, and at each
+    Product recursing into whichever single item has the smallest level,
+    leaving its other items untouched) until it reaches a leaf or a node
+    type it doesn't know how to push through (e.g. Div, Abs), where it's
+    finally multiplied in directly. Product/Sum are n-ary in general (see
+    uflx.expressions) -- this generalizes the original strictly-binary
+    rewrite by always picking a single shallowest item to push into, and
+    grouping the rest back into one Product/passing the lone remaining item
+    through unchanged; it's an exact match for the binary case, and always
+    correct (just not necessarily maximally hoisted) for more than two.
 
     This is always mathematically exact -- distributing a scalar factor
     over addition/subtraction/negation, and re-associating a chain of
     multiplications, are both exactly the identities they appear to be, not
-    approximations -- and can only ever keep or reduce the level
+    approximations, regardless of how many terms/factors are involved --
+    and can only ever keep or reduce the level
     compute_levels()/compute_fission_plan() will assign to the rewritten
-    nodes relative to the original, un-rewritten Mult, since every new node
-    built here combines two operands whose levels were already <= that
-    original Mult's level. It mutates add_node.body in place; call this
+    nodes relative to the original, un-rewritten Product, since every new
+    node built here combines operands whose levels were already <= that
+    original Product's level. It mutates add_node.body in place; call this
     BEFORE compute_fission_plan(), so the fission/depth analysis that
     follows sees the already-rewritten (and now more hoistable) tree.
 
     Only ever inspects/rewrites the TOP-level node of add_node.body -- if
-    that top node isn't itself a Mult with two differently-leveled
-    operands (e.g. a mass-matrix-style u*v*dx form has the same shape;
-    something else may not), this is a no-op.
+    that top node isn't itself a Product with a strictly-shallowest item
+    (e.g. a mass-matrix-style u*v*dx form has the same shape; something
+    else may not, or every item may already sit at the same level), this
+    is a no-op.
 
     Floating point note: this changes the ORDER subexpressions are summed
     and multiplied in (e.g. (w*a)+(w*b) instead of w*(a+b)), which can
@@ -240,33 +247,36 @@ def distribute_shallow_factors(add_node: AddToLocalTensor, loop_vars: list[str])
     levels = compute_levels(add_node, loop_vars)
 
     def push(factor, node):
-        if isinstance(node, Add):
-            return Add(push(factor, node.first), push(factor, node.second))
+        if isinstance(node, Sum):
+            return Sum([push(factor, item) for item in node._items])
         if isinstance(node, Subtract):
             return Subtract(push(factor, node.first), push(factor, node.second))
         if isinstance(node, Neg):
             return Neg(push(factor, node.argument))
-        if isinstance(node, Mult):
-            if levels[node.first] <= levels[node.second]:
-                return Mult(push(factor, node.first), node.second)
-            return Mult(node.first, push(factor, node.second))
+        if isinstance(node, Product):
+            items = node._items
+            i = min(range(len(items)), key=lambda k: levels[items[k]])
+            return Product([*items[:i], push(factor, items[i]), *items[i + 1 :]])
         # Leaf (ArrayEntry, GeometryTensorComponent, CoordinateDofComponent,
         # RealScalar, Integer, ...) or an operator not handled above (Div,
         # Abs, ...) -- multiply here directly. Always correct (see
         # docstring), just not always maximally hoisted.
-        return Mult(factor, node)
+        return Product([factor, node])
 
     body = add_node.body
-    if not isinstance(body, Mult):
+    if not isinstance(body, Product) or len(body._items) < 2:
         return
-    first_level = levels[body.first]
-    second_level = levels[body.second]
-    if first_level < second_level:
-        add_node.body = push(body.first, body.second)
-    elif second_level < first_level:
-        add_node.body = push(body.second, body.first)
-    # else: equal levels -- nothing to gain by pushing either way, leave
-    # add_node.body exactly as it was.
+    items = body._items
+    shallowest = min(range(len(items)), key=lambda k: levels[items[k]])
+    if all(levels[item] <= levels[items[shallowest]] for item in items):
+        # every item is already at the shallowest item's own level --
+        # nothing to gain by pushing either way, leave add_node.body
+        # exactly as it was.
+        return
+    factor = items[shallowest]
+    rest = items[:shallowest] + items[shallowest + 1 :]
+    other = rest[0] if len(rest) == 1 else Product(rest)
+    add_node.body = push(factor, other)
 
 
 def _prefix_depth(deps: frozenset[str], loop_vars: list[str]) -> int:
