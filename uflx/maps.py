@@ -61,11 +61,6 @@ class IdentityReferenceMap(AbstractReferenceMap):
         """The identity map trivially preserves constant values."""
         return True
 
-    @property
-    def preserves_constant_values(self) -> bool:
-        """The identity map trivially preserves constant values."""
-        return True
-
 
 class BlockedReferenceMap(AbstractReferenceMap):
     """Map for blocked element."""
