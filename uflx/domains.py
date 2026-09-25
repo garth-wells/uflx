@@ -19,7 +19,7 @@ from uflx.finite_elements import AbstractReferenceMappedFiniteElement
 
 
 class AbstractDomain(ABC):
-    """Abstract base class for a domain."""
+    """Base class for a domain."""
 
     @property
     @abstractmethod
@@ -28,31 +28,37 @@ class AbstractDomain(ABC):
 
     @property
     @abstractmethod
-    def cells(self) -> tuple[AbstractEntity, ...]:
-        """Get the cells in the mesh."""
+    def toplogical_dimension(self) -> int | None:
+        """The topological dimension of the domain.
+
+        This returns None iff the domain contains entities of a mixture
+        of topological dimensions.
+        """
 
 
-class AbstractCoordinateElement(AbstractDomain):
-    """Abstract coordinate element.
-
-    In a coordinate element, the geometry of the cell is represented by a finite element.
-    """
+class AbstractFiniteElementDomain(AbstractDomain):
+    """Base class for a domain of a finite element function."""
 
     @property
     @abstractmethod
-    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
-        """Get the cells in the mesh."""
+    def cells(self) -> tuple[AbstractEntity, ...]:
+        """Get the cell types in the finite element mesh."""
+
+
+class AbstractCoordinateElement(AbstractFiniteElementDomain):
+    """Base class for a coordinate element.
+
+    In a coordinate element, the geometry of the domain is defined using a
+    finite element.
+    """
+
+    @property
+    def element(self, cell: AbstractEntity) -> AbstractReferenceMappedFiniteElement:
+        """Get the element on the given cell type."""
 
     @property
     def is_affine_map(self) -> bool:
-        """Whether the reference-to-physical map of this domain is affine.
-
-        True iff every coordinate element is degree 1 Lagrange on a simplex -- the
-        only case where the Jacobian is constant over the cell rather than varying
-        with position. Degree 1 Lagrange on a non-simplex (eg a quadrilateral) is
-        multilinear, not affine; see AbstractFiniteElement.lagrange_superdegree.
-        Static: depends only on cell shape and degree, never on actual coordinates.
-        """
+        """Is the reference-to-physical map of this domain affine?"""
         return all(e.cell.is_simplex and e.lagrange_superdegree == 1 for e in self.elements)
 
 
@@ -77,6 +83,20 @@ class CoordinateElement(AbstractCoordinateElement):
     def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
         """Get the elements in the domain."""
         return self._elements
+
+    @property
+    def toplogical_dimension(self) -> int | None:
+        """The topological dimension of the domain.
+
+        This returns None iff the domain contains entities of a mixture
+        of topological dimensions.
+        """
+        dims = {c.toplogical_dimension for c in cells}
+        if len(dims) == 1:
+            (dim,) = dims
+            return dim
+        else:
+            return None
 
 
 def coordinate_element(

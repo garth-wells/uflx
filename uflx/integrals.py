@@ -88,7 +88,10 @@ class Integral(AbstractIntegral):
     _n = count(0)
 
     def __init__(
-        self, integrand: AbstractExpression, measure: AbstractMeasure, variable: AbstractVariable | None = None
+        self,
+        integrand: AbstractExpression,
+        measure: AbstractMeasure,
+        variable: AbstractVariable | None = None,
     ):
         """Initialise."""
         self._measure = measure
@@ -116,7 +119,7 @@ class Integral(AbstractIntegral):
     @property
     def variable(self) -> AbstractVariable:
         """The dummy variable of this integral."""
-        return self.variable
+        return self._variable
 
     @property
     def integrand(self) -> AbstractExpression:
@@ -159,7 +162,6 @@ class Integral(AbstractIntegral):
     def __repr__(self) -> str:
         """Representation."""
         return f"Integral(variable={self._variable!r})"
-
 
 
 class Measure(AbstractMeasure):

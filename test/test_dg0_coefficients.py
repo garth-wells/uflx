@@ -44,7 +44,7 @@ def test_dg0_value_and_gradient(lagrange_element, cell, dim, geometry_degree):
         assert len(coefficients) == 1
         assert coefficients[0].label == c.label
         assert coefficients[0].is_cellwise_constant
-        assert coefficients[0].integral_label == form.label
+        assert coefficients[0].variable._label == form.variable._label
     reconstructed = reconstruct_node(c, {})
     assert isinstance(reconstructed, Coefficient)
     assert reconstructed.is_cellwise_constant

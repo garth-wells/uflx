@@ -14,7 +14,7 @@ from abc import abstractmethod
 from itertools import count
 from typing import Any, Self, cast
 
-from uflx.domains import AbstractDomain
+from uflx.domains import AbstractDomain, AbstractFiniteElementDomain
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
 from uflx.graphs import GraphNode
@@ -66,6 +66,10 @@ class Variable(AbstractVariable):
         """Check for equality."""
         return isinstance(other, Variable) and other.label == self.label
 
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"Variable({self._label})"
+
     def __hash__(self) -> int:
         """Hash."""
         return hash(("uflx.Variable", self._label))
@@ -79,10 +83,10 @@ class FiniteElementVariable(AbstractVariable):
     def __init__(self, domain: AbstractDomain, label: str | None = None, reference: bool = False):
         """Initialise."""
         # TODO: force finite element domain
-        if label is none:
+        if label is None:
             self._label = f"variable-{next(self._n)}"
         else:
-            self._label - label
+            self._label = label
         self._domain = domain
         self._reference = reference
 
@@ -98,7 +102,18 @@ class FiniteElementVariable(AbstractVariable):
 
     def __eq__(self, other) -> bool:
         """Check for equality."""
-        return isinstance(other, FiniteElementVariable) and other.label == self.label and other.is_reference == self.is_reference
+        return (
+            isinstance(other, FiniteElementVariable)
+            and other.label == self.label
+            and other.is_reference == self.is_reference
+        )
+
+    def __repr__(self) -> str:
+        """Representation."""
+        if self._reference:
+            return f"FiniteElementVariable({self._label}, reference=True)"
+        else:
+            return f"FiniteElementVariable({self._label})"
 
     def __hash__(self) -> int:
         """Hash."""
@@ -111,11 +126,11 @@ class FiniteElementVariable(AbstractVariable):
 
     def to_reference(self) -> FiniteElementVariable:
         """Make a version of this variable on the reference cell."""
-        return FiniteElementVariable(Self._domain, self._label, True)
+        return FiniteElementVariable(self._domain, self._label, True)
 
     def to_physical(self) -> FiniteElementVariable:
         """Make a version of this variable on physical cells."""
-        return FiniteElementVariable(Self._domain, self._label, True)
+        return FiniteElementVariable(self._domain, self._label, True)
 
 
 class AbstractFunction(AbstractExpression):
@@ -134,10 +149,9 @@ class AbstractFunction(AbstractExpression):
         else:
             return False
 
+    @abstractmethod
     def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
         """Reconstruct this function taking the input variable as input."""
-        assert variable.domain == self.function_space.domain
-        return self.__class__(*[variable if isinstance(i, AbstractVariable) else i for i in self.init_args])
 
     @abstractmethod
     def diff(self, index: int) -> AbstractFunction:
@@ -214,7 +228,7 @@ class Argument(AbstractFunction):
         self,
         space: AbstractFunctionSpace,
         component: int,
-        is_reference: bool,
+        is_reference: bool = False,
         variable: AbstractVariable | None = None,
     ):
         """Initialise.
@@ -235,6 +249,15 @@ class Argument(AbstractFunction):
         self._is_reference = is_reference
         self._variable = variable
         self._component = component
+
+    def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
+        """Reconstruct this function taking the input variable as input."""
+        return self.__class__(self._space, self._component, self._is_reference, variable)
+
+    @property
+    def is_reference(self) -> bool:
+        """Check if this function is on a reference cell."""
+        return self._is_reference
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
@@ -273,11 +296,7 @@ class Argument(AbstractFunction):
                 and old.function_space == self.function_space
                 and old.component_index == self.component_index
             ):
-                if (
-                    isinstance(new, Argument)
-                    and self.variable is not None
-                    and new.variable is None
-                ):
+                if isinstance(new, Argument) and self.variable is not None and new.variable is None:
                     return new.reconstruct_with_variable(self.variable)
                 return new
 
@@ -295,6 +314,7 @@ class Coefficient(AbstractFunction):
         self,
         space: AbstractFunctionSpace,
         coefficient_label: str | None = None,
+        is_reference: bool = False,
         variable: AbstractVariable | None = None,
     ):
         """Initialise.
@@ -305,12 +325,27 @@ class Coefficient(AbstractFunction):
             is_reference: Is this argument's domain the reference cell?
             variable: The variable that is this argument's input
         """
+        if variable is not None:
+            if isinstance(variable, FiniteElementVariable):
+                assert is_reference == variable.is_reference
+            else:
+                assert not is_reference
         self._space = space
+        self._is_reference = is_reference
         self._variable = variable
         if coefficient_label is None:
             self._label = f"coefficient-{next(self._n)}"
         else:
             self._label = coefficient_label
+
+    def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
+        """Reconstruct this function taking the input variable as input."""
+        return self.__class__(self._space, self._label, self._is_reference, variable)
+
+    @property
+    def is_reference(self) -> bool:
+        """Check if this function is on a reference cell."""
+        return self._is_reference
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
@@ -335,7 +370,7 @@ class Coefficient(AbstractFunction):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._space, self._label, self._variable
+        return self._space, self._label, self._is_reference, self._variable
 
     def diff(self, index: int) -> AbstractFunction:
         """Take a derivative of this function."""
@@ -379,11 +414,17 @@ class Coefficient(AbstractFunction):
         if self.is_reference:
             raise ValueError("Cannot pull back function already defined on reference")
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        assert isinstance(self._variable, FiniteElementVariable)
-        return PushedForward(
-            self._space.elements[0].reference_map,
-            Coefficient(self._space, self._label, True, self._variable.to_reference()),
-        )
+        if self._variable is None:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                Coefficient(self._space, self._label, True, None),
+            )
+        else:
+            assert isinstance(self._variable, FiniteElementVariable)
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                Coefficient(self._space, self._label, True, self._variable.to_reference()),
+            )
 
 
 class TestFunction(Argument):
@@ -400,6 +441,14 @@ class TestFunction(Argument):
         """Initialise."""
         super().__init__(space, 0, is_reference, variable)
 
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"TestFunction({self.variable!r})"
+
+    def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
+        """Reconstruct this function taking the input variable as input."""
+        return self.__class__(self._space, self._is_reference, variable)
+
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
@@ -414,10 +463,17 @@ class TestFunction(Argument):
         if self.is_reference:
             raise ValueError("Cannot pull back function already defined on reference")
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map,
-            TestFunction(self._space, True, None if self.variable is None else self.variable.to_reference()),
-        )
+        if self.variable is None:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TestFunction(self._space, True, None),
+            )
+        else:
+            assert isinstance(self.variable, FiniteElementVariable)
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TestFunction(self._space, True, self.variable.to_reference()),
+            )
 
 
 class TrialFunction(Argument):
@@ -432,6 +488,14 @@ class TrialFunction(Argument):
         """Initialise."""
         super().__init__(space, 1, is_reference, variable)
 
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"TrialFunction({self.variable!r})"
+
+    def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
+        """Reconstruct this function taking the input variable as input."""
+        return self.__class__(self._space, self._is_reference, variable)
+
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
@@ -446,16 +510,22 @@ class TrialFunction(Argument):
         if self.is_reference:
             raise ValueError("Cannot pull back function already defined on reference")
         assert isinstance(self._space, AbstractReferenceMappedFunctionSpace)
-        return PushedForward(
-            self._space.elements[0].reference_map,
-            TrialFunction(self._space, True, None if self.variable is None else self.variable.to_reference()),
-        )
+        if self.variable is None:
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TrialFunction(self._space, True, None),
+            )
+        else:
+            assert isinstance(self.variable, FiniteElementVariable)
+            return PushedForward(
+                self._space.elements[0].reference_map,
+                TrialFunction(self._space, True, self.variable.to_reference()),
+            )
 
 
 def create_variable(domain: AbstractDomain) -> AbstractVariable:
     """Create a new variable in a domain."""
-    # TODO: Implement FiniteElementDomain
-    # if isinstance(domain, FiniteElementDomain):
-    #    return FiniteElementVariable(domain)
-    # else:
-    return Variable(domain)
+    if isinstance(domain, AbstractFiniteElementDomain):
+        return FiniteElementVariable(domain)
+    else:
+        return Variable(domain)
