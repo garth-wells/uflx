@@ -54,7 +54,7 @@ class Variable(AbstractVariable):
 
     @property
     def label(self) -> str:
-        """The label of this variable"""
+        """The label of this variable."""
         return self._label
 
     @property
@@ -80,9 +80,10 @@ class FiniteElementVariable(AbstractVariable):
 
     _n = count(0)
 
-    def __init__(self, domain: AbstractDomain, label: str | None = None, reference: bool = False):
+    def __init__(
+        self, domain: AbstractFiniteElementDomain, label: str | None = None, reference: bool = False
+    ):
         """Initialise."""
-        # TODO: force finite element domain
         if label is None:
             self._label = f"variable-{next(self._n)}"
         else:
@@ -92,7 +93,7 @@ class FiniteElementVariable(AbstractVariable):
 
     @property
     def label(self) -> str:
-        """The label of this variable"""
+        """The label of this variable."""
         return self._label
 
     @property

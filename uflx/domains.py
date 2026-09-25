@@ -91,7 +91,7 @@ class CoordinateElement(AbstractCoordinateElement):
         This returns None iff the domain contains entities of a mixture
         of topological dimensions.
         """
-        dims = {c.toplogical_dimension for c in cells}
+        dims = {c.toplogical_dimension for c in self.cells}
         if len(dims) == 1:
             (dim,) = dims
             return dim
