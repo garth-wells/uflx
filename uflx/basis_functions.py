@@ -13,15 +13,14 @@ from typing import Any
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
 from uflx.function_spaces import AbstractFunctionSpace, AbstractReferenceMappedFunctionSpace
-from uflx.functions import AbstractFunction
+from uflx.functions import AbstractFunction, AbstractVariable
 from uflx.graphs import GraphNode
-from uflx.points import AbstractPoint
 from uflx.tensors import zero
 from uflx.utils import flatten
 
 
-class AbstractEvaluatedBasisFunction(AbstractExpression):
-    """Base class for a basis function evaluated at a point on the reference cell."""
+class AbstractEvaluatedBasisFunction(AbstractFunction):
+    """Base class for an evaluated basis function."""
 
     @property
     @abstractmethod
@@ -32,16 +31,6 @@ class AbstractEvaluatedBasisFunction(AbstractExpression):
     @abstractmethod
     def basis_index(self) -> int | str:
         """The index of the basis function."""
-
-    @property
-    @abstractmethod
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-
-    @property
-    @abstractmethod
-    def point(self) -> AbstractPoint:
-        """The point at which the function is evaluated."""
 
     @property
     @abstractmethod
@@ -81,8 +70,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         self,
         space: AbstractReferenceMappedFunctionSpace,
         basis_index: int | str,
-        point: AbstractPoint,
-        is_reference: bool,
+        variable: AbstractVariable,
         element_index: int | None = None,
         derivative: tuple[int, ...] | None = None,
         component: int | None = None,
@@ -100,7 +88,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._element = space.elements[element_index]
         self._element_index = element_index
         self._basis_index = basis_index
-        self._point = point
+        self._variable = variable
         if derivative is None:
             self._derivative = tuple(0 for _ in range(self._element.cell.topological_dimension))
         else:
@@ -109,22 +97,20 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._component: int | None = 0
         else:
             self._component = component
-        self._is_reference = is_reference
+
+    @property
+    def variable(self) -> AbstractVariable | None:
+        """Get the variable that is this function's input."""
+        return self._variable
+
+    def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
+        """Reconstruct this function taking the input variable as input."""
+        return self.__class__(self._Space, self._basis_index, variable, self._element_index, self._derivative, self._component)
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
         """The function space that this function lives in."""
         return self._space
-
-    @property
-    def is_reference(self) -> bool:
-        """Is this function's domain the reference cell?"""
-        return self._is_reference
-
-    @property
-    def point(self) -> AbstractPoint:
-        """The point at which the function is evaluated."""
-        return self._point
 
     @property
     def element(self) -> AbstractFiniteElement:
@@ -137,11 +123,6 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         return self._basis_index
 
     @property
-    def point_index(self) -> int | str:
-        """The index of the point in the set of points."""
-        return self._point.index
-
-    @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
         if self._component is None:
@@ -149,7 +130,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
                 assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
                 return self.element.reference_value_shape
             else:
-                return self.element.physical_value_shape(self._point.dim)
+                return self.element.physical_value_shape(self._variable.domain.topological_dimension)
         else:
             return ()
 
@@ -157,7 +138,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         """Representation."""
         repr = (
             "EvaluatedBasisFunction("
-            f"{self._space!r}, {self._basis_index}, {self._point!r}, {self.is_reference}"
+            f"{self._space!r}, {self._basis_index}, {self._variable!r}, {self.is_reference}"
         )
         if self._element_index is not None:
             repr += f", {self._element_index}"
@@ -179,7 +160,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         return (
             self._space,
             self._basis_index,
-            self._point,
+            self._variable,
             self.is_reference,
             self._element_index,
             self._derivative,
@@ -201,7 +182,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         return EvaluatedBasisFunction(
             self._space,
             self._basis_index,
-            self._point,
+            self._variable,
             self.is_reference,
             self._element_index,
             tuple(d + 1 if i == index else d for i, d in enumerate(self._derivative)),
@@ -213,7 +194,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         return EvaluatedBasisFunction(
             self._space,
             self._basis_index,
-            self._point,
+            self._variable,
             self.is_reference,
             self._element_index,
             self._derivative,
