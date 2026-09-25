@@ -20,7 +20,7 @@ from uflx.tensors import zero
 from uflx.utils import flatten
 
 
-class AbstractEvaluatedBasisFunction(AbstractFunction):
+class AbstractEvaluatedBasisFunction(AbstractExpression):
     """Base class for a basis function evaluated at a point on the reference cell."""
 
     @property

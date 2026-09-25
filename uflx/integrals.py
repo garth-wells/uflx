@@ -16,7 +16,8 @@ from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression
 from uflx.functions import (
     AbstractFunction,
-    AbstractIntegralScopedFunction,
+    AbstractVariable,
+    create_variable,
 )
 from uflx.geometry import JacobianDeterminant
 from uflx.graphs import Graph, GraphNode, as_graph, generate_graph
@@ -77,8 +78,8 @@ class AbstractIntegral(ABC):
 
     @property
     @abstractmethod
-    def label(self) -> str:
-        """A unique label for the integral."""
+    def variable(self) -> AbstractVariable:
+        """The dummy variable of this integral."""
 
 
 class Integral(AbstractIntegral):
@@ -87,24 +88,35 @@ class Integral(AbstractIntegral):
     _n = count(0)
 
     def __init__(
-        self, integrand: AbstractExpression, measure: AbstractMeasure, label: str | None = None
+        self, integrand: AbstractExpression, measure: AbstractMeasure, variable: AbstractVariable | None = None
     ):
         """Initialise."""
         self._measure = measure
-        if label is None:
-            self._label = f"uflx-Integral-{next(self._n)}"
-        else:
-            self._label = label
-
         replacements: dict[GraphNode, GraphNode] = {}
-        for node in as_graph(integrand):
-            if isinstance(node, AbstractIntegralScopedFunction) and node.integral_label is None:
-                replacements[node] = node.reconstruct_with_integral_label(self._label)
+        if variable is None:
+            domain = None
+            for node in as_graph(integrand):
+                if isinstance(node, AbstractFunction) and node.variable is None:
+                    if domain is None:
+                        domain = node.function_space.domain
+                        self._variable = create_variable(domain)
+                    else:
+                        assert domain == node.function_space.domain
+                    replacements[node] = node.reconstruct_with_variable(self._variable)
+            assert domain is not None
+        else:
+            self._variable = variable
+
         if len(replacements) == 0:
             self._integrand = integrand
         else:
             self._integrand = replace(integrand, replacements)
         self._graph = generate_graph(self)
+
+    @property
+    def variable(self) -> AbstractVariable:
+        """The dummy variable of this integral."""
+        return self.variable
 
     @property
     def integrand(self) -> AbstractExpression:
@@ -124,7 +136,7 @@ class Integral(AbstractIntegral):
     @property
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
-        return self._integrand, self._measure, self._label
+        return self._integrand, self._measure, self._variable
 
     def pull_back_to_reference(self, node_map: dict[GraphNode, GraphNode]) -> GraphNode:
         """Pull the node back to the reference cell."""
@@ -142,16 +154,12 @@ class Integral(AbstractIntegral):
 
         assert isinstance(integrand, AbstractExpression)
 
-        return Integral(det * integrand, self._measure, self._label)
+        return Integral(det * integrand, self._measure, self._variable)
 
     def __repr__(self) -> str:
         """Representation."""
-        return f"Integral(label={self._label})"
+        return f"Integral(variable={self._variable!r})"
 
-    @property
-    def label(self) -> str:
-        """A unique label for the integral."""
-        return self._label
 
 
 class Measure(AbstractMeasure):
