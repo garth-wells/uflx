@@ -8,7 +8,7 @@ from conftest import LagrangeElement
 from uflx import Coefficient, TestFunction, coordinate_element, dx, function_space, grad, inner
 from uflx.algorithms import pull_back_to_reference, reconstruct_node, replace
 from uflx.expressions import AbstractExpression
-from uflx.functions import Variable
+from uflx.functions import FiniteElementVariable
 from uflx.graphs import as_graph
 from uflx.integrals import Integral
 from uflx.maps import AbstractReferenceMap, BlockedReferenceMap, IdentityReferenceMap
@@ -45,8 +45,8 @@ def test_dg0_value_and_gradient(lagrange_element, cell, dim, geometry_degree):
         assert len(coefficients) == 1
         assert coefficients[0].label == c.label
         assert coefficients[0].is_cellwise_constant
-        assert isinstance(coefficients[0].variable, Variable)
-        assert isinstance(form.variable, Variable)
+        assert isinstance(coefficients[0].variable, FiniteElementVariable)
+        assert isinstance(form.variable, FiniteElementVariable)
         assert coefficients[0].variable._label == form.variable._label
     reconstructed = reconstruct_node(c, {})
     assert isinstance(reconstructed, Coefficient)
