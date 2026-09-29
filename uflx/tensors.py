@@ -262,3 +262,49 @@ def zero(shape: tuple[int, ...]) -> RealScalar | Tensor:
         return [build_entries(shape[1:]) for _ in range(shape[0])]
 
     return Tensor(build_entries(shape))
+
+
+class IdentityMatrix(AbstractExpression):
+    """Identity matrix."""
+
+    def __init__(self, size: int):
+        """Initialise."""
+        self.size = size
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return (self.size, self.size)
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self.size,)
+
+    def __repr__(self) -> str:
+        """Representation."""
+        return f"IdentityMatrix({self.size})"
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        assert len(indices) == 2 and all(i < self.size for i in indices)
+        return RealScalar(1.0 if indices[0] == indices[1] else 0.0)
+
+    def simplified_matrix_product(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        return other
+
+    def simplified_matrix_product_right(self, other: GraphNode) -> GraphNode | None:
+        """Return a single expression representing the simplified matrix product.
+
+        This function should return None if no simplification can be made.
+        """
+        return other
