@@ -22,8 +22,13 @@ from uflx.maps import PushedForward
 from uflx.tensors import zero
 
 
-class AbstractVariable:
+class AbstractVariable(AbstractExpression):
     """Base class for a variable that is the input to a function."""
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return (self.domain.geometric_dimension,)
 
     @property
     @abstractmethod
@@ -37,6 +42,11 @@ class AbstractVariable:
     @abstractmethod
     def __hash__(self) -> int:
         """Hash."""
+
+    @property
+    def is_reference(self) -> bool:
+        """Check if this domain is on a reference cell."""
+        return False
 
 
 class Variable(AbstractVariable):
@@ -74,6 +84,20 @@ class Variable(AbstractVariable):
         """Hash."""
         return hash(("uflx.Variable", self._label))
 
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._domain, self._label)
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError()
+
 
 class FiniteElementVariable(AbstractVariable):
     """A variable that is the input to a function."""
@@ -90,6 +114,16 @@ class FiniteElementVariable(AbstractVariable):
             self._label = label
         self._domain = domain
         self._reference = reference
+
+    @property
+    def successors(self) -> set[GraphNode]:
+        """The successors of this node."""
+        return set()
+
+    @property
+    def init_args(self) -> tuple[Any, ...]:
+        """The arguments used to initialise this object."""
+        return (self._domain, self._label, self._reference)
 
     @property
     def label(self) -> str:
@@ -133,6 +167,10 @@ class FiniteElementVariable(AbstractVariable):
         """Make a version of this variable on physical cells."""
         return FiniteElementVariable(self._domain, self._label, True)
 
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise NotImplementedError()
+
 
 class AbstractFunction(AbstractExpression):
     """Base class for a function."""
@@ -145,10 +183,7 @@ class AbstractFunction(AbstractExpression):
     @property
     def is_reference(self) -> bool:
         """Check if this function is on a reference cell."""
-        if isinstance(self.variable, FiniteElementVariable):
-            return self.variable.is_reference
-        else:
-            return False
+        return self.variable.is_reference
 
     @abstractmethod
     def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
@@ -242,10 +277,7 @@ class Argument(AbstractFunction):
             variable: The variable that is this argument's input
         """
         if variable is not None:
-            if isinstance(variable, FiniteElementVariable):
-                assert is_reference == variable.is_reference
-            else:
-                assert not is_reference
+            assert is_reference == variable.is_reference
         self._space = space
         self._is_reference = is_reference
         self._variable = variable

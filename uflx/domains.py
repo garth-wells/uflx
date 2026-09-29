@@ -99,6 +99,28 @@ class CoordinateElement(AbstractCoordinateElement):
             return None
 
 
+class RD(AbstractDomain):
+    """R^d."""
+
+    def __init__(self, dim: int):
+        """Initialise."""
+        self._dim = dim
+
+    @property
+    def geometric_dimension(self) -> int:
+        """The dimension of the space this domain is embedded in."""
+        return self._dim
+
+    @property
+    def toplogical_dimension(self) -> int | None:
+        """The topological dimension of the domain.
+
+        This returns None iff the domain contains entities of a mixture
+        of topological dimensions.
+        """
+        return self._dim
+
+
 def coordinate_element(
     elements: Sequence[AbstractReferenceMappedFiniteElement] | AbstractReferenceMappedFiniteElement,
 ):

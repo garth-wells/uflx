@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Self
 
 from uflx.expressions import AbstractExpression, Im, Re
 from uflx.finite_elements import AbstractFiniteElement, AbstractReferenceMappedFiniteElement
@@ -105,7 +105,14 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
 
     def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
         """Reconstruct this function taking the input variable as input."""
-        return self.__class__(self._Space, self._basis_index, variable, self._element_index, self._derivative, self._component)
+        return self.__class__(
+            self._Space,
+            self._basis_index,
+            variable,
+            self._element_index,
+            self._derivative,
+            self._component,
+        )
 
     @property
     def function_space(self) -> AbstractFunctionSpace:
@@ -130,7 +137,9 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
                 assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
                 return self.element.reference_value_shape
             else:
-                return self.element.physical_value_shape(self._variable.domain.topological_dimension)
+                return self.element.physical_value_shape(
+                    self._variable.domain.topological_dimension
+                )
         else:
             return ()
 
@@ -161,7 +170,6 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._space,
             self._basis_index,
             self._variable,
-            self.is_reference,
             self._element_index,
             self._derivative,
             self._component,
@@ -183,7 +191,6 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._space,
             self._basis_index,
             self._variable,
-            self.is_reference,
             self._element_index,
             tuple(d + 1 if i == index else d for i, d in enumerate(self._derivative)),
             self._component,
@@ -195,7 +202,6 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
             self._space,
             self._basis_index,
             self._variable,
-            self.is_reference,
             self._element_index,
             self._derivative,
             flatten(indices, self.value_shape),

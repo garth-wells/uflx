@@ -15,9 +15,9 @@ def test_physical_basis_function(lagrange_element):
     domain = coordinate_element(lagrange_element("triangle", 1, (3,)))
     space = function_space(domain, element)
 
-    point = Point([RealScalar(1.0)] * 3)
+    point = Point([RealScalar(1.0)] * 3, is_reference=False)
 
-    phys_f = EvaluatedBasisFunction(space, 0, point, False)
+    phys_f = EvaluatedBasisFunction(space, 0, point)
 
     assert phys_f.derivative == (0, 0)
     assert phys_f.domain_size == 2
@@ -40,9 +40,9 @@ def test_reference_basis_function(lagrange_element):
     domain = coordinate_element(lagrange_element("triangle", 1, (3,)))
     space = function_space(domain, element)
 
-    point = Point([RealScalar(1.0)] * 3)
+    point = Point([RealScalar(1.0)] * 3, is_reference=True)
 
-    ref_f = EvaluatedBasisFunction(space, 0, point, True)
+    ref_f = EvaluatedBasisFunction(space, 0, point)
 
     assert ref_f.derivative == (0, 0)
     assert ref_f.domain_size == 2

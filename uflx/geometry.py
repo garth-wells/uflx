@@ -131,7 +131,7 @@ class ReferenceToPhysical(AbstractPoint):
             expression_sum(
                 CoordinateDofComponent(i // dim, i % dim, dim)
                 * EvaluatedBasisFunction(
-                    function_space(self.domain, element), i, self.reference_point, True, component=j
+                    function_space(self.domain, element), i, self.reference_point, component=j
                 )
                 for i in range(element.dim)
             )
@@ -236,7 +236,6 @@ class Jacobian(AbstractExpression):
                             function_space(self.domain, element),
                             i,
                             self.point,
-                            True,
                             derivative=tuple(1 if d == col else 0 for d in range(gdim)),
                             component=row,
                         )
