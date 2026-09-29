@@ -8,7 +8,7 @@ from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
 from uflx.function_spaces import function_space
 from uflx.graphs import GraphNode, as_graph
-from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
+from uflx.points import AbstractPoint, Point
 from uflx.tensors import Matrix
 
 
@@ -87,6 +87,7 @@ class ReferenceToPhysical(AbstractPoint):
 
     def __init__(self, point: AbstractPoint, domain: AbstractCoordinateElement):
         """Initialise."""
+        assert point.is_reference
         self._point = point
         self._domain = domain
 
@@ -140,10 +141,22 @@ class ReferenceToPhysical(AbstractPoint):
 
         return Point(components)
 
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return (
+            isinstance(other, ReferenceToPhysical)
+            and self._point == other._point
+            and self._domain == other._domain
+        )
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash(("uflx.ReferenceToPhysical", hash(self._point), hash(self._domain)))
+
     @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-        return RD(self.dim)
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        return self._point.index
 
 
 class PhysicalToReference(AbstractPoint):
@@ -184,10 +197,22 @@ class PhysicalToReference(AbstractPoint):
         """The arguments used to initialise this object."""
         return self._point, self._domain
 
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return (
+            isinstance(other, ReferenceToPhysical)
+            and self._point == other._point
+            and self._domain == other._domain
+        )
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash(("uflx.ReferenceToPhysical", hash(self._point), hash(self._domain)))
+
     @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-        return RD(self.dim)
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        return self._point.index
 
 
 class Jacobian(AbstractExpression):
