@@ -48,6 +48,10 @@ class AbstractVariable(AbstractExpression):
         """Check if this domain is on a reference cell."""
         return False
 
+    def to_reference(self) -> FiniteElementVariable:
+        """Make a version of this variable on the reference cell."""
+        raise ValueError("Cannot pull this variable back to reference cell.")
+
 
 class Variable(AbstractVariable):
     """A variable that is the input to a function."""
@@ -59,7 +63,7 @@ class Variable(AbstractVariable):
         if label is None:
             self._label = f"variable-{next(self._n)}"
         else:
-            self._label - label
+            self._label = label
         self._domain = domain
 
     @property
@@ -183,7 +187,9 @@ class AbstractFunction(AbstractExpression):
     @property
     def is_reference(self) -> bool:
         """Check if this function is on a reference cell."""
-        return self.variable.is_reference
+        if self.variable is not None:
+            return self.variable.is_reference
+        return False
 
     @abstractmethod
     def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
@@ -238,7 +244,8 @@ class AbstractFunction(AbstractExpression):
     @property
     def domain_size(self) -> int:
         """The size of the domain (ie the number of inputs to the function)."""
-        return self.function_space.domain.cells[0].topological_dimension
+        assert self.function_space.domain.topological_dimension is not None
+        return self.function_space.domain.topological_dimension
 
     @property
     def re(self) -> AbstractExpression:

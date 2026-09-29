@@ -106,7 +106,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
     def reconstruct_with_variable(self, variable: AbstractVariable) -> Self:
         """Reconstruct this function taking the input variable as input."""
         return self.__class__(
-            self._Space,
+            self._space,
             self._basis_index,
             variable,
             self._element_index,
@@ -137,6 +137,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
                 assert isinstance(self.element, AbstractReferenceMappedFiniteElement)
                 return self.element.reference_value_shape
             else:
+                assert self._variable.domain.topological_dimension is not None
                 return self.element.physical_value_shape(
                     self._variable.domain.topological_dimension
                 )

@@ -28,7 +28,7 @@ class AbstractDomain(ABC):
 
     @property
     @abstractmethod
-    def toplogical_dimension(self) -> int | None:
+    def topological_dimension(self) -> int | None:
         """The topological dimension of the domain.
 
         This returns None iff the domain contains entities of a mixture
@@ -52,14 +52,14 @@ class AbstractCoordinateElement(AbstractFiniteElementDomain):
     finite element.
     """
 
-    @property
+    @abstractmethod
     def element(self, cell: AbstractEntity) -> AbstractReferenceMappedFiniteElement:
         """Get the element on the given cell type."""
 
     @property
     def is_affine_map(self) -> bool:
         """Is the reference-to-physical map of this domain affine?"""
-        return all(e.cell.is_simplex and e.lagrange_superdegree == 1 for e in self.elements)
+        return all(c.is_simplex and self.element(c).lagrange_superdegree == 1 for c in self.cells)
 
 
 class CoordinateElement(AbstractCoordinateElement):
@@ -67,31 +67,33 @@ class CoordinateElement(AbstractCoordinateElement):
 
     def __init__(self, elements: tuple[AbstractReferenceMappedFiniteElement, ...]):
         """Initialise."""
-        self._elements = elements
+        self._elements = {e.cell: e for e in elements}
+        (self._gdim,) = elements[0].reference_value_shape
+        for e in elements[1:]:
+            assert e.reference_value_shape == (self._gdim,)
 
     @property
     def geometric_dimension(self) -> int:
         """Dimension of the space this domain is embedded in."""
-        return self._elements[0].reference_value_shape[0]
+        return self._gdim
 
     @property
     def cells(self) -> tuple[AbstractEntity, ...]:
         """Get the cells in the domain."""
-        return tuple(e.cell for e in self._elements)
+        return tuple(self._elements.keys())
 
-    @property
-    def elements(self) -> tuple[AbstractReferenceMappedFiniteElement, ...]:
+    def element(self, cell: AbstractEntity) -> AbstractReferenceMappedFiniteElement:
         """Get the elements in the domain."""
-        return self._elements
+        return self._elements[cell]
 
     @property
-    def toplogical_dimension(self) -> int | None:
+    def topological_dimension(self) -> int | None:
         """The topological dimension of the domain.
 
         This returns None iff the domain contains entities of a mixture
         of topological dimensions.
         """
-        dims = {c.toplogical_dimension for c in self.cells}
+        dims = {c.topological_dimension for c in self.cells}
         if len(dims) == 1:
             (dim,) = dims
             return dim
@@ -112,7 +114,7 @@ class RD(AbstractDomain):
         return self._dim
 
     @property
-    def toplogical_dimension(self) -> int | None:
+    def topological_dimension(self) -> int | None:
         """The topological dimension of the domain.
 
         This returns None iff the domain contains entities of a mixture

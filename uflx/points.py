@@ -24,11 +24,6 @@ class AbstractPoint(AbstractVariable):
 
     @property
     @abstractmethod
-    def domain(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-
-    @property
-    @abstractmethod
     def index(self) -> int | str:
         """The point's index in the set of points."""
 
@@ -38,7 +33,7 @@ class AbstractPoint(AbstractVariable):
         return PointComponent(self, i)
 
 
-class Point(AbstractVariable):
+class Point(AbstractPoint):
     """A single point in R^d."""
 
     def __init__(self, components: Sequence[AbstractExpression], is_reference: bool = False):
@@ -47,13 +42,18 @@ class Point(AbstractVariable):
         self._is_reference = is_reference
 
     @property
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        raise NotImplementedError()
+
+    @property
     def is_reference(self) -> bool:
         """Check if this domain is on a reference cell."""
         return self._is_reference
 
     @property
-    def domain(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
+    def domain(self) -> AbstractDomain:
+        """The domain that this variable is in."""
         return RD(len(self._components))
 
     def component(self, *indices: int) -> AbstractExpression:
@@ -61,7 +61,7 @@ class Point(AbstractVariable):
         (i,) = indices
         if isinstance(i, int):
             return self._components[i]
-        return super().component(i)
+        return PointComponent(self, i)
 
     @property
     def successors(self) -> set[GraphNode]:

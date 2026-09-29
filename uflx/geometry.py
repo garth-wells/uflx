@@ -123,9 +123,9 @@ class ReferenceToPhysical(AbstractPoint):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        if len(self.domain.elements) != 1:
+        if len(self.domain.cells) != 1:
             raise NotImplementedError("Only domains with exactly on element supported for now.")
-        (element,) = self.domain.elements
+        element = self.domain.element(self.domain.cells[0])
         (dim,) = element.reference_value_shape
 
         components = [
@@ -226,14 +226,8 @@ class Jacobian(AbstractExpression):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        if not isinstance(self.domain, AbstractCoordinateElement):
-            raise NotImplementedError()
-        if len(self.domain.elements) > 1:
-            raise NotImplementedError()
-        (element,) = self.domain.elements
-        tdim = element.cell.topological_dimension
-        gdim = self.domain.geometric_dimension
-        return (gdim, tdim)
+        assert self.domain.topological_dimension is not None
+        return (self.domain.geometric_dimension, self.domain.topological_dimension)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -248,7 +242,10 @@ class Jacobian(AbstractExpression):
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         gdim, tdim = self.value_shape
-        (element,) = self.domain.elements
+        if len(self.domain.cells) > 1:
+            raise NotImplementedError()
+        (cell,) = self.domain.cells
+        element = self.domain.element(cell)
 
         assert self.point is not None
 
