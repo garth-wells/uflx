@@ -19,21 +19,21 @@ def test_coefficient_labelling(lagrange_element):
     assert isinstance(form1, Integral)
     assert isinstance(form2, Integral)
 
-    assert w.integral_label is None
-    assert v.integral_label is None
+    assert w.variable is None
+    assert v.variable is None
 
-    assert form1.label != form2.label
-    assert form1.label is not None
-    assert form2.label is not None
+    assert form1.variable != form2.variable
+    assert form1.variable is not None
+    assert form2.variable is not None
 
     for node in form1.graph:
         if isinstance(node, Coefficient):
-            assert node.integral_label == form1.label
+            assert node.variable == form1.variable
             assert node.label == w.label
 
     for node in form2.graph:
         if isinstance(node, Coefficient):
-            assert node.integral_label == form2.label
+            assert node.variable == form2.variable
             assert node.label == w.label
 
     assert Coefficient(space).label != w.label

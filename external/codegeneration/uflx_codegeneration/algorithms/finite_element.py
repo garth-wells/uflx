@@ -7,6 +7,7 @@ import numpy.typing as npt
 from uflx.algorithms import replace
 from uflx.basis_functions import AbstractEvaluatedBasisFunction
 from uflx.graphs import GraphNode, as_graph
+from uflx.points import AbstractPoint
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
@@ -50,18 +51,19 @@ def tabulate_finite_elements(
             and node.is_reference
         ):
             assert isinstance(node.element, AbstractFiniteElement)
-            id = (node.element, node.point.points_set)
+            assert node.variable is not None
+            id = (node.element, node.variable.domain)
             if id in table_map:
                 name = table_map[id]
             else:
                 name = variable_namer.finite_element_table()
                 table_map[id] = name
             if name not in table_info or sum(node.derivative) > table_info[name][1]:
-                assert isinstance(node.point.points_set, QuadratureRule)
+                assert isinstance(node.variable.domain, QuadratureRule)
                 table_info[name] = (
                     node.element,
                     sum(node.derivative),
-                    node.point.points_set.points,
+                    node.variable.domain.points,
                 )
             # A point-invariant node (see _is_point_invariant) reads the same value from
             # every row of the table's point axis, so index it with a constant instead of
@@ -69,8 +71,9 @@ def tabulate_finite_elements(
             # uflx_mlir's hoist.py, which classifies a constant index as having no loop
             # dependency) recognise it as invariant under the quadrature loop, without the
             # table itself needing to change shape or any consumer needing new machinery.
+            assert isinstance(node.variable, AbstractPoint)
             point_index: int | str = (
-                0 if _is_point_invariant(node.element, node.derivative) else node.point_index
+                0 if _is_point_invariant(node.element, node.derivative) else node.variable.index
             )
             if node.component_index is None:
                 to_replace[node] = ArrayEntry(

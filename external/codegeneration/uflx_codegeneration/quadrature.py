@@ -1,6 +1,7 @@
 """Quadrature rules."""
 
 from collections.abc import Sequence
+from itertools import count
 from typing import Any
 
 import numpy as np
@@ -33,11 +34,14 @@ from uflx_codegeneration.utils import indented
 class QuadratureRule(AbstractSetOfPoints):
     """A quadrature rule."""
 
+    _n = count(0)
+
     def __init__(self, points: npt.NDArray[np.floating], weights: npt.NDArray[np.floating]):
         """Initialise."""
         assert points.shape[0] == len(weights)
         self.points = points
         self.weights = weights
+        self._id = next(self._n)
 
     @property
     def npoints(self) -> int:
@@ -49,6 +53,23 @@ class QuadratureRule(AbstractSetOfPoints):
         """The dimension of each point in the set."""
         return self.points.shape[1]
 
+    @property
+    def topological_dimension(self) -> int | None:
+        """The topological dimension of the domain.
+
+        This returns None iff the domain contains entities of a mixture
+        of topological dimensions.
+        """
+        return self.points.shape[1]
+
+    def __eq__(self, other):
+        """Check for equality."""
+        return isinstance(other, QuadratureRule) and self._id == other._id
+
+    def __hash__(self):
+        """Hash."""
+        return hash(("uflx_codegeneration.QuadratureRule", self._id))
+
 
 class QuadraturePoint(AbstractPoint):
     """A point in a quadrature rule."""
@@ -59,7 +80,24 @@ class QuadraturePoint(AbstractPoint):
         self._index = index
 
     @property
-    def points_set(self) -> QuadratureRule:
+    def is_reference(self) -> bool:
+        """Check if this domain is on a reference cell."""
+        return True
+
+    def __eq__(self, other):
+        """Check for equality."""
+        return (
+            isinstance(other, QuadraturePoint)
+            and self.rule == other.rule
+            and self._index == other._index
+        )
+
+    def __hash__(self):
+        """Hash."""
+        return hash(("uflx_codegeneration.QuadraturePoint", hash(self.rule), hash(self._index)))
+
+    @property
+    def domain(self) -> QuadratureRule:
         """Get all the points in the set."""
         return self.rule
 
@@ -210,7 +248,7 @@ def integrals_to_quadrature(
 
             arguments = []
             for i in graph.descendants(node):
-                if isinstance(i, Argument) and i.integral_label == node.label:
+                if isinstance(i, Argument) and i.variable == node.variable:
                     arguments.append(i)
                 if isinstance(i, SingleSpatialCoordinate):
                     domain = extract_domain(graph, node)
@@ -259,14 +297,13 @@ def integrals_to_quadrature(
                 if isinstance(a, Argument):
                     if a.is_reference:
                         to_replace[a] = EvaluatedBasisFunction(
-                            a.function_space, variables[a.component_index], qpoint, True
+                            a.function_space, variables[a.component_index], qpoint
                         )
                     else:
                         to_replace[a] = EvaluatedBasisFunction(
                             a.function_space,
                             variables[a.component_index],
                             ReferenceToPhysical(qpoint, a.function_space.domain),
-                            False,
                         )
 
             domain = arguments[0].function_space.domain

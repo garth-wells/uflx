@@ -8,7 +8,7 @@ from uflx.domains import AbstractCoordinateElement
 from uflx.expressions import AbstractExpression, expression_sum
 from uflx.function_spaces import function_space
 from uflx.graphs import GraphNode, as_graph
-from uflx.points import RD, AbstractPoint, AbstractSetOfPoints, Point
+from uflx.points import AbstractPoint, Point
 from uflx.tensors import IdentityMatrix, Matrix
 
 
@@ -87,6 +87,7 @@ class ReferenceToPhysical(AbstractPoint):
 
     def __init__(self, point: AbstractPoint, domain: AbstractCoordinateElement):
         """Initialise."""
+        assert point.is_reference
         self._point = point
         self._domain = domain
 
@@ -122,16 +123,16 @@ class ReferenceToPhysical(AbstractPoint):
 
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
-        if len(self.domain.elements) != 1:
+        if len(self.domain.cells) != 1:
             raise NotImplementedError("Only domains with exactly on element supported for now.")
-        (element,) = self.domain.elements
+        element = self.domain.element(self.domain.cells[0])
         (dim,) = element.reference_value_shape
 
         components = [
             expression_sum(
                 CoordinateDofComponent(i // dim, i % dim, dim)
                 * EvaluatedBasisFunction(
-                    function_space(self.domain, element), i, self.reference_point, True, component=j
+                    function_space(self.domain, element), i, self.reference_point, component=j
                 )
                 for i in range(element.dim)
             )
@@ -140,10 +141,22 @@ class ReferenceToPhysical(AbstractPoint):
 
         return Point(components)
 
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return (
+            isinstance(other, ReferenceToPhysical)
+            and self._point == other._point
+            and self._domain == other._domain
+        )
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash(("uflx.ReferenceToPhysical", hash(self._point), hash(self._domain)))
+
     @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-        return RD(self.dim)
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        return self._point.index
 
 
 class PhysicalToReference(AbstractPoint):
@@ -184,10 +197,22 @@ class PhysicalToReference(AbstractPoint):
         """The arguments used to initialise this object."""
         return self._point, self._domain
 
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return (
+            isinstance(other, ReferenceToPhysical)
+            and self._point == other._point
+            and self._domain == other._domain
+        )
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash(("uflx.ReferenceToPhysical", hash(self._point), hash(self._domain)))
+
     @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-        return RD(self.dim)
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        return self._point.index
 
 
 class Jacobian(AbstractExpression):
@@ -201,14 +226,8 @@ class Jacobian(AbstractExpression):
     @property
     def value_shape(self) -> tuple[int, ...]:
         """The value shape of the expression."""
-        if not isinstance(self.domain, AbstractCoordinateElement):
-            raise NotImplementedError()
-        if len(self.domain.elements) > 1:
-            raise NotImplementedError()
-        (element,) = self.domain.elements
-        tdim = element.cell.topological_dimension
-        gdim = self.domain.geometric_dimension
-        return (gdim, tdim)
+        assert self.domain.topological_dimension is not None
+        return (self.domain.geometric_dimension, self.domain.topological_dimension)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -223,7 +242,10 @@ class Jacobian(AbstractExpression):
     def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         gdim, tdim = self.value_shape
-        (element,) = self.domain.elements
+        if len(self.domain.cells) > 1:
+            raise NotImplementedError()
+        (cell,) = self.domain.cells
+        element = self.domain.element(cell)
 
         assert self.point is not None
 
@@ -236,7 +258,6 @@ class Jacobian(AbstractExpression):
                             function_space(self.domain, element),
                             i,
                             self.point,
-                            True,
                             derivative=tuple(1 if d == col else 0 for d in range(gdim)),
                             component=row,
                         )

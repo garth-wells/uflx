@@ -4,96 +4,64 @@ from abc import abstractmethod
 from collections.abc import Sequence
 from typing import Any
 
+from uflx.domains import RD, AbstractDomain
 from uflx.expressions import AbstractExpression
+from uflx.functions import AbstractVariable
 from uflx.graphs import GraphNode
 
 
-class AbstractSetOfPoints:
-    """Base calss for a set of points."""
+class AbstractSetOfPoints(AbstractDomain):
+    """Base class for a set of points."""
 
     @property
     @abstractmethod
-    def npoints(self) -> int | str:
+    def npoints(self) -> int:
         """The number of points in the set."""
 
-    @property
-    @abstractmethod
-    def geometric_dimension(self) -> int:
-        """The dimension of each point in the set."""
 
-
-class RD(AbstractSetOfPoints):
-    """R^d."""
-
-    def __init__(self, dim: int):
-        """Initialise."""
-        self._dim = dim
-
-    @property
-    def npoints(self) -> int | str:
-        """The number of points in the set."""
-        return "Infinity"
-
-    @property
-    def geometric_dimension(self) -> int:
-        """The dimension of each point in the set."""
-        return self._dim
-
-
-class AbstractPoint(AbstractExpression):
+class AbstractPoint(AbstractVariable):
     """Base class for a single point in R^d."""
 
     @property
     @abstractmethod
-    def dim(self) -> int:
-        """The dimension of the point."""
-
-    @property
-    @abstractmethod
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-
-    @property
     def index(self) -> int | str:
         """The point's index in the set of points."""
-        if self.points_set.npoints == "Infinity":
-            raise RuntimeError("Cannot index points in an infinite set")
-        raise NotImplementedError()
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         (i,) = indices
         return PointComponent(self, i)
 
-    @property
-    def value_shape(self) -> tuple[int, ...]:
-        """The value shape of the expression."""
-        return (self.dim,)
-
 
 class Point(AbstractPoint):
     """A single point in R^d."""
 
-    def __init__(self, components: Sequence[AbstractExpression]):
+    def __init__(self, components: Sequence[AbstractExpression], is_reference: bool = False):
         """Initialise."""
         self._components = tuple(components)
+        self._is_reference = is_reference
 
     @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
+    def index(self) -> int | str:
+        """The point's index in the set of points."""
+        raise NotImplementedError()
+
+    @property
+    def is_reference(self) -> bool:
+        """Check if this domain is on a reference cell."""
+        return self._is_reference
+
+    @property
+    def domain(self) -> AbstractDomain:
+        """The domain that this variable is in."""
         return RD(len(self._components))
-
-    @property
-    def dim(self) -> int:
-        """The dimension of the point."""
-        return len(self._components)
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         (i,) = indices
         if isinstance(i, int):
             return self._components[i]
-        return super().component(i)
+        return PointComponent(self, i)
 
     @property
     def successors(self) -> set[GraphNode]:
@@ -104,6 +72,16 @@ class Point(AbstractPoint):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return (self._components,)
+
+    def __eq__(self, other) -> bool:
+        """Check for equality."""
+        return isinstance(other, Point) and all(
+            i == j for i, j in zip(self._components, other._components)
+        )
+
+    def __hash__(self) -> int:
+        """Hash."""
+        return hash(("uflx.Point", *[hash(c) for c in self._components]))
 
 
 class PointComponent(AbstractExpression):
@@ -146,21 +124,3 @@ class PointComponent(AbstractExpression):
     def init_args(self) -> tuple[Any, ...]:
         """The arguments used to initialise this object."""
         return self._point, self._component
-
-
-class IntegrationDummyPoint(AbstractPoint):
-    """A point that is a dummy variable in an integral."""
-
-    def __init__(self, dim: int):
-        """Initialise."""
-        self._dim = dim
-
-    @property
-    def dim(self) -> int:
-        """The dimension of the point."""
-        return self._dim
-
-    @property
-    def points_set(self) -> AbstractSetOfPoints:
-        """The set of points containing this point."""
-        raise NotImplementedError()

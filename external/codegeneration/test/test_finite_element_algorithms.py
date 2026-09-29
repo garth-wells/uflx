@@ -54,8 +54,8 @@ def test_tabulate_finite_elements_hoists_only_the_derivative(lagrange_element):
     domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
     space = function_space(domain, element)
 
-    value_node = EvaluatedBasisFunction(space, 0, point, True)
-    gradient_node = EvaluatedBasisFunction(space, 0, point, True, derivative=(1, 0))
+    value_node = EvaluatedBasisFunction(space, 0, point)
+    gradient_node = EvaluatedBasisFunction(space, 0, point, derivative=(1, 0))
     root = expression_sum([value_node, gradient_node])
 
     _, result = tabulate_finite_elements(root, symbols.VariableNamer())
