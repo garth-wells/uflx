@@ -50,6 +50,7 @@ def tabulate_finite_elements(
             and node.is_reference
         ):
             assert isinstance(node.element, AbstractFiniteElement)
+            assert node.variable is not None
             id = (node.element, node.variable.domain)
             if id in table_map:
                 name = table_map[id]

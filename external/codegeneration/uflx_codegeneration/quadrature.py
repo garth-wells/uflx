@@ -54,7 +54,7 @@ class QuadratureRule(AbstractSetOfPoints):
         return self.points.shape[1]
 
     @property
-    def toplogical_dimension(self) -> int | None:
+    def topological_dimension(self) -> int | None:
         """The topological dimension of the domain.
 
         This returns None iff the domain contains entities of a mixture
