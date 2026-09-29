@@ -7,6 +7,7 @@ import numpy.typing as npt
 from uflx.algorithms import replace
 from uflx.basis_functions import AbstractEvaluatedBasisFunction
 from uflx.graphs import GraphNode, as_graph
+from uflx.points import AbstractPoint
 
 from uflx_codegeneration import symbols
 from uflx_codegeneration.finite_element import AbstractFiniteElement
@@ -70,6 +71,7 @@ def tabulate_finite_elements(
             # uflx_mlir's hoist.py, which classifies a constant index as having no loop
             # dependency) recognise it as invariant under the quadrature loop, without the
             # table itself needing to change shape or any consumer needing new machinery.
+            assert isinstance(node.variable, AbstractPoint)
             point_index: int | str = (
                 0 if _is_point_invariant(node.element, node.derivative) else node.variable.index
             )
