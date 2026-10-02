@@ -54,7 +54,7 @@ class AbstractEvaluatedBasisFunction(AbstractFunction):
         """The (flattened) component index of the basis function."""
 
     @abstractmethod
-    def diff(self, index: int) -> AbstractFunction:
+    def diff(self, index: int) -> AbstractEvaluatedBasisFunction:
         """Take a derivative of this function."""
 
     @property
@@ -196,7 +196,7 @@ class EvaluatedBasisFunction(AbstractEvaluatedBasisFunction):
         """The (flattened) component index of the basis function."""
         return self._component
 
-    def diff(self, index: int) -> AbstractFunction:
+    def diff(self, index: int) -> EvaluatedBasisFunction:
         """Take a derivative of this function."""
         return EvaluatedBasisFunction(
             self._space,

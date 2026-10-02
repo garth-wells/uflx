@@ -15,6 +15,7 @@ class VariableNamer:
         self.geo_i = -1
         self.fe_i = -1
         self.qr_i = -1
+        self.coeff_i = -1
 
     def variable(self) -> str:
         """Get a new variable name."""
@@ -42,6 +43,11 @@ class VariableNamer:
         """Get a name for a geometry function."""
         self.geo_i += 1
         return f"geo{self.geo_i}"
+
+    def coefficient_function_name(self) -> str:
+        """Get a name for a coefficient-evaluation function."""
+        self.coeff_i += 1
+        return f"coeff{self.coeff_i}"
 
 
 global_variable_namer = VariableNamer()
