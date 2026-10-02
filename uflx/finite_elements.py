@@ -108,4 +108,6 @@ class AbstractReferenceMappedFiniteElement(AbstractFiniteElement):
 
     def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
         """Return the shape of the value space on a physical cell."""
-        return self.reference_map.physical_value_shape(geometric_dimension)
+        return self.reference_map.physical_value_shape(
+            self.reference_value_shape, geometric_dimension
+        )

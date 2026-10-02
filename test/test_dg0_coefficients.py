@@ -87,7 +87,9 @@ class UnknownMap(AbstractReferenceMap):
         """Leave this mock map unimplemented."""
         raise NotImplementedError()
 
-    def physical_value_shape(self, geometric_dimension: int) -> tuple[int, ...]:
+    def physical_value_shape(
+        self, reference_value_shape: tuple[int, ...], geometric_dimension: int
+    ) -> tuple[int, ...]:
         """Use scalar values."""
         return ()
 
