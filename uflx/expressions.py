@@ -633,7 +633,15 @@ class Product(AbstractExpression):
     def __mul__(self, other: Any) -> AbstractExpression:
         """Multiply."""
         if isinstance(other, AbstractExpression):
-            return Product(self._items + (other._items if isinstance(other, Product) else (other,)))
+            if other.value_shape == self.value_shape:
+                return Product(
+                    self._items + (other._items if isinstance(other, Product) else (other,))
+                )
+            # Shapes differ (eg this scalar Product times a matrix): fall
+            # back to the general ScalarMult/elementwise-shape-error
+            # dispatch in AbstractExpression.__mul__ instead of blindly
+            # flattening mismatched-shape items into one Product.
+            return AbstractExpression.__mul__(self, other)
         try:
             return self * to_scalar(other)
         except ValueError:
