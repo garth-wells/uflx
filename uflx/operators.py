@@ -12,7 +12,7 @@ from uflx.functions import AbstractFunction
 from uflx.geometry import JacobianInverseTranspose
 from uflx.graphs import GraphNode, as_graph
 from uflx.maps import PushedForward
-from uflx.tensors import Vector, zero
+from uflx.tensors import Identity, Tensor, Vector, zero
 
 
 class Inner(BinaryOperator):
@@ -29,6 +29,70 @@ class Inner(BinaryOperator):
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
         raise ValueError("Cannot get a component of a scalar expression")
+
+
+class Transpose(UnaryOperator):
+    """Transpose of a rank-2 (matrix-shaped) expression."""
+
+    def __init__(self, argument: AbstractExpression):
+        """Initialise."""
+        if len(argument.value_shape) != 2:
+            raise ValueError(
+                "transpose() is only defined for rank-2 (matrix-shaped) expressions, got "
+                f"shape {argument.value_shape}."
+            )
+        super().__init__(argument)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return self.argument.value_shape[::-1]
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        i, j = indices
+        return self.argument.component(j, i)
+
+
+class Tr(UnaryOperator):
+    """Trace of a square rank-2 (matrix-shaped) expression."""
+
+    def __init__(self, argument: AbstractExpression):
+        """Initialise."""
+        shape = argument.value_shape
+        if len(shape) != 2 or shape[0] != shape[1]:
+            raise ValueError(
+                "tr() is only defined for square rank-2 (matrix-shaped) expressions, got "
+                f"shape {shape}."
+            )
+        super().__init__(argument)
+
+    @property
+    def value_shape(self) -> tuple[int, ...]:
+        """The value shape of the expression."""
+        return ()
+
+    def component(self, *indices: int) -> AbstractExpression:
+        """Get a component of the expression."""
+        raise ValueError("Cannot get a component of a scalar expression")
+
+    def as_complex(self) -> complex:
+        """Convert to a complex number."""
+        return sum(
+            self.argument.component(i, i).as_complex() for i in range(self.argument.value_shape[0])
+        )
+
+    def as_float(self) -> float:
+        """Convert to a floating point number."""
+        return sum(
+            self.argument.component(i, i).as_float() for i in range(self.argument.value_shape[0])
+        )
+
+    def as_int(self) -> int:
+        """Convert to an integer."""
+        return sum(
+            self.argument.component(i, i).as_int() for i in range(self.argument.value_shape[0])
+        )
 
 
 class Grad(UnaryOperator):
@@ -98,12 +162,36 @@ class ReferenceGrad(UnaryOperator):
             "Cannot get a 'component' of a ReferenceGrad. Try calling expand_geometry first"
         )
 
-    def expand_geometry(self) -> GraphNode:
+    def expand_geometry(self) -> AbstractExpression:
         """Expand geometry."""
         argument = self._reference_argument
+        d = argument.domain_size
         if argument.is_cellwise_constant:
-            return zero((*argument.value_shape, argument.domain_size))
-        return Vector([argument.diff(i) for i in range(argument.domain_size)])
+            return zero((*argument.value_shape, d))
+
+        value_shape = argument.value_shape
+        diffs = [argument.diff(i) for i in range(d)]
+        if value_shape == ():
+            # A scalar argument's directional derivatives are themselves
+            # scalars -- nothing to index into.
+            return Vector(diffs)
+
+        # A non-scalar (eg vector-valued) argument's directional
+        # derivatives are each still full value_shape-shaped expressions
+        # (EvaluatedBasisFunction.diff keeps the same, un-indexed
+        # component), so build the (*value_shape, d) result by indexing
+        # into each direction's derivative rather than treating the
+        # derivatives themselves as the leaves -- a plain
+        # Vector(diffs)/Tensor(diffs) would silently misreport its own
+        # shape as (d,), since Tensor's shape inference only looks at the
+        # nesting of the Python list it is given, not each leaf's own
+        # value_shape.
+        def build(indices: tuple[int, ...]):
+            if len(indices) == len(value_shape):
+                return [diffs[i].component(*indices) for i in range(d)]
+            return [build((*indices, k)) for k in range(value_shape[len(indices)])]
+
+        return Tensor(build(()))
 
 
 def grad(a: AbstractExpression) -> AbstractExpression:
@@ -124,3 +212,29 @@ def inner(a: AbstractExpression, b: AbstractExpression) -> AbstractExpression:
         return a * conj(b)
 
     return Inner(a, b)
+
+
+def transpose(a: AbstractExpression) -> AbstractExpression:
+    """The transpose of a rank-2 (matrix-shaped) expression."""
+    return Transpose(a)
+
+
+def tr(a: AbstractExpression) -> AbstractExpression:
+    """The trace of a square rank-2 (matrix-shaped) expression."""
+    return Tr(a)
+
+
+def sym(a: AbstractExpression) -> AbstractExpression:
+    """The symmetric part of a square rank-2 (matrix-shaped) expression."""
+    return (a + transpose(a)) / 2
+
+
+def skew(a: AbstractExpression) -> AbstractExpression:
+    """The skew-symmetric (antisymmetric) part of a square rank-2 expression."""
+    return (a - transpose(a)) / 2
+
+
+def dev(a: AbstractExpression) -> AbstractExpression:
+    """The deviatoric (trace-free) part of a square rank-2 (matrix-shaped) expression."""
+    d = a.value_shape[0]
+    return a - (tr(a) / d) * Identity(d)

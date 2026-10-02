@@ -264,7 +264,7 @@ def zero(shape: tuple[int, ...]) -> RealScalar | Tensor:
     return Tensor(build_entries(shape))
 
 
-class IdentityMatrix(AbstractExpression):
+class Identity(AbstractExpression):
     """Identity matrix."""
 
     def __init__(self, size: int):
@@ -288,7 +288,7 @@ class IdentityMatrix(AbstractExpression):
 
     def __repr__(self) -> str:
         """Representation."""
-        return f"IdentityMatrix({self.size})"
+        return f"Identity({self.size})"
 
     def component(self, *indices: int) -> AbstractExpression:
         """Get a component of the expression."""
