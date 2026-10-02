@@ -12,8 +12,8 @@ from uflx import (
     inner,
 )
 from uflx.algorithms import simplify
-from uflx.expressions import MatMult, Product
-from uflx.geometry import Jacobian, JacobianInverseTranspose
+from uflx.expressions import MatrixProduct, Product
+from uflx.geometry import Jacobian, JacobianInverse, JacobianInverseTranspose, JacobianTranspose
 from uflx.integrals import Integral
 from uflx.operators import Inner
 
@@ -141,6 +141,35 @@ def test_multiply_and_divide_function_form(lagrange_element):
         assert isinstance(simpler_form.integrand._items[1], TrialFunction)
 
 
+@pytest.mark.parametrize("v_first", [True, False])
+@pytest.mark.parametrize("inv_first", [True, False])
+@pytest.mark.parametrize("transpose", [True, False])
+def test_jacobian_and_inverse_matvec(lagrange_element, v_first, inv_first, transpose):
+    """Test that Jacobian and inverse Jacobian are successfully cancelled."""
+    element = lagrange_element("triangle", 2, (2,))
+    domain = coordinate_element(lagrange_element("triangle", 1, (2,)))
+    space = function_space(domain, element)
+    v = TestFunction(space)
+
+    if transpose:
+        first = JacobianTranspose(domain)
+        second = JacobianInverseTranspose(domain)
+    else:
+        first = Jacobian(domain)
+        second = JacobianInverse(domain)
+    if inv_first:
+        first, second = second, first
+    if v_first:
+        expression = v @ first @ second
+    else:
+        expression = first @ second @ v
+
+    simpler_expression = simplify(expression)
+
+    assert isinstance(expression, MatrixProduct)
+    assert isinstance(simpler_expression, TestFunction)
+
+
 def test_jacobian_and_inverse_form(lagrange_element):
     """Test that Jacobian and inverse Jacobian are successfully cancelled."""
     pytest.xfail()
@@ -161,12 +190,12 @@ def test_jacobian_and_inverse_form(lagrange_element):
     assert isinstance(simpler_form, Integral)
 
     assert isinstance(form.integrand, Inner)
-    assert isinstance(form.integrand.first, MatMult)
-    assert isinstance(form.integrand.first.first, Jacobian)
-    assert isinstance(form.integrand.first.second, TrialFunction)
-    assert isinstance(form.integrand.second, MatMult)
-    assert isinstance(form.integrand.second.first, JacobianInverseTranspose)
-    assert isinstance(form.integrand.second.second, TestFunction)
+    assert isinstance(form.integrand.first, MatrixProduct)
+    assert isinstance(form.integrand.first._items[0], Jacobian)
+    assert isinstance(form.integrand.first._items[1], TrialFunction)
+    assert isinstance(form.integrand.second, MatrixProduct)
+    assert isinstance(form.integrand.second._items[0], JacobianInverseTranspose)
+    assert isinstance(form.integrand.second._items[1], TestFunction)
 
     assert isinstance(simpler_form.integrand, Inner)
     if isinstance(simpler_form.integrand.first, TrialFunction):
