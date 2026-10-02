@@ -11,7 +11,7 @@ from uflx.expressions import (
     Abs,
     AbstractExpression,
     AbstractScalar,
-    MatMult,
+    MatrixProduct,
     MatVec,
     Product,
     expression_sum,
@@ -72,6 +72,22 @@ def geometry_kernel_name(kernel_name: str) -> str:
     return f"{kernel_name}_geometry"
 
 
+def _as_mat_op_operands(node: GraphNode) -> tuple[GraphNode, GraphNode] | None:
+    """Return (first, second) for a MatVec, or a 2-item MatrixProduct, else None.
+
+    MatrixProduct is n-ary in general (see uflx.expressions), but its own
+    `.component()` only supports exactly 2 items today, and the geometry
+    pattern this module matches (JacobianInverseTranspose @ ReferenceGrad)
+    is itself always built as exactly 2 factors -- so requiring 2 items
+    here isn't a real restriction, just matching what can actually occur.
+    """
+    if isinstance(node, MatVec):
+        return node.first, node.second
+    if isinstance(node, MatrixProduct) and len(node._items) == 2:
+        return node._items
+    return None
+
+
 def _poisson_metric_contraction(node: GraphNode):
     """Return a reference-gradient contraction when ``node`` is affine Poisson geometry."""
     # Product is n-ary in general (see uflx.expressions), but this pattern
@@ -92,21 +108,22 @@ def _poisson_metric_contraction(node: GraphNode):
 
     if not isinstance(contraction, Inner):
         return None
-    if not isinstance(contraction.first, (MatMult, MatVec)) or not isinstance(
-        contraction.second, (MatMult, MatVec)
-    ):
+    left_operands = _as_mat_op_operands(contraction.first)
+    right_operands = _as_mat_op_operands(contraction.second)
+    if left_operands is None or right_operands is None:
         return None
 
-    left, right = contraction.first, contraction.second
-    if not isinstance(left.first, JacobianInverseTranspose) or not isinstance(
-        right.first, JacobianInverseTranspose
+    left_first, left_second = left_operands
+    right_first, right_second = right_operands
+    if not isinstance(left_first, JacobianInverseTranspose) or not isinstance(
+        right_first, JacobianInverseTranspose
     ):
         return None
-    if not isinstance(left.second, ReferenceGrad) or not isinstance(right.second, ReferenceGrad):
+    if not isinstance(left_second, ReferenceGrad) or not isinstance(right_second, ReferenceGrad):
         return None
-    if left.first.domain is not determinant.domain or right.first.domain is not determinant.domain:
+    if left_first.domain is not determinant.domain or right_first.domain is not determinant.domain:
         return None
-    if left.first.value_shape != (3, 3) or right.first.value_shape != (3, 3):
+    if left_first.value_shape != (3, 3) or right_first.value_shape != (3, 3):
         return None
 
     domain = determinant.domain
@@ -119,13 +136,13 @@ def _poisson_metric_contraction(node: GraphNode):
         Coefficient,
         EvaluatedReferenceCoefficientBasisFunction,
     )
-    if any(isinstance(n, coefficient_types) for n in as_graph(left.second)) and not any(
-        isinstance(n, coefficient_types) for n in as_graph(right.second)
+    if any(isinstance(n, coefficient_types) for n in as_graph(left_second)) and not any(
+        isinstance(n, coefficient_types) for n in as_graph(right_second)
     ):
-        left, right = right, left
-    assert isinstance(left.second, ReferenceGrad) and isinstance(right.second, ReferenceGrad)
-    grad_left = left.second.expand_geometry()
-    grad_right = right.second.expand_geometry()
+        left_second, right_second = right_second, left_second
+    assert isinstance(left_second, ReferenceGrad) and isinstance(right_second, ReferenceGrad)
+    grad_left = left_second.expand_geometry()
+    grad_right = right_second.expand_geometry()
     assert isinstance(grad_left, AbstractExpression)
     assert isinstance(grad_right, AbstractExpression)
     # Preserve the matrix-vector factorisation instead of flattening this
